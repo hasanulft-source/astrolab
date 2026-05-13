@@ -1,4 +1,4 @@
-// Cendekia IPA — Leaderboard System
+// Astrolab Classroom — Leaderboard System
 // SMP Negeri 15 Banda Aceh
 // Unified single-file React artifact
 
@@ -458,7 +458,7 @@ SISWA.forEach(s => {
 });
 
 // Fix "Yusuf" as the default logged-in student
-const yusuf = SISWA.find(s => s.nama.startsWith('Yusuf') && s.jenjang === 'VII');
+const yusuf = SISWA.find(s => s.nama.startsWith('Yusuf') && s.jenjang === 'VIII');
 const RANK_VII_SORTED = SISWA.filter(s => s.jenjang === 'VII').sort((a, b) => b.poin - a.poin);
 if (yusuf) {
   yusuf.poin = RANK_VII_SORTED[3].poin + 10;
@@ -469,9 +469,9 @@ rankInJenjang('VII');
 const ME_ID = yusuf ? yusuf.id : SISWA[0].id;
 
 const GURU = {
-  id: 'guru-1', nama: 'Bu Anissa',
-  namaPanjang: 'Anissa Mardhiah, S.Pd',
-  role: 'guru', mapel: 'IPA',
+  id: 'guru-1', nama: 'Pak Fatta',
+  namaPanjang: 'M. Hasanul Fatta, S.Pd.',
+  role: 'guru', mapel: 'IPA & Informatika',
   sekolah: 'SMP Negeri 15 Banda Aceh',
 };
 
@@ -529,8 +529,8 @@ const RIWAYAT_AKTIVITAS = [
 ];
 
 const PENGUMUMAN = [
-  { id: 'p1', dari: 'Bu Anissa', tanggal: 'hari ini', text: 'Tugas Tata Surya sudah dibuka. Deadline Rabu malam ya, jangan kebut subuh 😅' },
-  { id: 'p2', dari: 'Bu Anissa', tanggal: '2 hari lalu', text: 'Selamat untuk Cut Nadia, peraih poin tertinggi minggu ini di kelas VII!' },
+  { id: 'p1', dari: 'Pak Fatta', tanggal: 'hari ini', text: 'Tugas Tata Surya sudah dibuka. Deadline Rabu malam ya, jangan kebut subuh 😅' },
+  { id: 'p2', dari: 'Pak Fatta', tanggal: '2 hari lalu', text: 'Selamat untuk Cut Nadia, peraih poin tertinggi minggu ini di kelas VII!' },
 ];
 
 function getSiswaByJenjang(j) {
@@ -600,7 +600,7 @@ function initials(nama) {
 }
 
 // localStorage for avatar picks
-const AVATAR_KEY = 'cendekia.avatars.v1';
+const AVATAR_KEY = 'astrolab.avatars.v1';
 function getStoredAvatars() {
   try { return JSON.parse(localStorage.getItem(AVATAR_KEY) || '{}'); } catch { return {}; }
 }
@@ -750,29 +750,39 @@ function LoginScreen({ onLogin }) {
   const [pw, setPw] = useState('');
   const [err, setErr] = useState('');
 
-  const quickAccounts = [
-    { id: 'CDK-7-001', label: 'Yusuf · VII', user: SISWA.find(s => s.nama.startsWith('Yusuf') && s.jenjang === 'VII') || SISWA[0] },
-    { id: 'CDK-8-001', label: 'Siswa · VIII', user: SISWA.find(s => s.jenjang === 'VIII') || SISWA[32] },
-    { id: 'CDK-G-001', label: 'Bu Anissa · Guru', user: GURU },
+  const SISWA_YUSUF = { ...( SISWA.find(s => s.jenjang === 'VIII') || SISWA[32] ), nama: 'Yusuf Julian Saputra', kelas: 'VIII-A', jenjang: 'VIII', role: 'siswa' };
+  const SISWA_SHELIA = { ...( SISWA.find(s => s.jenjang === 'VII') || SISWA[0] ), nama: 'Shelia Anatasha', kelas: 'VII-A', jenjang: 'VII', role: 'siswa' };
+
+  const ACCOUNTS = [
+    { id: 'FATA-001', password: 'MY_SCH119', user: GURU },
+    { id: 'YJS-42',   password: 'yusuf2026', user: SISWA_YUSUF },
+    { id: 'SAN-17',   password: 'shelia2026', user: SISWA_SHELIA },
   ];
 
   function submit() {
-    const match = quickAccounts.find(q => q.id.toLowerCase() === id.trim().toLowerCase());
+    if (!id.trim()) { setErr('ID belum diisi.'); return; }
+    if (!pw.trim()) { setErr('Password belum diisi.'); return; }
+    const match = ACCOUNTS.find(a => a.id.toLowerCase() === id.trim().toLowerCase() && a.password === pw.trim());
     if (match) { onLogin(match.user); return; }
-    if (id.trim() && pw.trim()) { onLogin(quickAccounts[0].user); return; }
-    setErr('ID atau password belum diisi.');
+    setErr('ID atau password salah.');
   }
 
   return (
     <div className="login-wrap">
       <div className="login-card">
-        <div className="login-logo">C</div>
-        <div className="login-title">Cendekia IPA</div>
+        <div className="login-logo">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="4" fill="white"/>
+            <ellipse cx="16" cy="16" rx="13" ry="5" stroke="white" strokeWidth="1.5" fill="none" transform="rotate(-30 16 16)"/>
+            <ellipse cx="16" cy="16" rx="13" ry="5" stroke="white" strokeWidth="1.5" fill="none" opacity="0.5" transform="rotate(30 16 16)"/>
+          </svg>
+        </div>
+        <div className="login-title">Astrolab Classroom</div>
         <div className="login-sub">SMP Negeri 15 Banda Aceh</div>
 
         <div className="form-group">
           <label className="form-label">ID Siswa / Guru</label>
-          <input className="form-input" value={id} onChange={e => setId(e.target.value)} placeholder="Contoh: CDK-7-001" onKeyDown={e => e.key === 'Enter' && submit()} />
+          <input className="form-input" value={id} onChange={e => setId(e.target.value)} placeholder="Contoh: FATA-001" onKeyDown={e => e.key === 'Enter' && submit()} />
         </div>
         <div className="form-group">
           <label className="form-label">Password</label>
@@ -784,14 +794,7 @@ function LoginScreen({ onLogin }) {
           Masuk
         </button>
 
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>Coba akun demo:</div>
-          <div className="quick-btns">
-            {quickAccounts.map(q => (
-              <button key={q.id} className="quick-btn" onClick={() => onLogin(q.user)}>{q.label}</button>
-            ))}
-          </div>
-        </div>
+
       </div>
     </div>
   );
@@ -1491,7 +1494,7 @@ function DashboardGuru({ navigate }) {
 
       <div className="page-pad">
         <DesktopTitle
-          title={`Halo, ${GURU.nama}`}
+          title={`Halo, ${GURU.namaPanjang.split(",")[0]}`}
           subtitle={`${GURU.mapel} · ${GURU.sekolah}`}
           right={
             <div style={{ display: 'flex', gap: 8 }}>
@@ -1890,10 +1893,16 @@ export default function App() {
         {/* Header */}
         <header className="app-header">
           <div className="app-header-brand">
-            <div className="app-header-mark">C</div>
+            <div className="app-header-mark">
+            <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
+              <circle cx="16" cy="16" r="4" fill="white"/>
+              <ellipse cx="16" cy="16" rx="13" ry="5" stroke="white" strokeWidth="2" fill="none" transform="rotate(-30 16 16)"/>
+              <ellipse cx="16" cy="16" rx="13" ry="5" stroke="white" strokeWidth="2" fill="none" opacity="0.5" transform="rotate(30 16 16)"/>
+            </svg>
+          </div>
             <div className="app-header-name">
-              <b>Cendekia IPA</b>
-              <small>SMP 15 Banda Aceh</small>
+              <b>Astrolab Classroom</b>
+              <small>SMP N 15 Banda Aceh</small>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1912,7 +1921,7 @@ export default function App() {
           <main className="main-area">{screen}</main>
         </div>
 
-        <footer className="app-footer">© 2026 <b>Cendekia IPA</b> · SMP Negeri 15 Banda Aceh — All rights reserved</footer>
+        <footer className="app-footer">© 2026 <b>Astrolab Classroom</b> · SMP Negeri 15 Banda Aceh — All rights reserved</footer>
       </div>
 
       {!hideNav && <BottomNav user={user} route={route} navigate={navigate} />}
