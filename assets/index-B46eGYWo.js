@@ -306,16 +306,17 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
   gap:8px;
   align-items:flex-end;
   flex-shrink:0;
-  /* flush dengan navbar mobile */
-  padding-bottom:calc(10px + var(--nav-h));
+  /* sedikit gap di atas navbar mobile */
+  padding-bottom:calc(var(--nav-h) + 8px);
+  margin-bottom:8px;
 }
 @media(min-width:768px){
-  .chat-input-wrap{padding-bottom:10px;}
+  .chat-input-wrap{padding-bottom:10px;margin-bottom:0;}
 }
 @supports (padding:env(safe-area-inset-bottom)){
   .chat-input-wrap{padding-bottom:calc(10px + env(safe-area-inset-bottom));}
   @media(max-width:767px){
-    .chat-input-wrap{padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom));}
+    .chat-input-wrap{padding-bottom:calc(var(--nav-h) + 12px + env(safe-area-inset-bottom));}
   }
 }
 .chat-input{flex:1;padding:9px 13px;border-radius:20px;border:1.5px solid var(--line);font-family:var(--font);font-size:14px;color:var(--ink);background:var(--surface-alt);outline:none;resize:none;max-height:120px;line-height:1.4;}
