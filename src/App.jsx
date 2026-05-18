@@ -622,7 +622,7 @@ function LevelCard({ poin, compact = false }) {
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
         <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{poin} XP</span>
         {prog.next ? <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{prog.needed} lagi → {prog.next.emoji} {prog.next.name}</span>
-          : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>MAX LEVEL 🌌</span>}
+          : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>MAX LEVEL</span>}
       </div>
     </div>
   );
@@ -1085,7 +1085,7 @@ function LoginScreen({ onLogin }) {
 
         {/* ── FORM SECTION ── */}
         <div className="login-form">
-          <div className="login-form-title">Selamat datang 👋</div>
+          <div className="login-form-title">Selamat datang</div>
           <div className="login-form-sub">Masuk untuk melanjutkan belajar</div>
 
           <div className="login-field">
@@ -1119,14 +1119,13 @@ function DashboardSiswa({ user, store, navigate }) {
   // Dynamic greeting by waktu
   const hour = new Date().getHours();
   const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
-  const greetEmoji = hour < 11 ? "🌤️" : hour < 15 ? "☀️" : hour < 18 ? "🌆" : "🌙";
 
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
       <div style={{ paddingTop: 12, paddingBottom: 12 }}>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetEmoji} {greeting}!</div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay} 👋</h1>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greeting}!</div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay}</h1>
       </div>
       <div className="dt" style={{ paddingTop: 0, marginBottom: 4 }}></div>
       <Card pad="lg" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#fff", marginBottom: 12, border: "none" }}>
@@ -1656,7 +1655,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       )}
       {result.newBadges?.length > 0 && (
         <div style={{ marginTop: 16, padding: "14px 16px", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 14, width: "100%", maxWidth: 320 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>🎉 Badge Baru Terbuka!</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>Badge Baru Terbuka!</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
             {result.newBadges.map(id => <BadgeChip key={id} badgeId={id} />)}
           </div>
@@ -1951,7 +1950,7 @@ function ProfilSiswa({ user, store }) {
 
       {/* Badges */}
       <Card style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>🏅 Badge Koleksi</div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Badge Koleksi</div>
         <BadgesRow badges={myBadges} emptyText="Belum ada badge. Terus kerjakan tugas!" />
       </Card>
 
@@ -2161,7 +2160,7 @@ function BuatTugas({ store, navigate, editId = null }) {
               </div>
               {/* Schedule publish */}
               <div className="fg">
-                <label className="lbl">📅 Jadwal Publish (opsional)</label>
+                <label className="lbl">Jadwal Publish (opsional)</label>
                 <input className="inp" type="datetime-local" value={form.scheduledAt || ""} onChange={e => set("scheduledAt", e.target.value || null)} />
                 <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
                   {form.scheduledAt ? `Tugas akan otomatis publish pada ${new Date(form.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : "Kosongkan untuk publish sekarang"}
@@ -2523,14 +2522,14 @@ function DashboardGuru({ store, navigate }) {
 
   // Dynamic greeting
   const hour = new Date().getHours();
-  const greetingGuru = hour < 11 ? "🌤️ Selamat pagi" : hour < 15 ? "☀️ Selamat siang" : hour < 18 ? "🌆 Selamat sore" : "🌙 Selamat malam";
+  const greetingGuru = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
 
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
       <div style={{ paddingTop: 12, paddingBottom: 12 }}>
         <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta 👋</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta</h1>
         <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
       </div>
       <div className="dt" style={{ paddingTop: 0, marginBottom: 8 }}>
@@ -2652,7 +2651,7 @@ function DashboardGuru({ store, navigate }) {
         });
         if (analysis.length === 0) return null;
         return <>
-          <div className="sh"><h2>📊 Analisis Tugas</h2></div>
+          <div className="sh"><h2>Analisis Tugas</h2></div>
           <Card style={{ marginBottom: 8 }}>
             {analysis.map((a, i) => (
               <div key={i} style={{ padding: "10px 0", borderBottom: i < analysis.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
@@ -2674,7 +2673,7 @@ function DashboardGuru({ store, navigate }) {
           </Card>
         </>;
       })()}
-      <div className="sh"><h2>🟢 Online sekarang</h2></div>
+      <div className="sh"><h2>Online sekarang</h2></div>
       <Card style={{ marginBottom: 8 }}>
         {(() => {
           const onlineIds = store.getOnlineUsers();
@@ -2777,7 +2776,7 @@ function TugasGuru({ store, navigate }) {
                       <button className="btn btn-danger btn-sm" onClick={() => setConfirm(t.id)}><I n="trash" s={13} /></button>
                     </div>
                     {t.status === "scheduled" && t.scheduledAt && (
-                      <span style={{ fontSize: 9, color: "var(--ink-3)", fontWeight: 600 }}>📅 Publish: {new Date(t.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                      <span style={{ fontSize: 9, color: "var(--ink-3)", fontWeight: 600 }}>Publish: {new Date(t.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                     )}
                   </div>
                 </div>
@@ -3025,7 +3024,7 @@ function KelasView({ store, navigate }) {
       {/* Quick access */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button className="btn btn-soft btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => navigate("badge-manager")}>
-          🏅 Kelola Badge
+          Kelola Badge
         </button>
         <button className="btn btn-soft btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => navigate("manajemen-siswa")}>
           <I n="user" s={13} /> Akun Siswa ({allSiswa.length})
