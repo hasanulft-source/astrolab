@@ -72,14 +72,14 @@ const CSS = `
   --r:12px;--r-sm:8px;--r-xs:5px;
   --font:'Plus Jakarta Sans',system-ui,sans-serif;
   --mono:'DM Mono',monospace;
-  --nav-h:60px;--hdr-h:52px;
+  --nav-h:60px;--hdr-h:62px;
 }
 body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
 button,input,select,textarea{font-family:var(--font);}
 
 /* SHELL */
 .shell{min-height:100vh;display:flex;flex-direction:column;}
-.hdr{position:sticky;top:0;z-index:100;background:var(--accent);color:#fff;padding:0 20px;height:var(--hdr-h);display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(13,107,122,.25);}
+.hdr{position:sticky;top:0;z-index:100;background:var(--accent);color:#fff;padding:0 24px;height:var(--hdr-h);display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(13,107,122,.3);}
 .hdr-brand{display:flex;align-items:center;gap:10px;}
 .hdr-mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.2);display:grid;place-items:center;backdrop-filter:blur(4px);}
 .hdr-name b{font-size:13px;font-weight:700;display:block;line-height:1.2;}
@@ -1097,13 +1097,12 @@ function DashboardSiswa({ user, store, navigate }) {
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
-      <div style={{ padding: "16px 0 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ padding: "20px 0 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetEmoji} {greeting}!</div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay} 👋</h1>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetEmoji} {greeting}!</div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay} 👋</h1>
         </div>
       </div>
-      {/* Desktop only extra info */}
       <div className="dt" style={{ paddingTop: 0, marginBottom: 4 }}></div>
       <Card pad="lg" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#fff", marginBottom: 12, border: "none" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -2474,10 +2473,10 @@ function DashboardGuru({ store, navigate }) {
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
-      <div style={{ padding: "16px 0 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ padding: "20px 0 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetingGuru}!</div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta 👋</h1>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta 👋</h1>
           <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
         </div>
       </div>
