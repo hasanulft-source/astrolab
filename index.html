@@ -1,13 +1,44 @@
 <!doctype html>
-<html lang="en">
+<html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>cendekia-ipa</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/cendekia-ipa/manifest.json" />
+    <meta name="theme-color" content="#0d6b7a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Astrolab" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/cendekia-ipa/icon-192.png" />
+    <link rel="apple-touch-icon" href="/cendekia-ipa/icon-192.png" />
+
+    <!-- SEO & Meta -->
+    <title>Astrolab · Our Classroom</title>
+    <meta name="description" content="Platform belajar digital SMP Negeri 15 Banda Aceh" />
+    <meta name="author" content="M. Hasanul Fatta" />
+
+    <!-- Splash screen color -->
+    <meta name="msapplication-TileColor" content="#0d6b7a" />
+    <meta name="msapplication-TileImage" content="/cendekia-ipa/icon-192.png" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Register Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('/cendekia-ipa/sw.js')
+            .then(reg => console.log('SW registered:', reg.scope))
+            .catch(err => console.log('SW failed:', err));
+        });
+      }
+    </script>
   </body>
 </html>
