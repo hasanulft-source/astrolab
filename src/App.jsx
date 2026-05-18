@@ -35,6 +35,16 @@ async function setOffline(userId) {
 // no-op — push notif dihapus
 async function callNotifyServer() {}
 
+// ─── SHUFFLE (Fisher-Yates) ───
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 // ─── ACCOUNTS ───
 const ACCOUNTS = [
   { id: "FATA-001", password: "MY_SCH119", role: "guru", nama: "M. Hasanul Fatta, S.Pd.", namaDisplay: "Pak Fatta", mapel: "IPA & Informatika" },
@@ -680,11 +690,16 @@ function useStore() {
   const getTugas = () => tugas;
   const addTugas = async (t) => {
     const newRef = push(ref(db, "tugas"));
-    await set(newRef, { ...t, createdAt: new Date().toISOString(), status: "aktif" });
-    callNotifyServer("tugas", { jenjang: t.jenjang, judul: t.judul, mapel: t.mapel });
+    await set(newRef, { ...t, createdAt: new Date().toISOString(), status: t.scheduledAt ? "scheduled" : "aktif" });
+    if (!t.scheduledAt) callNotifyServer("tugas", { jenjang: t.jenjang, judul: t.judul, mapel: t.mapel });
   };
   const deleteTugas = async (id) => { await remove(ref(db, `tugas/${id}`)); };
   const updateTugas = async (id, patch) => { await update(ref(db, `tugas/${id}`), patch); };
+  const duplicateTugas = async (t) => {
+    const newRef = push(ref(db, "tugas"));
+    const { id, createdAt, ...rest } = t;
+    await set(newRef, { ...rest, judul: `${t.judul} (Salinan)`, createdAt: new Date().toISOString(), status: "aktif", scheduledAt: null });
+  };
 
   // SUBMISSIONS
   const getSubs = () => subs;
@@ -929,7 +944,19 @@ function useStore() {
       .map((s, i) => ({ ...s, rank: i + 1 }));
   };
 
-  // PRESENCE — /presence/{userId} = { online, lastSeen }
+  // AUTO-PUBLISH SCHEDULER — cek setiap menit
+  useEffect(() => {
+    const checkScheduled = async () => {
+      const now = new Date().toISOString();
+      tugas.filter(t => t.status === "scheduled" && t.scheduledAt && t.scheduledAt <= now)
+        .forEach(t => {
+          update(ref(db, `tugas/${t.id}`), { status: "aktif" });
+        });
+    };
+    checkScheduled();
+    const interval = setInterval(checkScheduled, 60000);
+    return () => clearInterval(interval);
+  }, [tugas]);
   const [presenceData, setPresenceData] = useState({});
   useEffect(() => {
     const presRef = ref(db, "presence");
@@ -955,7 +982,7 @@ function useStore() {
     await remove(ref(db, `badges/${sid}/${badgeId}`));
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -1520,6 +1547,27 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   const t = store.getTugas().find(x => x.id === tugasId);
   const SAVE_KEY = `astrolab.quiz.${user.id}.${tugasId}`;
 
+  // Randomize soal order — seed per user+tugas biar konsisten kalau refresh
+  const [shuffledSoal] = useState(() => {
+    if (!t?.soal?.length) return [];
+    // Cek apakah ada saved order
+    try {
+      const s = localStorage.getItem(SAVE_KEY);
+      if (s) {
+        const d = JSON.parse(s);
+        if (d.order) return d.order.map(i => ({ ...t.soal[i], _origIdx: i }));
+      }
+    } catch {}
+    // Generate random order baru
+    const order = shuffle(t.soal.map((_, i) => i));
+    try {
+      const s = localStorage.getItem(SAVE_KEY);
+      const d = s ? JSON.parse(s) : {};
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ ...d, order }));
+    } catch {}
+    return order.map(i => ({ ...t.soal[i], _origIdx: i }));
+  });
+
   // Auto-restore dari localStorage
   const [idx, setIdx] = useState(() => {
     try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s).idx || 0 : 0; } catch { return 0; }
@@ -1532,7 +1580,8 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   const [showConfirm, setShowConfirm] = useState(false);
 
   if (!t || !t.soal?.length) return <div className="empty">Soal tidak tersedia.</div>;
-  const total = t.soal.length, soal = t.soal[idx];
+  const soalList = shuffledSoal.length ? shuffledSoal : t.soal.map((s, i) => ({ ...s, _origIdx: i }));
+  const total = soalList.length, soal = soalList[idx];
 
   // Auto-save setiap ada perubahan jawaban
   function answer(val) {
@@ -1556,7 +1605,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   function doSubmit() {
     setShowConfirm(false);
     let totalPoin = 0, correctCount = 0;
-    t.soal.forEach((s, i) => {
+    soalList.forEach((s, i) => {
       const ans = answers[i]; const poinSoal = s.poin || Math.floor(t.poinMax / total); let correct = false;
       if (s.type === "pg" || s.type === "tf") correct = ans === s.jawaban;
       else if (s.type === "komplex") correct = (ans || []).slice().sort().join(",") === (s.jawaban || []).slice().sort().join(",");
@@ -2110,6 +2159,14 @@ function BuatTugas({ store, navigate, editId = null }) {
                   <input className="inp" type="number" value={form.poinMax / (soal.length || 1)} readOnly style={{ color: "var(--ink-3)", background: "var(--surface-alt)" }} placeholder="Otomatis" />
                 </div>
               </div>
+              {/* Schedule publish */}
+              <div className="fg">
+                <label className="lbl">📅 Jadwal Publish (opsional)</label>
+                <input className="inp" type="datetime-local" value={form.scheduledAt || ""} onChange={e => set("scheduledAt", e.target.value || null)} />
+                <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+                  {form.scheduledAt ? `Tugas akan otomatis publish pada ${new Date(form.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : "Kosongkan untuk publish sekarang"}
+                </div>
+              </div>
               <div className="fg">
                 <label className="lbl">Deskripsi (opsional)</label>
                 <textarea className="inp" value={form.deskripsi} onChange={e => set("deskripsi", e.target.value)} placeholder="Instruksi tambahan untuk siswa..." rows={2} />
@@ -2579,7 +2636,44 @@ function DashboardGuru({ store, navigate }) {
       {/* Export mobile */}
       <button className="btn btn-outline btn-full" style={{ marginBottom: 8 }} onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={14} /> Export Nilai Kelas {jenjang}</button>
 
-      {/* Online sekarang */}
+      {/* Analisis Soal */}
+      {(() => {
+        const allSubs = store.getSubs().filter(s => { const t = store.getTugas().find(x => x.id === s.tugasId); return t && t.jenjang === jenjang; });
+        const tugasWithSoal = store.getTugas().filter(t => t.jenjang === jenjang && t.soal?.length > 0);
+        if (tugasWithSoal.length === 0 || allSubs.length === 0) return null;
+        // Analisis per tugas — soal mana yang paling banyak salah
+        const analysis = [];
+        tugasWithSoal.slice(0, 3).forEach(t => {
+          const subs = allSubs.filter(s => s.tugasId === t.id);
+          if (subs.length === 0) return;
+          // Hitung wrong answer per soal index (from shuffled order we can't track, so use avg score)
+          const avgNilai = subs.reduce((a, s) => a + s.nilai, 0) / subs.length;
+          analysis.push({ judul: t.judul, mapel: t.mapel, avgNilai: Math.round(avgNilai), total: subs.length });
+        });
+        if (analysis.length === 0) return null;
+        return <>
+          <div className="sh"><h2>📊 Analisis Tugas</h2></div>
+          <Card style={{ marginBottom: 8 }}>
+            {analysis.map((a, i) => (
+              <div key={i} style={{ padding: "10px 0", borderBottom: i < analysis.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.judul}</div>
+                    <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{a.mapel} · {a.total} siswa</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: a.avgNilai >= 70 ? "var(--good)" : a.avgNilai >= 50 ? "var(--warn)" : "var(--bad)" }}>{a.avgNilai}</div>
+                    <div style={{ fontSize: 10, color: "var(--ink-3)" }}>rata-rata</div>
+                  </div>
+                </div>
+                <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${a.avgNilai}%`, background: a.avgNilai >= 70 ? "var(--good)" : a.avgNilai >= 50 ? "var(--warn)" : "var(--bad)", borderRadius: 99, transition: "width .5s" }} />
+                </div>
+              </div>
+            ))}
+          </Card>
+        </>;
+      })()}
       <div className="sh"><h2>🟢 Online sekarang</h2></div>
       <Card style={{ marginBottom: 8 }}>
         {(() => {
@@ -2613,7 +2707,9 @@ function DashboardGuru({ store, navigate }) {
 function TugasGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const [confirm, setConfirm] = useState(null);
-  const [filter, setFilter] = useState("aktif"); // aktif | lewat | semua
+  const [filter, setFilter] = useState("aktif");
+  const [toast, setToast] = useState("");
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
   const tugasAll = store.getTugas().filter(t => t.jenjang === jenjang);
   const siswa = store.getAllSiswa(jenjang);
   const subs = store.getSubs();
@@ -2624,6 +2720,7 @@ function TugasGuru({ store, navigate }) {
 
   return <>
     {confirm && <Confirm title="Hapus tugas?" desc="Tugas dihapus permanen. Poin siswa yang sudah mengerjakan tidak berubah." onOk={() => { store.deleteTugas(confirm); setConfirm(null); }} onCancel={() => setConfirm(null)} />}
+    {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, whiteSpace: "nowrap", boxShadow: "var(--shadow)" }}>{toast}</div>}
     <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Tugas</div><button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }} onClick={() => navigate("buat-tugas")}><I n="plus" s={22} /></button></div>
     <div className="page">
       <div className="dt">
@@ -2676,8 +2773,12 @@ function TugasGuru({ store, navigate }) {
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, flexDirection: "column", alignItems: "flex-end" }}>
                     <div style={{ display: "flex", gap: 6 }}>
                       {!lewat && <button className="btn btn-soft btn-sm" onClick={() => navigate("edit-tugas", { tugasId: t.id })}><I n="edit" s={13} /></button>}
+                      <button className="btn btn-soft btn-sm" title="Duplikat" onClick={() => { store.duplicateTugas(t); showToast?.("Tugas diduplikat!"); }}><I n="copy" s={13} /></button>
                       <button className="btn btn-danger btn-sm" onClick={() => setConfirm(t.id)}><I n="trash" s={13} /></button>
                     </div>
+                    {t.status === "scheduled" && t.scheduledAt && (
+                      <span style={{ fontSize: 9, color: "var(--ink-3)", fontWeight: 600 }}>📅 Publish: {new Date(t.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
