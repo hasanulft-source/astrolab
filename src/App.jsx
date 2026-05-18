@@ -1097,16 +1097,14 @@ function DashboardSiswa({ user, store, navigate }) {
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
-      <div style={{ padding: "16px 0 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ padding: "16px 0 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetEmoji} {greeting}!</div>
           <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay} 👋</h1>
-          <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>{user.kelas}</p>
         </div>
-        <Avatar name={user.nama} size="md" photo={store.getPhoto(user.id)} />
       </div>
       {/* Desktop only extra info */}
-      <div className="dt" style={{ paddingBottom: 4, paddingTop: 0, marginBottom: 4 }}></div>
+      <div className="dt" style={{ paddingTop: 0, marginBottom: 4 }}></div>
       <Card pad="lg" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#fff", marginBottom: 12, border: "none" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
@@ -1224,7 +1222,6 @@ function LeaderboardScreen({ user, store }) {
   const aktif = [...lb].sort((a,b) => (b.tugasSelesai||0) - (a.tugasSelesai||0))[0];
 
   return <>
-    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Leaderboard</div><I n="trophy" s={18} /></div>
     <div className="page">
       <div className="dt"><div><h1>Leaderboard</h1><p>Ranking poin akumulatif · semester ini</p></div></div>
       <div className="tabs" style={{ marginBottom: 16 }}>
@@ -1406,11 +1403,6 @@ function DaftarTugas({ user, store, navigate }) {
   }
 
   return <>
-    <div className="topbar">
-      <div style={{ width: 36 }} />
-      <div className="topbar-title">Tugas</div>
-      <I n="book" s={18} />
-    </div>
     <div className="page">
       <div className="dt"><div><h1>Tugas {mapel}</h1><p>Kelas {user.jenjang}</p></div></div>
 
@@ -1881,7 +1873,6 @@ function ProfilSiswa({ user, store }) {
       </div>
     )}
 
-    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Profil</div><Avatar name={user.nama} size="sm" photo={photo} /></div>
     <div className="page">
       <div className="dt"><div><h1>Profil</h1><p>Track record semester ini</p></div></div>
 
@@ -2883,14 +2874,13 @@ function ChatScreen({ user, store }) {
           onClose={() => { setShowBcModal(false); setEditBc(null); }}
         />
       )}
-      <div className="topbar">
-        <div style={{ width: 36 }} />
-        <div className="topbar-title">Pesan</div>
-        {isGuru
-          ? <button className="btn btn-primary btn-sm" onClick={() => setShowBcModal(true)} style={{ fontSize: 11, padding: "5px 10px" }}><I n="send" s={12} /> Broadcast</button>
-          : <div style={{ width: 36 }} />
-        }
-      </div>
+      {isGuru && (
+        <div className="topbar">
+          <div style={{ width: 36 }} />
+          <div className="topbar-title">Pesan</div>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowBcModal(true)} style={{ fontSize: 11, padding: "5px 10px" }}><I n="send" s={12} /> Broadcast</button>
+        </div>
+      )}
       <div className="page" style={{ paddingBottom: 0 }}>
         <div className="dt">
           <div><h1>Pesan</h1><p>{isGuru ? "Chat dengan semua siswa" : "Chat dengan guru dan teman sekelas"}</p></div>
