@@ -1097,14 +1097,16 @@ function DashboardSiswa({ user, store, navigate }) {
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
-      <div className="dt" style={{ paddingBottom: 4 }}>
+      <div style={{ padding: "16px 0 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetEmoji} {greeting}!</div>
-          <h1>Halo, {user.namaDisplay} 👋</h1>
-          <p>{user.kelas}</p>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetEmoji} {greeting}!</div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay} 👋</h1>
+          <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>{user.kelas}</p>
         </div>
         <Avatar name={user.nama} size="md" photo={store.getPhoto(user.id)} />
       </div>
+      {/* Desktop only extra info */}
+      <div className="dt" style={{ paddingBottom: 4, paddingTop: 0, marginBottom: 4 }}></div>
       <Card pad="lg" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#fff", marginBottom: 12, border: "none" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
@@ -2480,12 +2482,16 @@ function DashboardGuru({ store, navigate }) {
 
   return <>
     <div className="page">
-      <div className="dt">
+      {/* Greeting — mobile & desktop */}
+      <div style={{ padding: "16px 0 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetingGuru}!</div>
-          <h1>Halo, Pak Fatta 👋</h1>
-          <p>M. Hasanul Fatta, S.Pd. · IPA & Informatika</p>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetingGuru}!</div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta 👋</h1>
+          <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
         </div>
+      </div>
+      <div className="dt" style={{ paddingTop: 0, marginBottom: 8 }}>
+        <div />
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => backupFromStore(store)} title="Download backup data"><I n="chartBar" s={13} /> Backup</button>
           <button className="btn btn-outline btn-sm" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={13} /> Export Nilai</button>
