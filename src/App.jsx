@@ -84,8 +84,8 @@ function showLocalNotif(title, body, type = "general") {
   try {
     new Notification(title, {
       body,
-      icon: "/cendekia-ipa/icon-192.png",
-      badge: "/cendekia-ipa/icon-192.png",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
       tag: type,
       vibrate: [200, 100, 200],
     });
