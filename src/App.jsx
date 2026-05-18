@@ -1097,11 +1097,9 @@ function DashboardSiswa({ user, store, navigate }) {
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
-      <div style={{ padding: "20px 0 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetEmoji} {greeting}!</div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay} 👋</h1>
-        </div>
+      <div style={{ paddingTop: 12, paddingBottom: 12 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetEmoji} {greeting}!</div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay} 👋</h1>
       </div>
       <div className="dt" style={{ paddingTop: 0, marginBottom: 4 }}></div>
       <Card pad="lg" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#fff", marginBottom: 12, border: "none" }}>
@@ -2473,12 +2471,10 @@ function DashboardGuru({ store, navigate }) {
   return <>
     <div className="page">
       {/* Greeting — mobile & desktop */}
-      <div style={{ padding: "20px 0 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta 👋</h1>
-          <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
-        </div>
+      <div style={{ paddingTop: 12, paddingBottom: 12 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta 👋</h1>
+        <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
       </div>
       <div className="dt" style={{ paddingTop: 0, marginBottom: 8 }}>
         <div />
