@@ -1088,10 +1088,23 @@ function DashboardSiswa({ user, store, navigate }) {
   const tugas = store.getTugas().filter(t => t.jenjang === user.jenjang && t.status === "aktif");
   const lb = store.getLeaderboard(user.jenjang);
   const myRank = lb.find(s => s.id === user.id);
+
+  // Dynamic greeting by waktu
+  const hour = new Date().getHours();
+  const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
+  const greetEmoji = hour < 11 ? "🌤️" : hour < 15 ? "☀️" : hour < 18 ? "🌆" : "🌙";
+
   return <>
-    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Beranda</div><Avatar name={user.nama} size="sm" /></div>
     <div className="page">
-      <div className="dt"><div><h1>Halo, {user.namaDisplay}</h1><p>{user.kelas} · SMP Negeri 15 Banda Aceh</p></div></div>
+      {/* Greeting — mobile & desktop */}
+      <div className="dt" style={{ paddingBottom: 4 }}>
+        <div>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetEmoji} {greeting}!</div>
+          <h1>Halo, {user.namaDisplay} 👋</h1>
+          <p>{user.kelas}</p>
+        </div>
+        <Avatar name={user.nama} size="md" photo={store.getPhoto(user.id)} />
+      </div>
       <Card pad="lg" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#fff", marginBottom: 12, border: "none" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
@@ -2461,11 +2474,18 @@ function DashboardGuru({ store, navigate }) {
   // Perlu perhatian: siswa dengan tugas paling sedikit
   const perluPerhatian = [...lb].sort((a,b) => (a.tugasSelesai||0) - (b.tugasSelesai||0)).slice(0, 3).filter(s => (s.tugasSelesai||0) < tugasAktif.length);
 
+  // Dynamic greeting
+  const hour = new Date().getHours();
+  const greetingGuru = hour < 11 ? "🌤️ Selamat pagi" : hour < 15 ? "☀️ Selamat siang" : hour < 18 ? "🌆 Selamat sore" : "🌙 Selamat malam";
+
   return <>
-    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Dashboard</div><button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }} onClick={() => navigate("buat-tugas")}><I n="plus" s={22} /></button></div>
     <div className="page">
       <div className="dt">
-        <div><h1>Halo, Pak Fatta</h1><p>M. Hasanul Fatta, S.Pd. · IPA & Informatika</p></div>
+        <div>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greetingGuru}!</div>
+          <h1>Halo, Pak Fatta 👋</h1>
+          <p>M. Hasanul Fatta, S.Pd. · IPA & Informatika</p>
+        </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => backupFromStore(store)} title="Download backup data"><I n="chartBar" s={13} /> Backup</button>
           <button className="btn btn-outline btn-sm" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={13} /> Export Nilai</button>
@@ -2861,7 +2881,7 @@ function ChatScreen({ user, store }) {
         <div style={{ width: 36 }} />
         <div className="topbar-title">Pesan</div>
         {isGuru
-          ? <button className="btn btn-primary btn-sm" onClick={() => setShowBcModal(true)} style={{ fontSize: 11, padding: "5px 10px" }}>📢 Broadcast</button>
+          ? <button className="btn btn-primary btn-sm" onClick={() => setShowBcModal(true)} style={{ fontSize: 11, padding: "5px 10px" }}><I n="send" s={12} /> Broadcast</button>
           : <div style={{ width: 36 }} />
         }
       </div>
