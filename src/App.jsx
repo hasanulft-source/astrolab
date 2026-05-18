@@ -1,12 +1,11 @@
 // Astrolab Classroom — Production LMS
 // © 2026 M. Hasanul Fatta
 // UI: Original (Plus Jakarta Sans + teal #0d6b7a)
-// Engine: Firebase Realtime Database + FCM Push Notifications
+// Engine: Firebase Realtime Database + Realtime Presence
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, get, push, onValue, remove, update } from "firebase/database";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -22,76 +21,19 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
 
 // ─── FCM VAPID KEY ───
-const VAPID_KEY = "BNNayVKUvYX3Z1cdnTCSNatJF0N1I6s0pXlUoyN3bp3CMFQGSlqsQ_0ufJP_tp6wXzYTBdB4nJKtAf3ZppApbBg";
-
-// ─── NOTIFY SERVER HELPER ───
-const NOTIFY_URL = "https://astrolab-push-server.vercel.app/api/notify";
-const NOTIFY_SECRET = "astrolab2026fatta";
-
-async function callNotifyServer(type, payload) {
-  try {
-    await fetch(NOTIFY_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${NOTIFY_SECRET}`,
-      },
-      body: JSON.stringify({ type, payload }),
-    });
-  } catch (err) {
-    console.warn("[Astrolab] Push server unreachable:", err.message);
-  }
+// ─── ONLINE PRESENCE ───
+// Firebase node: /presence/{userId} = { online: true, lastSeen: timestamp }
+async function setOnline(userId) {
+  const presRef = ref(db, `presence/${userId}`);
+  await set(presRef, { online: true, lastSeen: serverTimestamp() });
+  onDisconnect(presRef).set({ online: false, lastSeen: serverTimestamp() });
 }
-let messagingInstance = null;
-function getMsg() {
-  if (!messagingInstance) {
-    try { messagingInstance = getMessaging(firebaseApp); } catch { return null; }
-  }
-  return messagingInstance;
+async function setOffline(userId) {
+  try { await set(ref(db, `presence/${userId}`), { online: false, lastSeen: serverTimestamp() }); } catch {}
 }
 
-async function requestNotifPermission(userId) {
-  try {
-    if (!("Notification" in window)) return null;
-    if (!("serviceWorker" in navigator)) return null;
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return null;
-    const msg = getMsg();
-    if (!msg) return null;
-    const token = await getToken(msg, {
-      vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: await navigator.serviceWorker.ready,
-    });
-    if (token) {
-      // Simpan token ke Firebase /fcmTokens/{userId}
-      await update(ref(db, `fcmTokens/${userId}`), {
-        token,
-        updatedAt: new Date().toISOString(),
-        platform: /iPhone|iPad|iPod|Android/.test(navigator.userAgent) ? "mobile" : "desktop",
-      });
-    }
-    return token;
-  } catch (err) {
-    console.warn("[Astrolab FCM] Error:", err);
-    return null;
-  }
-}
-
-// Kirim notif lokal (foreground) — saat app sedang terbuka
-function showLocalNotif(title, body, type = "general") {
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
-  try {
-    new Notification(title, {
-      body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      tag: type,
-      vibrate: [200, 100, 200],
-    });
-  } catch {}
-}
-
+// no-op — push notif dihapus
+async function callNotifyServer() {}
 
 // ─── ACCOUNTS ───
 const ACCOUNTS = [
@@ -556,9 +498,15 @@ function Avatar({ name, size = "md", photo = null }) {
   return <span className="av" style={{ width: px, height: px }}><svg width={px} height={px} viewBox="0 0 100 100"><rect width="100" height="100" rx="50" fill={bg} /><text x="50" y="63" textAnchor="middle" fontFamily="Plus Jakarta Sans,sans-serif" fontWeight="700" fontSize={fs * (100 / px)} fill={fg}>{inits(name || "?")}</text></svg></span>;
 }
 // UserAvatar: auto-fetch foto dari store berdasarkan userId
-function UserAvatar({ userId, name, size = "md", store }) {
+function UserAvatar({ userId, name, size = "md", store, showOnline = false }) {
   const photo = store ? store.getPhoto(userId) : null;
-  return <Avatar name={name} size={size} photo={photo} />;
+  const online = showOnline && store?.isOnline(userId);
+  return (
+    <div style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+      <Avatar name={name} size={size} photo={photo} />
+      {online && <OnlineDot size={size === "sm" ? 8 : 10} style={{ position: "absolute", bottom: 0, right: 0 }} />}
+    </div>
+  );
 }
 
 // ─── HELPERS ───
@@ -624,7 +572,18 @@ function checkAutoBadges(stats, submission, isTopClass = false) {
   return earned;
 }
 
-// ─── LEVEL CARD COMPONENT ───
+// ─── ONLINE DOT ───
+function OnlineDot({ size = 10, style = {} }) {
+  return (
+    <span style={{
+      display: "inline-block", width: size, height: size,
+      borderRadius: "50%", background: "#22c55e",
+      border: "2px solid var(--surface)",
+      boxShadow: "0 0 0 2px #22c55e33",
+      flexShrink: 0, ...style
+    }} />
+  );
+}
 function LevelCard({ poin, compact = false }) {
   const lv = getLevel(poin);
   const prog = getLevelProgress(poin);
@@ -970,7 +929,16 @@ function useStore() {
       .map((s, i) => ({ ...s, rank: i + 1 }));
   };
 
-  // BADGES — Firebase node: badges/{userId} = { badgeId: true, ... }
+  // PRESENCE — /presence/{userId} = { online, lastSeen }
+  const [presenceData, setPresenceData] = useState({});
+  useEffect(() => {
+    const presRef = ref(db, "presence");
+    const unsub = onValue(presRef, snap => setPresenceData(snap.val() || {}));
+    return () => unsub();
+  }, []);
+  const isOnline = (userId) => presenceData[userId]?.online === true;
+  const getLastSeen = (userId) => presenceData[userId]?.lastSeen || null;
+  const getOnlineUsers = () => Object.entries(presenceData).filter(([, v]) => v?.online).map(([id]) => id);
   const [badgesData, setBadgesData] = useState({});
   useEffect(() => {
     const badgesRef = ref(db, "badges");
@@ -987,7 +955,7 @@ function useStore() {
     await remove(ref(db, `badges/${sid}/${badgeId}`));
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -1935,22 +1903,6 @@ function ProfilSiswa({ user, store }) {
         <BadgesRow badges={myBadges} emptyText="Belum ada badge. Terus kerjakan tugas!" />
       </Card>
 
-      {/* Notifikasi */}
-      <Card style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>🔔 Notifikasi Push</div>
-            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
-              {Notification?.permission === "granted" ? "Notifikasi aktif ✓" : "Aktifkan untuk terima info tugas & pesan"}
-            </div>
-          </div>
-          {Notification?.permission !== "granted"
-            ? <button className="btn btn-primary btn-sm" onClick={() => requestNotifPermission(user.id)}>Aktifkan</button>
-            : <span className="chip chip-good">Aktif</span>
-          }
-        </div>
-      </Card>
-
       {stats.poinHistory?.length > 0 && <Card style={{ marginBottom: 12 }}><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Perjalanan poin</div><PoinChart data={stats.poinHistory} /></Card>}
 
       <div className="sh"><h2>Riwayat pengerjaan</h2></div>
@@ -2614,6 +2566,33 @@ function DashboardGuru({ store, navigate }) {
 
       {/* Export mobile */}
       <button className="btn btn-outline btn-full" style={{ marginBottom: 8 }} onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={14} /> Export Nilai Kelas {jenjang}</button>
+
+      {/* Online sekarang */}
+      <div className="sh"><h2>🟢 Online sekarang</h2></div>
+      <Card style={{ marginBottom: 8 }}>
+        {(() => {
+          const onlineIds = store.getOnlineUsers().filter(id => id !== user?.id);
+          const allSiswa = store.getAllSiswa();
+          const onlineSiswa = allSiswa.filter(s => onlineIds.includes(s.id));
+          if (onlineSiswa.length === 0) return <div className="empty" style={{ padding: "12px 0" }}>Belum ada siswa yang online</div>;
+          return <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {onlineSiswa.map(s => {
+              const lv = getLevel(store.getStats(s.id).poin || 0);
+              return <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ position: "relative" }}>
+                  <Avatar name={s.nama} size="sm" photo={store.getPhoto(s.id)} />
+                  <OnlineDot size={10} style={{ position: "absolute", bottom: 0, right: 0 }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{s.namaDisplay || s.nama}</div>
+                  <div style={{ fontSize: 10, color: lv.color, fontWeight: 600 }}>{lv.emoji} {lv.name}</div>
+                </div>
+                <span style={{ fontSize: 10, color: "#22c55e", fontWeight: 700 }}>● Online</span>
+              </div>;
+            })}
+          </div>;
+        })()}
+      </Card>
     </div>
   </>;
 }
@@ -2841,7 +2820,7 @@ function ChatScreen({ user, store }) {
     return (
       <div className={`chat-item ${unread > 0 ? "unread" : ""}`} onClick={() => setActiveContact(c)}>
         <div style={{ position: "relative", flexShrink: 0 }}>
-          <UserAvatar userId={c.id} name={c.nama} size="lg" store={store} />
+          <UserAvatar userId={c.id} name={c.nama} size="lg" store={store} showOnline={true} />
           {unread > 0 && <div style={{ position: "absolute", top: -2, right: -2, width: 18, height: 18, borderRadius: "50%", background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, display: "grid", placeItems: "center", fontFamily: "var(--mono)", border: "2px solid var(--surface)" }}>{unread > 9 ? "9+" : unread}</div>}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -2853,7 +2832,10 @@ function ChatScreen({ user, store }) {
             {last && <div style={{ fontSize: 11, color: "var(--ink-4)", flexShrink: 0 }}>{fmtTime(last.ts)}</div>}
           </div>
           <div style={{ fontSize: 12, color: unread > 0 ? "var(--ink-2)" : "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, fontWeight: unread > 0 ? 600 : 400 }}>
-            {last ? (last.fromId === user.id ? `Kamu: ${last.text}` : last.text) : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`)}
+            {store.isOnline(c.id)
+              ? <span style={{ color: "#22c55e", fontWeight: 600 }}>● Online</span>
+              : last ? (last.fromId === user.id ? `Kamu: ${last.text}` : last.text) : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`)
+            }
           </div>
         </div>
         {unread === 0 && <I n="chevR" s={14} style={{ color: "var(--ink-4)", flexShrink: 0 }} />}
@@ -3465,101 +3447,30 @@ export default function App() {
   function handleLogin(u) {
     try { localStorage.setItem("astrolab.user", JSON.stringify(u)); } catch {}
     setUser(u); setRoute(u.role === "guru" ? "home-guru" : "home");
-    // Request notif permission setelah login
-    setTimeout(() => requestNotifPermission(u.id), 2000);
+    setTimeout(() => setOnline(u.id), 500);
   }
   function handleLogout() {
+    if (user) setOffline(user.id);
     try { localStorage.removeItem("astrolab.user"); } catch {}
     setUser(null); setRoute("home"); setParams({});
   }
 
-  // FCM — foreground message listener
+  // Presence — realtime online/offline detection
   useEffect(() => {
     if (!user) return;
-    const msg = getMsg();
-    if (!msg) return;
-    let unsub;
-    try {
-      unsub = onMessage(msg, (payload) => {
-        const { title, body } = payload.notification || {};
-        const data = payload.data || {};
-        // Tampilkan notif lokal saat app sedang terbuka
-        showLocalNotif(
-          title || "Astrolab",
-          body || "Ada notifikasi baru",
-          data.type || "general"
-        );
-      });
-    } catch {}
-    return () => { try { unsub?.(); } catch {} };
-  }, [user]);
-
-  // Auto-notify saat ada pesan baru di chat (foreground)
-  const prevMsgRef = useRef({});
-  useEffect(() => {
-    if (!user) return;
-    const msgRef = ref(db, "messages");
-    const unsub = onValue(msgRef, (snap) => {
-      const data = snap.val();
-      if (!data) return;
-      // Cek semua thread yang melibatkan user ini
-      Object.entries(data).forEach(([threadId, msgs]) => {
-        if (!threadId.includes(user.id)) return;
-        const msgIds = Object.keys(msgs || {});
-        const prev = prevMsgRef.current[threadId] || [];
-        if (prev.length === 0) { prevMsgRef.current[threadId] = msgIds; return; }
-        const newMsgIds = msgIds.filter(id => !prev.includes(id));
-        newMsgIds.forEach(id => {
-          const m = msgs[id];
-          if (m.senderId === user.id) return; // pesan sendiri, skip
-          showLocalNotif("💬 Pesan Baru", `${m.senderName || "Seseorang"}: ${m.text?.slice(0, 60) || ""}`, "chat");
-        });
-        prevMsgRef.current[threadId] = msgIds;
-      });
-    });
-    return () => unsub();
-  }, [user]);
-  const prevTugasRef = useRef(null);
-  useEffect(() => {
-    if (!user || user.role === "guru") return;
-    const tugasRef = ref(db, "tugas");
-    const unsub = onValue(tugasRef, (snap) => {
-      const data = snap.val();
-      if (!data) return;
-      const ids = Object.keys(data);
-      if (prevTugasRef.current === null) { prevTugasRef.current = ids; return; }
-      const newIds = ids.filter(id => !prevTugasRef.current.includes(id));
-      newIds.forEach(id => {
-        const t = data[id];
-        if (t.jenjang === user.jenjang) {
-          showLocalNotif("📚 Tugas Baru!", `${t.judul} — ${t.mapel}`, "tugas");
-        }
-      });
-      prevTugasRef.current = ids;
-    });
-    return () => unsub();
-  }, [user]);
-
-  // Auto-notify siswa saat ada broadcast baru
-  const prevBcastRef = useRef(null);
-  useEffect(() => {
-    if (!user || user.role === "guru") return;
-    const bRef = ref(db, "broadcasts");
-    const unsub = onValue(bRef, (snap) => {
-      const data = snap.val();
-      if (!data) return;
-      const ids = Object.keys(data);
-      if (prevBcastRef.current === null) { prevBcastRef.current = ids; return; }
-      const newIds = ids.filter(id => !prevBcastRef.current.includes(id));
-      newIds.forEach(id => {
-        const b = data[id];
-        if (b.target === "semua" || b.target === user.jenjang) {
-          showLocalNotif("📢 Pengumuman Baru", b.pesan?.slice(0, 80) || "Ada pengumuman dari guru", "broadcast");
-        }
-      });
-      prevBcastRef.current = ids;
-    });
-    return () => unsub();
+    setOnline(user.id);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") setOnline(user.id);
+      else setOffline(user.id);
+    };
+    const handleBeforeUnload = () => setOffline(user.id);
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      setOffline(user.id);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
   }, [user]);
   if (store.loading) return <><style>{CSS}</style><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%)", gap: 14 }}><LogoBold size={72} /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
   const hideNav = route === "kerjakan";
