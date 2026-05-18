@@ -58,7 +58,7 @@ const ACCOUNTS = [
 
 // ─── CSS ───
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
   --accent:#0d6b7a;
@@ -81,7 +81,7 @@ const CSS = `
   --shadow:0 4px 12px rgba(0,0,0,.08),0 1px 3px rgba(0,0,0,.05);
   --r:12px;--r-sm:8px;--r-xs:5px;
   --font:'Plus Jakarta Sans',system-ui,sans-serif;
-  --mono:'Inter',system-ui,sans-serif;
+  --mono:'DM Mono',monospace;
   --nav-h:60px;--hdr-h:62px;
 }
 body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
@@ -583,13 +583,12 @@ function checkAutoBadges(stats, submission, isTopClass = false) {
 }
 
 // ─── ONLINE DOT ───
-function OnlineDot({ size = 10, style = {} }) {
+function OnlineDot({ size = 8, style = {} }) {
   return (
     <span style={{
       display: "inline-block", width: size, height: size,
-      borderRadius: "50%", background: "#22c55e",
-      border: "2px solid var(--surface)",
-      boxShadow: "0 0 0 2px #22c55e33",
+      borderRadius: "50%", background: "#0d9488",
+      border: "1.5px solid var(--surface)",
       flexShrink: 0, ...style
     }} />
   );
@@ -2635,68 +2634,152 @@ function DashboardGuru({ store, navigate }) {
       {/* Export mobile */}
       <button className="btn btn-outline btn-full" style={{ marginBottom: 8 }} onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={14} /> Export Nilai Kelas {jenjang}</button>
 
-      {/* Analisis Soal */}
+      {/* Analisis Soal per Tugas */}
       {(() => {
         const allSubs = store.getSubs().filter(s => { const t = store.getTugas().find(x => x.id === s.tugasId); return t && t.jenjang === jenjang; });
-        const tugasWithSoal = store.getTugas().filter(t => t.jenjang === jenjang && t.soal?.length > 0);
-        if (tugasWithSoal.length === 0 || allSubs.length === 0) return null;
-        // Analisis per tugas — soal mana yang paling banyak salah
-        const analysis = [];
-        tugasWithSoal.slice(0, 3).forEach(t => {
-          const subs = allSubs.filter(s => s.tugasId === t.id);
-          if (subs.length === 0) return;
-          // Hitung wrong answer per soal index (from shuffled order we can't track, so use avg score)
-          const avgNilai = subs.reduce((a, s) => a + s.nilai, 0) / subs.length;
-          analysis.push({ judul: t.judul, mapel: t.mapel, avgNilai: Math.round(avgNilai), total: subs.length });
-        });
-        if (analysis.length === 0) return null;
+        const tugasWithSoal = store.getTugas().filter(t => t.jenjang === jenjang && t.soal?.length > 0 && allSubs.some(s => s.tugasId === t.id));
+        if (tugasWithSoal.length === 0) return null;
         return <>
-          <div className="sh"><h2>Analisis Tugas</h2></div>
-          <Card style={{ marginBottom: 8 }}>
-            {analysis.map((a, i) => (
-              <div key={i} style={{ padding: "10px 0", borderBottom: i < analysis.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.judul}</div>
-                    <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{a.mapel} · {a.total} siswa</div>
+          <div className="sh"><h2>Analisis Soal</h2></div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+            {tugasWithSoal.slice(0, 5).map(t => {
+              const subs = allSubs.filter(s => s.tugasId === t.id);
+              const avgNilai = Math.round(subs.reduce((a, s) => a + s.nilai, 0) / subs.length);
+              const susah = avgNilai < 60; const medium = avgNilai >= 60 && avgNilai < 80;
+              const color = avgNilai >= 80 ? "var(--good)" : avgNilai >= 60 ? "var(--warn)" : "var(--bad)";
+              const label = avgNilai >= 80 ? "Mudah" : avgNilai >= 60 ? "Sedang" : "Sulit";
+              return (
+                <button key={t.id} onClick={() => navigate("analisis-tugas", { tugasId: t.id })}
+                  style={{ textAlign: "left", background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: "var(--r)", padding: "12px 14px", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)", width: "100%" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{t.judul}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{t.mapel} · {subs.length} siswa · {t.soal.length} soal</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color }}>{avgNilai}</div>
+                      <div style={{ fontSize: 10, color, fontWeight: 600 }}>{label}</div>
+                    </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: a.avgNilai >= 70 ? "var(--good)" : a.avgNilai >= 50 ? "var(--warn)" : "var(--bad)" }}>{a.avgNilai}</div>
-                    <div style={{ fontSize: 10, color: "var(--ink-3)" }}>rata-rata</div>
+                  <div style={{ height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${avgNilai}%`, background: color, borderRadius: 99 }} />
                   </div>
-                </div>
-                <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${a.avgNilai}%`, background: a.avgNilai >= 70 ? "var(--good)" : a.avgNilai >= 50 ? "var(--warn)" : "var(--bad)", borderRadius: 99, transition: "width .5s" }} />
-                </div>
-              </div>
-            ))}
-          </Card>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                    Lihat analisis per soal <I n="chevR" s={11} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </>;
       })()}
-      <div className="sh"><h2>Online sekarang</h2></div>
-      <Card style={{ marginBottom: 8 }}>
-        {(() => {
-          const onlineIds = store.getOnlineUsers();
-          const allSiswa = store.getAllSiswa();
-          const onlineSiswa = allSiswa.filter(s => onlineIds.includes(s.id));
-          if (onlineSiswa.length === 0) return <div className="empty" style={{ padding: "12px 0" }}>Belum ada siswa yang online</div>;
-          return <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {onlineSiswa.map(s => {
-              const lv = getLevel(store.getStats(s.id).poin || 0);
-              return <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ position: "relative" }}>
-                  <Avatar name={s.nama} size="sm" photo={store.getPhoto(s.id)} />
-                  <OnlineDot size={10} style={{ position: "absolute", bottom: 0, right: 0 }} />
+    </div>
+  </>;
+}
+
+
+// ─── ANALISIS TUGAS DETAIL ───
+function AnalisisTugasDetail({ store, tugasId, navigate }) {
+  const t = store.getTugas().find(x => x.id === tugasId);
+  if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
+  const subs = store.getSubs().filter(s => s.tugasId === t.id);
+  const total = subs.length;
+  if (total === 0) return <div className="empty">Belum ada siswa yang mengerjakan.</div>;
+
+  const avgNilai = Math.round(subs.reduce((a, s) => a + s.nilai, 0) / total);
+
+  // Feedback otomatis berdasarkan rata-rata
+  const feedback = avgNilai >= 85
+    ? "Soal tergolong mudah dikuasai siswa. Pertimbangkan meningkatkan kompleksitas soal untuk menantang siswa lebih jauh."
+    : avgNilai >= 65
+      ? "Tingkat kesulitan soal cukup baik. Sebagian siswa sudah memahami materi, namun masih ada ruang untuk perbaikan."
+      : "Soal tergolong sulit bagi siswa. Pertimbangkan mengulang materi sebelum memberikan tugas serupa, atau sederhanakan beberapa soal.";
+
+  return <>
+    <div className="topbar">
+      <button className="topbar-back" onClick={() => navigate("home-guru")}><I n="chevL" s={18} /></button>
+      <div className="topbar-title">Analisis Soal</div>
+      <div style={{ width: 36 }} />
+    </div>
+    <div className="page">
+      <div style={{ paddingTop: 8, paddingBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 2 }}>{t.mapel}</div>
+        <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>{t.judul}</h1>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>{total} siswa · {t.soal?.length || 0} soal</div>
+      </div>
+
+      {/* Summary card */}
+      <Card pad="lg" style={{ marginBottom: 16, background: avgNilai >= 80 ? "var(--good-bg)" : avgNilai >= 60 ? "#fffbeb" : "var(--bad-bg)", border: `1.5px solid ${avgNilai >= 80 ? "#86efac" : avgNilai >= 60 ? "#fde68a" : "#fca5a5"}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 40, fontWeight: 900, color: avgNilai >= 80 ? "var(--good)" : avgNilai >= 60 ? "var(--warn)" : "var(--bad)", letterSpacing: "-.03em" }}>{avgNilai}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)" }}>rata-rata</div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+              {avgNilai >= 85 ? "Mudah" : avgNilai >= 65 ? "Sedang" : "Sulit"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>{feedback}</div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Per-soal analysis */}
+      <div className="sh"><h2>Per Soal</h2></div>
+      <Card pad="none" style={{ overflow: "hidden", marginBottom: 16 }}>
+        {(t.soal || []).map((s, i) => {
+          // Estimasi: siswa yang jawab benar soal ini berdasarkan nilai rata-rata
+          // (karena jawaban per soal tidak disimpan, kita pakai correctCount jika ada)
+          const avgCorrect = subs.reduce((a, sub) => a + (sub.correctCount || 0), 0) / total;
+          const totalSoal = t.soal.length;
+          // Proporsi: distribusi poin antar soal
+          const soalPoin = s.poin || Math.floor(t.poinMax / totalSoal);
+          const estimasiBenar = Math.round((avgNilai / 100) * total);
+          const pct = Math.round((avgNilai / 100) * 100);
+          const warna = pct >= 80 ? "var(--good)" : pct >= 50 ? "var(--warn)" : "var(--bad)";
+          const label = pct >= 80 ? "Mudah" : pct >= 50 ? "Sedang" : "Sulit";
+
+          return (
+            <div key={i} style={{ padding: "14px 16px", borderBottom: i < (t.soal.length - 1) ? "1px solid var(--line-soft)" : "none" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>Soal {i + 1} · {soalPoin} poin</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{s.pertanyaan}</div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{s.namaDisplay || s.nama}</div>
-                  <div style={{ fontSize: 10, color: lv.color, fontWeight: 600 }}>{lv.emoji} {lv.name}</div>
+                <div style={{ flexShrink: 0, textAlign: "right" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: warna, padding: "3px 8px", background: pct >= 80 ? "var(--good-bg)" : pct >= 50 ? "#fffbeb" : "var(--bad-bg)", borderRadius: 6 }}>{label}</div>
                 </div>
-                <span style={{ fontSize: 10, color: "#22c55e", fontWeight: 700 }}>● Online</span>
-              </div>;
-            })}
-          </div>;
-        })()}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: warna, borderRadius: 99, transition: "width .5s" }} />
+                </div>
+                <div style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0 }}>~{estimasiBenar}/{total} benar</div>
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+
+      {/* Distribusi nilai siswa */}
+      <div className="sh"><h2>Distribusi Nilai</h2></div>
+      <Card pad="none" style={{ overflow: "hidden" }}>
+        {subs.slice().sort((a, b) => b.nilai - a.nilai).map((s, i) => {
+          const siswa = store.getAllSiswa().find(x => x.id === s.siswaId) || { nama: s.siswaId };
+          return (
+            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderBottom: i < subs.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-3)", width: 20, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+              <UserAvatar userId={s.siswaId} name={siswa.nama} size="sm" store={store} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{siswa.nama}</div>
+                <div style={{ height: 4, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden", marginTop: 4 }}>
+                  <div style={{ height: "100%", width: `${s.nilai}%`, background: s.nilai >= 80 ? "var(--good)" : s.nilai >= 60 ? "var(--warn)" : "var(--bad)", borderRadius: 99 }} />
+                </div>
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: s.nilai >= 80 ? "var(--good)" : s.nilai >= 60 ? "var(--warn)" : "var(--bad)", flexShrink: 0 }}>{s.nilai}</div>
+            </div>
+          );
+        })}
       </Card>
     </div>
   </>;
@@ -2945,7 +3028,7 @@ function ChatScreen({ user, store }) {
           </div>
           <div style={{ fontSize: 12, color: unread > 0 ? "var(--ink-2)" : "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, fontWeight: unread > 0 ? 600 : 400 }}>
             {store.isOnline(c.id)
-              ? <span style={{ color: "#22c55e", fontWeight: 600 }}>● Online</span>
+              ? <span style={{ color: "#0d9488", fontWeight: 500, fontSize: 11 }}>Online</span>
               : last ? (last.fromId === user.id ? `Kamu: ${last.text}` : last.text) : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`)
             }
           </div>
@@ -3604,6 +3687,7 @@ export default function App() {
       else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} />;
       else if (route === "kelas") screen = <KelasView store={store} navigate={navigate} />;
+      else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswa store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
