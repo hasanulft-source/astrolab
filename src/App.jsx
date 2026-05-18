@@ -81,7 +81,7 @@ const CSS = `
   --shadow:0 4px 12px rgba(0,0,0,.08),0 1px 3px rgba(0,0,0,.05);
   --r:12px;--r-sm:8px;--r-xs:5px;
   --font:'Plus Jakarta Sans',system-ui,sans-serif;
-  --mono:'DM Mono',monospace;
+  --mono:'Inter',system-ui,sans-serif;
   --nav-h:60px;--hdr-h:62px;
 }
 body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
