@@ -2857,6 +2857,14 @@ function ChatScreen({ user, store }) {
           onClose={() => { setShowBcModal(false); setEditBc(null); }}
         />
       )}
+      <div className="topbar">
+        <div style={{ width: 36 }} />
+        <div className="topbar-title">Pesan</div>
+        {isGuru
+          ? <button className="btn btn-primary btn-sm" onClick={() => setShowBcModal(true)} style={{ fontSize: 11, padding: "5px 10px" }}>📢 Broadcast</button>
+          : <div style={{ width: 36 }} />
+        }
+      </div>
       <div className="page" style={{ paddingBottom: 0 }}>
         <div className="dt">
           <div><h1>Pesan</h1><p>{isGuru ? "Chat dengan semua siswa" : "Chat dengan guru dan teman sekelas"}</p></div>
