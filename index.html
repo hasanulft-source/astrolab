@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- PWA -->
-    <link rel="manifest" href="/cendekia-ipa/manifest.json" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0d6b7a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -13,17 +13,17 @@
     <meta name="apple-mobile-web-app-title" content="Astrolab" />
 
     <!-- Icons -->
-    <link rel="icon" type="image/png" sizes="192x192" href="/cendekia-ipa/icon-192.png" />
-    <link rel="apple-touch-icon" href="/cendekia-ipa/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
 
     <!-- SEO & Meta -->
     <title>Astrolab · Our Classroom</title>
-    <meta name="description" content="Platform belajar digital SMP Negeri 15 Banda Aceh" />
+    <meta name="description" content="Platform belajar digital · Our Classroom" />
     <meta name="author" content="M. Hasanul Fatta" />
 
     <!-- Splash screen color -->
     <meta name="msapplication-TileColor" content="#0d6b7a" />
-    <meta name="msapplication-TileImage" content="/cendekia-ipa/icon-192.png" />
+    <meta name="msapplication-TileImage" content="/icon-192.png" />
   </head>
   <body>
     <div id="root"></div>
@@ -33,10 +33,17 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
+          // Main SW
           navigator.serviceWorker
-            .register('/cendekia-ipa/sw.js')
+            .register('/sw.js')
             .then(reg => console.log('SW registered:', reg.scope))
             .catch(err => console.log('SW failed:', err));
+
+          // Firebase Messaging SW
+          navigator.serviceWorker
+            .register('/firebase-messaging-sw.js')
+            .then(reg => console.log('FCM SW registered:', reg.scope))
+            .catch(err => console.log('FCM SW failed:', err));
         });
       }
     </script>
