@@ -2552,7 +2552,7 @@ function DashboardGuru({ store, navigate }) {
           { l: "Tugas aktif", v: tugasAktif.length, icon: "book", cls: "mini-icon-2" },
           { l: "Sudah ngerjain", v: pctNgerjain, icon: "checkCircle", cls: "mini-icon-1" },
           { l: "Rata poin kelas", v: rataPoin.toLocaleString("id-ID"), icon: "chartBar", cls: "mini-icon-3" },
-          { l: tugasLewat.length > 0 ? `${tugasLewat.length} lewat deadline` : "Total siswa", v: tugasLewat.length > 0 ? "⚠️" : siswa.length, icon: tugasLewat.length > 0 ? "clock" : "user", cls: tugasLewat.length > 0 ? "mini-icon-bad" : "mini-icon-1" },
+          { l: tugasLewat.length > 0 ? "Lewat deadline" : "Total siswa", v: tugasLewat.length > 0 ? tugasLewat.length : siswa.length, icon: tugasLewat.length > 0 ? "clock" : "user", cls: tugasLewat.length > 0 ? "mini-icon-bad" : "mini-icon-1" },
         ].map(s => (
           <Card key={s.l} style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
             <div className={`mini-icon ${s.cls}`} style={{ margin: 0, flexShrink: 0 }}><I n={s.icon} s={17} /></div>
