@@ -2571,7 +2571,7 @@ function DashboardGuru({ store, navigate }) {
       <div className="sh"><h2>🟢 Online sekarang</h2></div>
       <Card style={{ marginBottom: 8 }}>
         {(() => {
-          const onlineIds = store.getOnlineUsers().filter(id => id !== user?.id);
+          const onlineIds = store.getOnlineUsers();
           const allSiswa = store.getAllSiswa();
           const onlineSiswa = allSiswa.filter(s => onlineIds.includes(s.id));
           if (onlineSiswa.length === 0) return <div className="empty" style={{ padding: "12px 0" }}>Belum ada siswa yang online</div>;
