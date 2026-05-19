@@ -1603,12 +1603,16 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   function doSubmit() {
     setShowConfirm(false);
     let totalPoin = 0, correctCount = 0;
+    const soalResults = []; // simpan hasil per soal untuk analisis
     soalList.forEach((s, i) => {
-      const ans = answers[i]; const poinSoal = s.poin || Math.floor(t.poinMax / total); let correct = false;
+      const ans = answers[i];
+      const poinSoal = s.poin || Math.floor(t.poinMax / total);
+      let correct = false;
       if (s.type === "pg" || s.type === "tf") correct = ans === s.jawaban;
       else if (s.type === "komplex") correct = (ans || []).slice().sort().join(",") === (s.jawaban || []).slice().sort().join(",");
       else if (s.type === "pasang") correct = s.jawaban?.every((j, ki) => (ans || {})[ki] === j);
       if (correct) { totalPoin += poinSoal; correctCount++; }
+      soalResults.push({ origIdx: s._origIdx ?? i, correct, poinSoal });
     });
     const nilai = Math.round((correctCount / total) * 100);
     const dl = fmtDl(t.deadline);
@@ -1620,7 +1624,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const subForBadge = { nilai, ontime, publishedAt: t.createdAt ? new Date(t.createdAt).getTime() : 0 };
     const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass);
     setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
-    store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime });
+    store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults });
     store.updateStats(user.id, nilai, totalPoin, ontime);
     newBadges.forEach(bid => store.awardBadge(user.id, bid));
     try { localStorage.removeItem(SAVE_KEY); } catch {}
@@ -2535,6 +2539,7 @@ function DashboardGuru({ store, navigate }) {
         <div />
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => backupFromStore(store)} title="Download backup data"><I n="chartBar" s={13} /> Backup</button>
+          <button className="btn btn-outline btn-sm" onClick={() => exportLaporan(store, jenjang)}><I n="chartBar" s={13} /> Laporan</button>
           <button className="btn btn-outline btn-sm" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={13} /> Export Nilai</button>
           <button className="btn btn-primary" onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Tugas baru</button>
         </div>
@@ -2687,13 +2692,27 @@ function AnalisisTugasDetail({ store, tugasId, navigate }) {
   if (total === 0) return <div className="empty">Belum ada siswa yang mengerjakan.</div>;
 
   const avgNilai = Math.round(subs.reduce((a, s) => a + s.nilai, 0) / total);
-
-  // Feedback otomatis berdasarkan rata-rata
   const feedback = avgNilai >= 85
     ? "Soal tergolong mudah dikuasai siswa. Pertimbangkan meningkatkan kompleksitas soal untuk menantang siswa lebih jauh."
     : avgNilai >= 65
       ? "Tingkat kesulitan soal cukup baik. Sebagian siswa sudah memahami materi, namun masih ada ruang untuk perbaikan."
-      : "Soal tergolong sulit bagi siswa. Pertimbangkan mengulang materi sebelum memberikan tugas serupa, atau sederhanakan beberapa soal.";
+      : "Soal tergolong sulit bagi siswa. Pertimbangkan mengulang materi sebelum memberikan tugas serupa.";
+
+  // Hitung akurasi per soal dari soalResults
+  const soalStats = (t.soal || []).map((s, i) => {
+    const correctCount = subs.filter(sub =>
+      sub.soalResults?.find(r => r.origIdx === i && r.correct)
+    ).length;
+    const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+    const label = pct >= 80 ? "Mudah" : pct >= 50 ? "Sedang" : "Sulit";
+    const color = pct >= 80 ? "var(--good)" : pct >= 50 ? "var(--warn)" : "var(--bad)";
+    const bg = pct >= 80 ? "var(--good-bg)" : pct >= 50 ? "#fffbeb" : "var(--bad-bg)";
+    return { ...s, i, correctCount, pct, label, color, bg };
+  }).sort((a, b) => a.pct - b.pct); // urutkan dari paling sulit
+
+  // Soal tersulit & termudah
+  const tersulit = soalStats[0];
+  const termudah = soalStats[soalStats.length - 1];
 
   return <>
     <div className="topbar">
@@ -2702,73 +2721,76 @@ function AnalisisTugasDetail({ store, tugasId, navigate }) {
       <div style={{ width: 36 }} />
     </div>
     <div className="page">
-      <div style={{ paddingTop: 8, paddingBottom: 16 }}>
+      <div style={{ paddingTop: 8, paddingBottom: 14 }}>
         <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 2 }}>{t.mapel}</div>
         <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>{t.judul}</h1>
         <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>{total} siswa · {t.soal?.length || 0} soal</div>
       </div>
 
-      {/* Summary card */}
-      <Card pad="lg" style={{ marginBottom: 16, background: avgNilai >= 80 ? "var(--good-bg)" : avgNilai >= 60 ? "#fffbeb" : "var(--bad-bg)", border: `1.5px solid ${avgNilai >= 80 ? "#86efac" : avgNilai >= 60 ? "#fde68a" : "#fca5a5"}` }}>
+      {/* Summary */}
+      <Card pad="lg" style={{ marginBottom: 12, background: avgNilai >= 80 ? "var(--good-bg)" : avgNilai >= 60 ? "#fffbeb" : "var(--bad-bg)", border: `1.5px solid ${avgNilai >= 80 ? "#86efac" : avgNilai >= 60 ? "#fde68a" : "#fca5a5"}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 40, fontWeight: 900, color: avgNilai >= 80 ? "var(--good)" : avgNilai >= 60 ? "var(--warn)" : "var(--bad)", letterSpacing: "-.03em" }}>{avgNilai}</div>
-            <div style={{ fontSize: 11, color: "var(--ink-3)" }}>rata-rata</div>
+          <div style={{ textAlign: "center", flexShrink: 0 }}>
+            <div style={{ fontSize: 44, fontWeight: 900, color: avgNilai >= 80 ? "var(--good)" : avgNilai >= 60 ? "var(--warn)" : "var(--bad)", letterSpacing: "-.03em", fontFamily: "var(--mono)" }}>{avgNilai}</div>
+            <div style={{ fontSize: 10, color: "var(--ink-3)" }}>rata-rata</div>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-              {avgNilai >= 85 ? "Mudah" : avgNilai >= 65 ? "Sedang" : "Sulit"}
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{avgNilai >= 85 ? "Mudah" : avgNilai >= 65 ? "Sedang" : "Sulit"}</div>
             <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>{feedback}</div>
           </div>
         </div>
       </Card>
 
-      {/* Per-soal analysis */}
+      {/* Quick insight */}
+      {soalStats.length > 1 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+          <Card style={{ background: "var(--bad-bg)", border: "1px solid #fca5a5" }}>
+            <div style={{ fontSize: 10, color: "var(--bad)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Paling Sulit</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", lineHeight: 1.4, marginBottom: 4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>Soal {tersulit.i + 1}: {tersulit.pertanyaan}</div>
+            <div style={{ fontSize: 12, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--bad)" }}>{tersulit.correctCount}/{total} benar</div>
+          </Card>
+          <Card style={{ background: "var(--good-bg)", border: "1px solid #86efac" }}>
+            <div style={{ fontSize: 10, color: "var(--good)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Paling Mudah</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", lineHeight: 1.4, marginBottom: 4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>Soal {termudah.i + 1}: {termudah.pertanyaan}</div>
+            <div style={{ fontSize: 12, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--good)" }}>{termudah.correctCount}/{total} benar</div>
+          </Card>
+        </div>
+      )}
+
+      {/* Per soal — sorted sulit ke mudah */}
       <div className="sh"><h2>Per Soal</h2></div>
       <Card pad="none" style={{ overflow: "hidden", marginBottom: 16 }}>
-        {(t.soal || []).map((s, i) => {
-          // Estimasi: siswa yang jawab benar soal ini berdasarkan nilai rata-rata
-          // (karena jawaban per soal tidak disimpan, kita pakai correctCount jika ada)
-          const avgCorrect = subs.reduce((a, sub) => a + (sub.correctCount || 0), 0) / total;
-          const totalSoal = t.soal.length;
-          // Proporsi: distribusi poin antar soal
-          const soalPoin = s.poin || Math.floor(t.poinMax / totalSoal);
-          const estimasiBenar = Math.round((avgNilai / 100) * total);
-          const pct = Math.round((avgNilai / 100) * 100);
-          const warna = pct >= 80 ? "var(--good)" : pct >= 50 ? "var(--warn)" : "var(--bad)";
-          const label = pct >= 80 ? "Mudah" : pct >= 50 ? "Sedang" : "Sulit";
-
-          return (
-            <div key={i} style={{ padding: "14px 16px", borderBottom: i < (t.soal.length - 1) ? "1px solid var(--line-soft)" : "none" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>Soal {i + 1} · {soalPoin} poin</div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{s.pertanyaan}</div>
+        {soalStats.map((s, idx) => (
+          <div key={s.i} style={{ padding: "14px 16px", borderBottom: idx < soalStats.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>
+                  Soal {s.i + 1} · {s.poin || Math.floor(t.poinMax / t.soal.length)} poin
                 </div>
-                <div style={{ flexShrink: 0, textAlign: "right" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: warna, padding: "3px 8px", background: pct >= 80 ? "var(--good-bg)" : pct >= 50 ? "#fffbeb" : "var(--bad-bg)", borderRadius: 6 }}>{label}</div>
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{s.pertanyaan}</div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ flex: 1, height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${pct}%`, background: warna, borderRadius: 99, transition: "width .5s" }} />
-                </div>
-                <div style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0 }}>~{estimasiBenar}/{total} benar</div>
+              <div style={{ flexShrink: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: s.color, padding: "3px 8px", background: s.bg, borderRadius: 6 }}>{s.label}</span>
               </div>
             </div>
-          );
-        })}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ flex: 1, height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${s.pct}%`, background: s.color, borderRadius: 99, transition: "width .5s" }} />
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0, fontFamily: "var(--mono)" }}>{s.correctCount}/{total} benar ({s.pct}%)</div>
+            </div>
+          </div>
+        ))}
       </Card>
 
       {/* Distribusi nilai siswa */}
       <div className="sh"><h2>Distribusi Nilai</h2></div>
-      <Card pad="none" style={{ overflow: "hidden" }}>
+      <Card pad="none" style={{ overflow: "hidden", marginBottom: 16 }}>
         {subs.slice().sort((a, b) => b.nilai - a.nilai).map((s, i) => {
           const siswa = store.getAllSiswa().find(x => x.id === s.siswaId) || { nama: s.siswaId };
           return (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderBottom: i < subs.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-3)", width: 20, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+            <div key={s.id || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderBottom: i < subs.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-3)", width: 20, textAlign: "right", flexShrink: 0, fontFamily: "var(--mono)" }}>{i + 1}</div>
               <UserAvatar userId={s.siswaId} name={siswa.nama} size="sm" store={store} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{siswa.nama}</div>
@@ -2776,7 +2798,7 @@ function AnalisisTugasDetail({ store, tugasId, navigate }) {
                   <div style={{ height: "100%", width: `${s.nilai}%`, background: s.nilai >= 80 ? "var(--good)" : s.nilai >= 60 ? "var(--warn)" : "var(--bad)", borderRadius: 99 }} />
                 </div>
               </div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: s.nilai >= 80 ? "var(--good)" : s.nilai >= 60 ? "var(--warn)" : "var(--bad)", flexShrink: 0 }}>{s.nilai}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: s.nilai >= 80 ? "var(--good)" : s.nilai >= 60 ? "var(--warn)" : "var(--bad)", flexShrink: 0, fontFamily: "var(--mono)" }}>{s.nilai}</div>
             </div>
           );
         })}
@@ -3095,10 +3117,137 @@ function ChatScreen({ user, store }) {
 }
 
 // ─── KELAS VIEW ───
+// ─── EXPORT LAPORAN PRINT-FRIENDLY ───
+function exportLaporan(store, jenjang) {
+  const siswa = store.getAllSiswa(jenjang);
+  const tugas = store.getTugas().filter(t => t.jenjang === jenjang);
+  const subs = store.getSubs();
+  const now = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+
+  const rows = siswa.map(s => {
+    const stats = store.getStats(s.id);
+    const lv = getLevel(stats.poin || 0);
+    const badges = store.getBadges(s.id);
+    return `
+      <tr>
+        <td>${s.nama}</td>
+        <td>${s.id}</td>
+        <td style="text-align:center;font-weight:700">${stats.poin || 0}</td>
+        <td style="text-align:center">${stats.tugasSelesai || 0}/${tugas.length}</td>
+        <td style="text-align:center">${stats.nilaiRata || "—"}</td>
+        <td style="text-align:center">${lv.name}</td>
+        <td style="text-align:center">${badges.length}</td>
+      </tr>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Laporan Kelas ${jenjang} — Astrolab</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; padding: 32px 40px; color: #1a2332; font-size: 13px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; padding-bottom: 16px; border-bottom: 2px solid #0d6b7a; }
+  .title { font-size: 22px; font-weight: 800; color: #0d6b7a; letter-spacing: -.02em; }
+  .subtitle { font-size: 12px; color: #7a8fa3; margin-top: 4px; }
+  .meta { text-align: right; font-size: 11px; color: #7a8fa3; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { background: #0d6b7a; color: white; padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
+  tr:nth-child(even) td { background: #f7fafa; }
+  .footer { margin-top: 24px; font-size: 11px; color: #7a8fa3; text-align: center; padding-top: 12px; border-top: 1px solid #e2e8f0; }
+  @media print { body { padding: 16px 20px; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="title">Astrolab · Our Classroom</div>
+      <div class="subtitle">Laporan Rekap Nilai — Kelas ${jenjang}</div>
+    </div>
+    <div class="meta">
+      Dicetak: ${now}<br>
+      Total siswa: ${siswa.length}<br>
+      Total tugas: ${tugas.length}
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Nama Siswa</th>
+        <th>ID</th>
+        <th style="text-align:center">Total Poin</th>
+        <th style="text-align:center">Tugas Selesai</th>
+        <th style="text-align:center">Rata-rata Nilai</th>
+        <th style="text-align:center">Level</th>
+        <th style="text-align:center">Badge</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">© 2026 M. Hasanul Fatta · Astrolab Classroom</div>
+  <script>window.onload = () => window.print();</script>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+}
+
+// ─── ACTIVITY HEATMAP ───
+function ActivityHeatmap({ subs }) {
+  const days = 28;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const cells = Array.from({ length: days }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - (days - 1 - i));
+    const dateStr = d.toISOString().slice(0,10);
+    const count = subs.filter(s => s.submittedAt?.slice(0,10) === dateStr).length;
+    return { dateStr, count };
+  });
+  const maxCount = Math.max(...cells.map(c => c.count), 1);
+  const getColor = (count) => {
+    if (count === 0) return "var(--surface-alt)";
+    const pct = count / maxCount;
+    if (pct < 0.25) return "#b2dfdb";
+    if (pct < 0.5) return "#4db6ac";
+    if (pct < 0.75) return "#0d9488";
+    return "var(--accent)";
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+        {cells.map((c, i) => (
+          <div key={i} title={`${c.dateStr}: ${c.count} pengerjaan`}
+            style={{ width: 14, height: 14, borderRadius: 3, background: getColor(c.count), cursor: "default" }} />
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>4 minggu lalu</span>
+        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Hari ini</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
+        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Kurang</span>
+        {["var(--surface-alt)", "#b2dfdb", "#4db6ac", "#0d9488", "var(--accent)"].map((c, i) => (
+          <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
+        ))}
+        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Banyak</span>
+      </div>
+    </div>
+  );
+}
+
 function KelasView({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const lb = store.getLeaderboard(jenjang);
   const allSiswa = store.getAllSiswa();
+  const allSubs = store.getSubs();
+  const jenjangSubs = allSubs.filter(s => {
+    const siswa = store.getAllSiswa().find(x => x.id === s.siswaId);
+    return siswa?.jenjang === jenjang;
+  });
+
   return <>
     <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Siswa</div><I n="user" s={18} /></div>
     <div className="page">
@@ -3118,6 +3267,18 @@ function KelasView({ store, navigate }) {
         <button className={`tab ${jenjang === "VII" ? "active" : ""}`} onClick={() => setJenjang("VII")}>Kelas VII ({store.getAllSiswa("VII").length})</button>
         <button className={`tab ${jenjang === "VIII" ? "active" : ""}`} onClick={() => setJenjang("VIII")}>Kelas VIII ({store.getAllSiswa("VIII").length})</button>
       </div>
+
+      {/* Heatmap aktivitas */}
+      <div className="sh"><h2>Aktivitas 4 Minggu Terakhir</h2></div>
+      <Card style={{ marginBottom: 16 }}>
+        <ActivityHeatmap subs={jenjangSubs} />
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 10 }}>
+          Total {jenjangSubs.length} pengerjaan · {store.getAllSiswa(jenjang).length} siswa
+        </div>
+      </Card>
+
+      {/* Ranking siswa */}
+      <div className="sh"><h2>Ranking Kelas {jenjang}</h2></div>
       {lb.length === 0 ? <Card><div className="empty empty-box"><I n="user" s={32} /><h3>Belum ada data</h3><p>Siswa belum mengerjakan tugas apapun.</p></div></Card> :
         <Card pad="none" style={{ overflow: "hidden" }}>
           {lb.map(s => {
