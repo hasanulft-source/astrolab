@@ -1,11 +1,12 @@
 // Astrolab Classroom — Production LMS
 // © 2026 M. Hasanul Fatta
 // UI: Original (Plus Jakarta Sans + teal #0d6b7a)
-// Engine: Firebase Realtime Database + Realtime Presence
+// Engine: Firebase Realtime Database + Firebase Authentication
 
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
+import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword, deleteUser, onAuthStateChanged } from "firebase/auth";
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -19,6 +20,10 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
+const auth = getAuth(firebaseApp);
+
+// ─── GURU UID (hardcoded, immutable) ───
+const GURU_UID = "GXExB2fAyrcndbqx0kOQLRNfVgH2";
 
 // ─── FCM VAPID KEY ───
 // ─── ONLINE PRESENCE ───
@@ -34,6 +39,28 @@ async function setOffline(userId) {
 
 // no-op — push notif dihapus
 async function callNotifyServer() {}
+
+// ─── INIT GURU PROFILE ───
+// Jalankan sekali untuk setup profil guru di /users/{GURU_UID}
+async function initGuruProfile() {
+  const snap = await get(ref(db, `users/${GURU_UID}`));
+  if (!snap.exists()) {
+    await set(ref(db, `users/${GURU_UID}`), {
+      uid: GURU_UID,
+      id: "fatta",
+      email: "fatta@astrolab.id",
+      role: "guru",
+      nama: "M. Hasanul Fatta",
+      namaDisplay: "Pak Fatta",
+      nip: "",
+      jabatan: "Guru IPA & Informatika",
+      motto: "",
+    });
+    console.log("[Astrolab] Guru profile initialized.");
+  }
+}
+// Auto-run sekali
+initGuruProfile().catch(() => {});
 
 // ─── SHUFFLE (Fisher-Yates) ───
 function shuffle(arr) {
@@ -901,22 +928,29 @@ function useStore() {
 
   // CRUD akun siswa
   const addSiswa = async (data) => {
-    // data: { nama, namaDisplay, kelas, jenjang, password }
     const id = genSiswaId(data.nama);
-    await set(ref(db, `accounts/${id}`), {
-      id, role: "siswa",
+    const email = `${id.toLowerCase()}@astrolab.id`;
+    // 1. Buat Firebase Auth account
+    const cred = await createUserWithEmailAndPassword(auth, email, data.password);
+    const uid = cred.user.uid;
+    // 2. Simpan profil ke /users/{uid}
+    await set(ref(db, `users/${uid}`), {
+      uid, id, email, role: "siswa",
       nama: data.nama,
       namaDisplay: data.namaDisplay || data.nama.split(" ")[0],
       kelas: data.kelas || `Kelas ${data.jenjang}`,
       jenjang: data.jenjang,
-      password: data.password,
       createdAt: new Date().toISOString(),
     });
+    // 3. Index di /accounts/{id} untuk lookup by ID
+    await set(ref(db, `accounts/${id}`), { uid, id, email, role: "siswa", jenjang: data.jenjang, nama: data.nama, namaDisplay: data.namaDisplay || data.nama.split(" ")[0] });
     return id;
   };
   const deleteSiswa = async (id) => {
-    // Hanya bisa hapus akun Firebase (bukan hardcoded)
     await remove(ref(db, `accounts/${id}`));
+    // uid cleanup — cari uid dulu
+    const acc = fbAccounts.find(a => a.id === id);
+    if (acc?.uid) await remove(ref(db, `users/${acc.uid}`));
   };
   const resetPassword = async (id, newPassword) => {
     const existing = fbAccounts.find(a => a.id === id);
@@ -1033,28 +1067,26 @@ function LogoTeal({ size = 32 }) {
 // ─── LOGIN ───
 function LoginScreen({ onLogin }) {
   const [id, setId] = useState(""); const [pw, setPw] = useState(""); const [err, setErr] = useState(""); const [loading, setLoading] = useState(false);
+
   async function submit() {
     if (!id.trim()) { setErr("ID belum diisi."); return; }
     if (!pw.trim()) { setErr("Password belum diisi."); return; }
     setLoading(true); setErr("");
-    // 1. Cek hardcoded dulu
-    const hardcoded = ACCOUNTS.find(a => a.id.toLowerCase() === id.trim().toLowerCase() && a.password === pw.trim());
-    if (hardcoded) { setLoading(false); onLogin(hardcoded); return; }
-    // 2. Fallback ke Firebase /accounts
     try {
-      const snap = await get(ref(db, `accounts/${id.trim().toUpperCase()}`));
-      if (snap.exists()) {
-        const acc = snap.val();
-        if (acc.password === pw.trim()) { setLoading(false); onLogin(acc); return; }
-      }
-      // 3. Try lowercase id search
-      const allSnap = await get(ref(db, "accounts"));
-      if (allSnap.exists()) {
-        const found = Object.values(allSnap.val()).find(a => a.id?.toLowerCase() === id.trim().toLowerCase() && a.password === pw.trim());
-        if (found) { setLoading(false); onLogin(found); return; }
-      }
-    } catch {}
-    setLoading(false); setErr("ID atau password salah.");
+      const email = `${id.trim().toLowerCase()}@astrolab.id`;
+      const cred = await signInWithEmailAndPassword(auth, email, pw.trim());
+      const uid = cred.user.uid;
+      // Ambil profil dari /users/{uid}
+      const snap = await get(ref(db, `users/${uid}`));
+      if (!snap.exists()) throw new Error("Profil tidak ditemukan.");
+      const profile = snap.val();
+      onLogin({ ...profile, uid });
+    } catch (e) {
+      const msg = e.code === "auth/invalid-credential" || e.code === "auth/wrong-password" || e.code === "auth/user-not-found"
+        ? "ID atau password salah." : e.message || "Login gagal.";
+      setErr(msg);
+    }
+    setLoading(false);
   }
   return (
     <div className="login-wrap">
@@ -3798,44 +3830,66 @@ function BottomNav({ user, route, navigate, store }) {
 
 // ─── APP ───
 export default function App() {
-  const [user, setUser] = useState(() => {
-    try { const saved = localStorage.getItem("astrolab.user"); return saved ? JSON.parse(saved) : null; } catch { return null; }
-  });
-  const [route, setRoute] = useState(() => {
-    try { const saved = localStorage.getItem("astrolab.user"); const u = saved ? JSON.parse(saved) : null; return u ? (u.role === "guru" ? "home-guru" : "home") : "home"; } catch { return "home"; }
-  });
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [route, setRoute] = useState("home");
   const [params, setParams] = useState({});
   const store = useStore();
   function navigate(r, p = {}) { setRoute(r); setParams(p); window.scrollTo(0, 0); }
+
+  // Firebase Auth — session persist otomatis
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const snap = await get(ref(db, `users/${firebaseUser.uid}`));
+          if (snap.exists()) {
+            const profile = snap.val();
+            const u = { ...profile, uid: firebaseUser.uid };
+            setUser(u);
+            setRoute(profile.role === "guru" ? "home-guru" : "home");
+            setTimeout(() => setOnline(firebaseUser.uid), 500);
+          }
+        } catch {}
+      } else {
+        setUser(null);
+        setRoute("home");
+      }
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
   function handleLogin(u) {
-    try { localStorage.setItem("astrolab.user", JSON.stringify(u)); } catch {}
-    setUser(u); setRoute(u.role === "guru" ? "home-guru" : "home");
-    setTimeout(() => setOnline(u.id), 500);
+    setUser(u);
+    setRoute(u.role === "guru" ? "home-guru" : "home");
+    setTimeout(() => setOnline(u.uid), 500);
   }
-  function handleLogout() {
-    if (user) setOffline(user.id);
-    try { localStorage.removeItem("astrolab.user"); } catch {}
+
+  async function handleLogout() {
+    if (user) setOffline(user.uid);
+    await signOut(auth);
     setUser(null); setRoute("home"); setParams({});
   }
 
-  // Presence — realtime online/offline detection
+  // Presence
   useEffect(() => {
     if (!user) return;
-    setOnline(user.id);
+    setOnline(user.uid);
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") setOnline(user.id);
-      else setOffline(user.id);
+      if (document.visibilityState === "visible") setOnline(user.uid);
+      else setOffline(user.uid);
     };
-    const handleBeforeUnload = () => setOffline(user.id);
+    const handleBeforeUnload = () => setOffline(user.uid);
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
-      setOffline(user.id);
+      setOffline(user.uid);
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [user]);
-  if (store.loading) return <><style>{CSS}</style><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%)", gap: 14 }}><LogoBold size={72} /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
+  if (store.loading || authLoading) return <><style>{CSS}</style><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%)", gap: 14 }}><LogoBold size={72} /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
   const hideNav = route === "kerjakan";
   let screen = null;
   if (user) {
