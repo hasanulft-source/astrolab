@@ -916,59 +916,92 @@ function useStore() {
   };
 
   // Generate ID otomatis: akronim 3 huruf + counter global 9XX
+  // Prefix yang di-skip saat generate ID
+  const SKIP_PREFIXES = new Set([
+    "muhammad","muhamad","ahmad","ahmed","abdul","abdul","abdu","abd",
+    "nur","noor","siti","sitti","st","hj","h","dra","dr","ir","m","a","r","s","n","d","f","z","e","y","k","l","t","w","b","c","g","j","o","p","q","u","v","x"
+  ]);
+
   const genSiswaId = (nama) => {
-    const words = nama.trim().split(/\s+/);
-    let akronim = words.length >= 3
-      ? words[0][0] + words[1][0] + words[2][0]
-      : words.length === 2
-        ? words[0][0] + words[1][0] + (words[1][1] || words[0][1] || "X")
-        : (words[0].slice(0, 3));
-    akronim = akronim.toUpperCase().replace(/[^A-Z]/g, "X").slice(0, 3);
-    // Counter global: cari nomor 9XX tertinggi dari semua akun Firebase
-    const usedNums = fbAccounts
-      .map(a => parseInt(a.id.split("-")[1] || "0"))
-      .filter(n => n >= 900);
-    const next = usedNums.length > 0 ? Math.max(...usedNums) + 1 : 901;
-    return `${akronim}-${next}`;
+    const words = nama.trim().toLowerCase().split(/\s+/).map(w => w.replace(/\./g, ""));
+    // Cari kata pertama yang bukan prefix
+    const meaningful = words.find(w => w.length > 1 && !SKIP_PREFIXES.has(w)) || words[words.length - 1];
+    let baseId = meaningful.replace(/[^a-z]/g, "");
+    // Cek apakah ID sudah dipakai — kalau iya tambah angka
+    const usedIds = new Set(fbAccounts.map(a => a.id));
+    let finalId = baseId;
+    let counter = 2;
+    while (usedIds.has(finalId)) { finalId = `${baseId}${counter}`; counter++; }
+    return finalId;
+  };
+
+  const genPassword = (id) => {
+    const num = Math.floor(Math.random() * 900) + 100; // 3 digit: 100-999
+    return `${id}${num}`;
   };
 
   // CRUD akun siswa
   const addSiswa = async (data) => {
-    const id = genSiswaId(data.nama);
-    const email = `${id.toLowerCase()}@astrolab.id`;
+    const id = data.id || genSiswaId(data.nama);
+    const password = data.password || genPassword(id);
+    const email = `${id}@astrolab.id`;
     // 1. Buat Firebase Auth account
-    const cred = await createUserWithEmailAndPassword(auth, email, data.password);
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
     const uid = cred.user.uid;
     // 2. Simpan profil ke /users/{uid}
     await set(ref(db, `users/${uid}`), {
       uid, id, email, role: "siswa",
       nama: data.nama,
-      namaDisplay: data.namaDisplay || data.nama.split(" ")[0],
+      namaDisplay: data.namaDisplay || genSiswaId(data.nama),
       kelas: data.kelas || `Kelas ${data.jenjang}`,
       jenjang: data.jenjang,
       createdAt: new Date().toISOString(),
+      password, // simpan untuk guru bisa lihat
     });
-    // 3. Index di /accounts/{id} untuk lookup by ID
-    await set(ref(db, `accounts/${id}`), { uid, id, email, role: "siswa", jenjang: data.jenjang, nama: data.nama, namaDisplay: data.namaDisplay || data.nama.split(" ")[0] });
-    return id;
+    // 3. Index di /accounts/{id}
+    await set(ref(db, `accounts/${id}`), {
+      uid, id, email, role: "siswa",
+      jenjang: data.jenjang,
+      nama: data.nama,
+      namaDisplay: data.namaDisplay || genSiswaId(data.nama),
+      password, // guru bisa lihat & reset
+    });
+    return { id, password, uid };
   };
+
   const deleteSiswa = async (id) => {
     await remove(ref(db, `accounts/${id}`));
-    // uid cleanup — cari uid dulu
     const acc = fbAccounts.find(a => a.id === id);
     if (acc?.uid) await remove(ref(db, `users/${acc.uid}`));
   };
+
   const resetPassword = async (id, newPassword) => {
-    const existing = fbAccounts.find(a => a.id === id);
-    if (existing) {
+    // Update password di accounts + users
+    const acc = fbAccounts.find(a => a.id === id);
+    if (acc) {
       await update(ref(db, `accounts/${id}`), { password: newPassword });
-    } else {
-      // Akun hardcoded — buat shadow di Firebase untuk override password
-      const acc = ACCOUNTS.find(a => a.id === id);
-      if (acc) await set(ref(db, `accounts/${id}`), { ...acc, password: newPassword });
+      if (acc.uid) await update(ref(db, `users/${acc.uid}`), { password: newPassword });
+      // Update Firebase Auth password via Admin (tidak bisa dari client)
+      // Password tersimpan di DB untuk referensi guru
     }
   };
   const isFbAccount = (id) => fbAccounts.some(a => a.id === id);
+
+  // IMPORT MASSAL dari array siswa
+  const importSiswaBulk = async (rows, onProgress) => {
+    const results = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const result = await addSiswa(row);
+        results.push({ ...row, ...result, status: "ok" });
+      } catch (e) {
+        results.push({ ...row, status: "error", error: e.message });
+      }
+      onProgress?.(i + 1, rows.length);
+    }
+    return results;
+  };
 
   // LEADERBOARD — merge hardcoded + Firebase siswa
   const getLeaderboard = (jenjang) => {
@@ -1021,7 +1054,7 @@ function useStore() {
     await remove(ref(db, `badges/${sid}/${badgeId}`));
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId, genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -3491,7 +3524,8 @@ function ProfilGuru({ user, store, navigate }) {
 function ManajemenSiswa({ store }) {
   const [jenjang, setJenjang] = useState("VII");
   const [showAdd, setShowAdd] = useState(false);
-  const [resetTarget, setResetTarget] = useState(null); // { id, nama }
+  const [showImport, setShowImport] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [newPw, setNewPw] = useState("");
   const [pwVisible, setPwVisible] = useState({});
@@ -3499,8 +3533,7 @@ function ManajemenSiswa({ store }) {
   const [toast, setToast] = useState("");
 
   const siswa = store.getAllSiswa(jenjang);
-
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 3000); }
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -3510,6 +3543,115 @@ function ManajemenSiswa({ store }) {
   }
 
   async function handleReset() {
+    if (!resetTarget || !newPw.trim()) return;
+    setSaving(true);
+    await store.resetPassword(resetTarget.id, newPw.trim());
+    setSaving(false); setResetTarget(null); setNewPw("");
+    showToast("Password berhasil direset!");
+  }
+
+  return (
+    <div className="page">
+      <div className="dt">
+        <div><h1>Manajemen Siswa</h1><p>Tambah, impor, dan kelola akun siswa</p></div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}><I n="chartBar" s={13} /> Import Excel</button>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}><I n="plus" s={14} /> Tambah Siswa</button>
+        </div>
+      </div>
+      <div className="topbar">
+        <div style={{ width: 36 }} />
+        <div className="topbar-title">Akun Siswa</div>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}><I n="plus" s={13} /></button>
+      </div>
+
+      {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, whiteSpace: "nowrap", boxShadow: "var(--shadow)" }}>{toast}</div>}
+      {deleteTarget && <Confirm title={`Hapus ${deleteTarget.nama}?`} desc="Akun siswa akan dihapus permanen." onOk={handleDelete} onCancel={() => setDeleteTarget(null)} />}
+
+      {/* Reset password modal */}
+      {resetTarget && (
+        <div className="modal-overlay" onClick={() => setResetTarget(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Reset Password</h3>
+            <p style={{ marginBottom: 16 }}>Reset password untuk <b>{resetTarget.nama}</b></p>
+            <div style={{ padding: "10px 14px", background: "var(--surface-alt)", borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+              Password saat ini: <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{resetTarget.password || "—"}</span>
+            </div>
+            <div className="fg">
+              <label className="lbl">Password Baru</label>
+              <input className="inp" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min. 6 karakter" onKeyDown={e => e.key === "Enter" && handleReset()} autoFocus />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-outline btn-sm" onClick={() => { setResetTarget(null); setNewPw(""); }}>Batal</button>
+              <button className="btn btn-primary btn-sm" onClick={handleReset} disabled={saving || newPw.trim().length < 6}>{saving ? "Menyimpan..." : "Reset Password"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAdd && <TambahSiswaModal store={store} onClose={() => setShowAdd(false)} onSuccess={(id, pw) => { setShowAdd(false); showToast(`Siswa ditambahkan! ID: ${id} · Password: ${pw}`); }} />}
+      {showImport && <ImportSiswaModal store={store} onClose={() => setShowImport(false)} onSuccess={(n) => { setShowImport(false); showToast(`${n} siswa berhasil diimpor!`); }} />}
+
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        {["VII","VIII"].map(j => (
+          <button key={j} className={`tab ${jenjang === j ? "active" : ""}`} onClick={() => setJenjang(j)}>
+            Kelas {j} ({store.getAllSiswa(j).length})
+          </button>
+        ))}
+      </div>
+
+      {siswa.length === 0
+        ? <Card><div className="empty empty-box"><I n="user" s={32} /><h3>Belum ada siswa</h3><p>Tambah siswa baru atau impor dari Excel.</p></div></Card>
+        : <Card pad="none" style={{ overflow: "hidden" }}>
+            {siswa.map((s, i) => {
+              const st = store.getStats(s.id);
+              const lv = getLevel(st.poin || 0);
+              const showPw = pwVisible[s.id];
+              return (
+                <div key={s.id} style={{ padding: "14px 16px", borderBottom: i < siswa.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                    <Avatar name={s.nama} size="md" photo={store.getPhoto(s.uid || s.id)} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{s.nama}</div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 3, flexWrap: "wrap", alignItems: "center" }}>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 11, fontWeight: 600, color: "var(--accent-2)", background: "var(--accent-tint)", padding: "2px 7px", borderRadius: 5 }}>{s.id}</span>
+                        <span style={{ fontSize: 10, color: lv.color, fontWeight: 600 }}>{lv.emoji} {lv.name}</span>
+                        <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{st.poin || 0} pt</span>
+                      </div>
+                      {/* Password row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                        <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Password:</span>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-2)", background: "var(--surface-alt)", padding: "2px 7px", borderRadius: 4 }}>
+                          {showPw ? (s.password || "—") : "••••••••"}
+                        </span>
+                        <button onClick={() => setPwVisible(v => ({ ...v, [s.id]: !v[s.id] }))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", padding: "2px 4px", fontSize: 11, fontFamily: "var(--font)", fontWeight: 600 }}>
+                          {showPw ? "Sembunyikan" : "Lihat"}
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                      <button className="btn btn-soft btn-sm" style={{ fontSize: 11 }} onClick={() => { setResetTarget(s); setNewPw(""); }}>
+                        <I n="edit" s={12} /> Ubah PW
+                      </button>
+                      <button className="btn btn-danger btn-sm" style={{ fontSize: 11 }} onClick={() => setDeleteTarget(s)}>
+                        <I n="trash" s={12} /> Hapus
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+      }
+
+      <div style={{ marginTop: 16, padding: "12px 16px", background: "var(--surface-alt)", borderRadius: "var(--r)", fontSize: 12, color: "var(--ink-3)", display: "flex", gap: 16 }}>
+        <span>Total: <b style={{ color: "var(--ink)" }}>{store.getAllSiswa().length} siswa</b></span>
+        <span>Kelas VII: <b style={{ color: "var(--ink)" }}>{store.getAllSiswa("VII").length}</b></span>
+        <span>Kelas VIII: <b style={{ color: "var(--ink)" }}>{store.getAllSiswa("VIII").length}</b></span>
+      </div>
+    </div>
+  );
+}
     if (!resetTarget || !newPw.trim()) return;
     setSaving(true);
     await store.resetPassword(resetTarget.id, newPw.trim());
@@ -3626,7 +3768,141 @@ function ManajemenSiswa({ store }) {
   );
 }
 
-// ─── TAMBAH SISWA MODAL ───
+// ─── IMPORT SISWA MODAL (Excel) ───
+function ImportSiswaModal({ store, onClose, onSuccess }) {
+  const [rows, setRows] = useState([]);
+  const [progress, setProgress] = useState(null); // { done, total }
+  const [results, setResults] = useState([]);
+  const [importing, setImporting] = useState(false);
+  const [jenjang, setJenjang] = useState("VII");
+  const [err, setErr] = useState("");
+
+  async function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setErr("");
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      // Skip header row, parse nama
+      const parsed = data.slice(1)
+        .filter(r => r[0]?.toString().trim())
+        .map(r => ({
+          nama: r[0]?.toString().trim(),
+          jenjang,
+        }));
+      if (parsed.length === 0) { setErr("File kosong atau format salah."); return; }
+      // Preview ID & password yang akan digenerate
+      const preview = parsed.map(p => ({
+        ...p,
+        id: store.genSiswaId(p.nama),
+        password: store.genPassword(store.genSiswaId(p.nama)),
+      }));
+      setRows(preview);
+    } catch (e) {
+      setErr("Gagal baca file. Pastikan format .xlsx atau .csv.");
+    }
+  }
+
+  async function handleImport() {
+    if (rows.length === 0) return;
+    setImporting(true);
+    setProgress({ done: 0, total: rows.length });
+    const res = await store.importSiswaBulk(
+      rows.map(r => ({ ...r, jenjang })),
+      (done, total) => setProgress({ done, total })
+    );
+    setResults(res);
+    setImporting(false);
+    const ok = res.filter(r => r.status === "ok").length;
+    if (ok > 0) onSuccess(ok);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={importing ? undefined : onClose}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <h3>Import Siswa dari Excel</h3>
+        <p style={{ marginBottom: 16, fontSize: 13, color: "var(--ink-3)" }}>Upload file Excel dengan kolom: <b>Nama Lengkap</b> (kolom A). ID dan password digenerate otomatis.</p>
+
+        {/* Download template */}
+        <button className="btn btn-ghost btn-sm" style={{ marginBottom: 14 }} onClick={() => {
+          const csv = "Nama Lengkap\nM. Alif Ramadhan\nSiti Nurhaliza\nBudi Santoso";
+          const blob = new Blob([csv], { type: "text/csv" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a"); a.href = url; a.download = "template-siswa.csv"; a.click();
+        }}>
+          Download Template CSV
+        </button>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {["VII","VIII"].map(j => <button key={j} className={`btn btn-sm ${jenjang === j ? "btn-primary" : "btn-outline"}`} onClick={() => setJenjang(j)}>Kelas {j}</button>)}
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", border: "1.5px dashed var(--line)", borderRadius: "var(--r-sm)", cursor: "pointer", fontSize: 13, color: "var(--ink-2)", marginBottom: 12 }}>
+          <I n="chartBar" s={18} /> Upload file Excel / CSV
+          <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={handleFile} />
+        </label>
+
+        {err && <div style={{ fontSize: 12, color: "var(--bad)", marginBottom: 10 }}>{err}</div>}
+
+        {/* Preview */}
+        {rows.length > 0 && !results.length && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-3)", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".05em" }}>{rows.length} siswa akan diimpor — Preview:</div>
+            <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+              {rows.slice(0, 10).map((r, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--line-soft)", fontSize: 12 }}>
+                  <span style={{ fontWeight: 600 }}>{r.nama}</span>
+                  <div style={{ display: "flex", gap: 8, color: "var(--ink-3)" }}>
+                    <span style={{ fontFamily: "var(--mono)" }}>{r.id}</span>
+                    <span style={{ fontFamily: "var(--mono)" }}>{r.password}</span>
+                  </div>
+                </div>
+              ))}
+              {rows.length > 10 && <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--ink-3)" }}>+{rows.length - 10} lagi...</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Progress */}
+        {importing && progress && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 6 }}>Mengimpor {progress.done}/{progress.total} siswa...</div>
+            <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${(progress.done/progress.total)*100}%`, background: "var(--accent)", transition: "width .3s" }} />
+            </div>
+          </div>
+        )}
+
+        {/* Results */}
+        {results.length > 0 && (
+          <div style={{ marginBottom: 14, maxHeight: 160, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+            {results.map((r, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--line-soft)", fontSize: 12 }}>
+                <span style={{ fontWeight: 600 }}>{r.nama}</span>
+                <span style={{ color: r.status === "ok" ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
+                  {r.status === "ok" ? `✓ ${r.id}` : `✗ ${r.error?.includes("email-already") ? "ID sudah ada" : "Gagal"}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={importing}>Tutup</button>
+          {rows.length > 0 && !results.length && (
+            <button className="btn btn-primary btn-sm" onClick={handleImport} disabled={importing}>
+              {importing ? "Mengimpor..." : `Import ${rows.length} Siswa`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 function TambahSiswaModal({ store, onClose, onSuccess }) {
   const [form, setForm] = useState({ nama: "", namaDisplay: "", jenjang: "VII", password: "" });
   const [err, setErr] = useState("");
