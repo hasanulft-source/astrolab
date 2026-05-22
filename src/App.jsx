@@ -3851,6 +3851,7 @@ export default function App() {
           const snap = await get(ref(db, `users/${firebaseUser.uid}`));
           if (snap.exists()) {
             const profile = snap.val();
+            console.log("[Astrolab] Profile loaded:", profile.role, profile.id);
             const u = { ...profile, uid: firebaseUser.uid };
             setUser(u);
             setRoute(profile.role === "guru" ? "home-guru" : "home");
