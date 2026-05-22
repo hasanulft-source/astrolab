@@ -23,7 +23,7 @@ const db = getDatabase(firebaseApp);
 const auth = getAuth(firebaseApp);
 
 // ─── GURU UID (hardcoded, immutable) ───
-const GURU_UID = "GXExB2fAyrcndbqx0kOQLRNfVgH2";
+const GURU_UID = "bSfqRHsI3iadcjX56cShfDiuupq1";
 
 // ─── FCM VAPID KEY ───
 // ─── ONLINE PRESENCE ───
