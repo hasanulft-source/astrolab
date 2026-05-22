@@ -692,6 +692,12 @@ function useStore() {
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // Set loading false setelah max 2 detik — tidak bergantung pada Firebase response
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(t);
+  }, []);
+
   // Realtime listeners
   useEffect(() => {
     const tugasRef = ref(db, "tugas");
@@ -701,14 +707,14 @@ function useStore() {
       const data = snap.val();
       setTugas(data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : []);
       setLoading(false);
-    });
+    }, () => setLoading(false)); // error handler
     const u2 = onValue(subsRef, snap => {
       const data = snap.val();
       setSubs(data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : []);
-    });
+    }, () => {});
     const u3 = onValue(statsRef, snap => {
       setStats(snap.val() || {});
-    });
+    }, () => {});
     return () => { u1(); u2(); u3(); };
   }, []);
 
