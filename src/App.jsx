@@ -1900,7 +1900,7 @@ function ProfilSiswa({ user, store }) {
   const subs = store.getSubs().filter(s => s.siswaId === user.id);
   const myBadges = store.getBadges(user.id);
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
-  const photo = store.getPhoto(user.id);
+  const photo = store.getPhoto(user.uid || user.id);
 
   const PRESETS = [
     "#0d6b7a","#1e40af","#7c3aed","#b45309","#0f766e",
@@ -1914,7 +1914,7 @@ function ProfilSiswa({ user, store }) {
     const reader = new FileReader();
     reader.onload = async ev => {
       const b64 = ev.target.result;
-      await store.savePhoto(user.id, b64);
+      await store.savePhoto(user.uid || user.id, b64);
       setShowPhotoPicker(false);
     };
     reader.readAsDataURL(file);
@@ -1924,7 +1924,7 @@ function ProfilSiswa({ user, store }) {
     const initials = user.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${color}"/><text x="100" y="130" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-weight="700" font-size="80" fill="white">${initials}</text></svg>`;
     const b64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-    store.savePhoto(user.id, b64);
+    store.savePhoto(user.uid || user.id, b64);
     setShowPhotoPicker(false);
   }
 
@@ -1951,7 +1951,7 @@ function ProfilSiswa({ user, store }) {
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
           {photo && (
-            <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.id, null); setShowPhotoPicker(false); }}>
+            <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null); setShowPhotoPicker(false); }}>
               Hapus foto profil
             </button>
           )}
@@ -3343,7 +3343,7 @@ function KelasView({ store, navigate }) {
 
 // ─── PROFIL GURU ───
 function ProfilGuru({ user, store, navigate }) {
-  const photo = store.getPhoto(user.id); // reaktif dari Firebase
+  const photo = store.getPhoto(user.uid || user.id); // reaktif dari Firebase
   const [editing, setEditing] = useState(false);
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
 
@@ -3375,7 +3375,7 @@ function ProfilGuru({ user, store, navigate }) {
     const file = e.target.files[0]; if (!file) return;
     if (file.size > 5 * 1024 * 1024) { alert("Foto maksimal 5MB"); return; }
     const reader = new FileReader();
-    reader.onload = async ev => { await store.savePhoto(user.id, ev.target.result); setShowPhotoPicker(false); };
+    reader.onload = async ev => { await store.savePhoto(user.uid || user.id, ev.target.result); setShowPhotoPicker(false); };
     reader.readAsDataURL(file);
   }
 
@@ -3383,7 +3383,7 @@ function ProfilGuru({ user, store, navigate }) {
     const initials = profil.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${color}"/><text x="100" y="130" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-weight="700" font-size="80" fill="white">${initials}</text></svg>`;
     const b64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-    store.savePhoto(user.id, b64); setShowPhotoPicker(false);
+    store.savePhoto(user.uid || user.id, b64); setShowPhotoPicker(false);
   }
 
   return <>
@@ -3404,7 +3404,7 @@ function ProfilGuru({ user, store, navigate }) {
             <I n="user" s={18} /> Pilih foto dari device (maks 2MB)
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
-          {photo && <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.id, null); setShowPhotoPicker(false); }}>Hapus foto profil</button>}
+          {photo && <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null); setShowPhotoPicker(false); }}>Hapus foto profil</button>}
         </div>
       </div>
     )}
@@ -3792,7 +3792,7 @@ const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-gu
 function Sidebar({ user, route, navigate, onLogout, store }) {
   const nav = user.role === "guru" ? GNAV : SNAV;
   const unread = store.getUnreadCount(user.id);
-  const photo = store.getPhoto(user.id);
+  const photo = store.getPhoto(user.uid || user.id);
   return <aside className="sidebar">
     {nav.map(item => <button key={item.id} className={`side-link ${route === item.id ? "active" : ""}`} onClick={() => navigate(item.id)}>
       <div style={{ position: "relative" }}>
@@ -3943,7 +3943,7 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 12, opacity: .85 }}>{user.role === "guru" ? "Guru" : `Kelas ${user.jenjang}`}</span>
             <button onClick={() => navigate(user.role === "guru" ? "profil-guru" : "profil")} style={{ background: "none", border: "none", cursor: "pointer", borderRadius: "50%", padding: 0, display: "flex" }}>
-              <Avatar name={user.nama} size="sm" photo={store.getPhoto(user.id)} />
+              <Avatar name={user.nama} size="sm" photo={store.getPhoto(user.uid || user.id)} />
             </button>
             <button onClick={handleLogout} style={{ background: "rgba(255,255,255,.15)", color: "#fff", padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "1px solid rgba(255,255,255,.2)", cursor: "pointer" }}>Keluar</button>
           </div>
