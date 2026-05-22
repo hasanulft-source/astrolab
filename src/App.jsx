@@ -3846,8 +3846,8 @@ export default function App() {
   // Firebase Auth — session persist otomatis
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
+      try {
+        if (firebaseUser) {
           const snap = await get(ref(db, `users/${firebaseUser.uid}`));
           if (snap.exists()) {
             const profile = snap.val();
@@ -3855,13 +3855,19 @@ export default function App() {
             setUser(u);
             setRoute(profile.role === "guru" ? "home-guru" : "home");
             setTimeout(() => setOnline(firebaseUser.uid), 500);
+          } else {
+            await signOut(auth);
+            setUser(null); setRoute("home");
           }
-        } catch {}
-      } else {
-        setUser(null);
-        setRoute("home");
+        } else {
+          setUser(null); setRoute("home");
+        }
+      } catch (e) {
+        console.warn("[Astrolab] Auth error:", e);
+        setUser(null); setRoute("home");
+      } finally {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
     return () => unsub();
   }, []);
