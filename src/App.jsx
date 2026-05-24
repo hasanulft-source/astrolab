@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
-import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword, deleteUser, onAuthStateChanged } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -686,6 +686,28 @@ function PoinChart({ data }) {
 }
 
 // ─── STORE (Firebase) ───
+// ─── SISWA ID HELPERS ───
+const SKIP_PREFIXES = new Set([
+  "muhammad","muhamad","ahmad","ahmed","abdul","abdu","abd",
+  "nur","noor","siti","sitti","st","hj","h","dra","dr","ir",
+  "m","a","r","s","n","d","f","z","e","y","k","l","t","w","b","c","g","j","o","p","q","u","v","x"
+]);
+
+function genSiswaId(nama, usedIds = new Set()) {
+  const words = nama.trim().toLowerCase().split(/\s+/).map(w => w.replace(/\./g, ""));
+  const meaningful = words.find(w => w.length > 1 && !SKIP_PREFIXES.has(w)) || words[words.length - 1];
+  let baseId = meaningful.replace(/[^a-z]/g, "");
+  let finalId = baseId;
+  let counter = 2;
+  while (usedIds.has(finalId)) { finalId = `${baseId}${counter}`; counter++; }
+  return finalId;
+}
+
+function genPassword(id) {
+  const num = Math.floor(Math.random() * 900) + 100;
+  return `${id}${num}`;
+}
+
 function useStore() {
   const [tugas, setTugas] = useState([]);
   const [subs, setSubs] = useState([]);
@@ -916,92 +938,48 @@ function useStore() {
   };
 
   // Generate ID otomatis: akronim 3 huruf + counter global 9XX
-  // Prefix yang di-skip saat generate ID
-  const SKIP_PREFIXES = new Set([
-    "muhammad","muhamad","ahmad","ahmed","abdul","abdul","abdu","abd",
-    "nur","noor","siti","sitti","st","hj","h","dra","dr","ir","m","a","r","s","n","d","f","z","e","y","k","l","t","w","b","c","g","j","o","p","q","u","v","x"
-  ]);
+  const SERVER_URL = "https://astrolab-push-server.vercel.app";
+  const SERVER_SECRET = "astrolab2026fatta";
 
-  const genSiswaId = (nama) => {
-    const words = nama.trim().toLowerCase().split(/\s+/).map(w => w.replace(/\./g, ""));
-    // Cari kata pertama yang bukan prefix
-    const meaningful = words.find(w => w.length > 1 && !SKIP_PREFIXES.has(w)) || words[words.length - 1];
-    let baseId = meaningful.replace(/[^a-z]/g, "");
-    // Cek apakah ID sudah dipakai — kalau iya tambah angka
-    const usedIds = new Set(fbAccounts.map(a => a.id));
-    let finalId = baseId;
-    let counter = 2;
-    while (usedIds.has(finalId)) { finalId = `${baseId}${counter}`; counter++; }
-    return finalId;
-  };
-
-  const genPassword = (id) => {
-    const num = Math.floor(Math.random() * 900) + 100; // 3 digit: 100-999
-    return `${id}${num}`;
-  };
+  async function callServer(action, payload) {
+    const res = await fetch(`${SERVER_URL}/api/create-user`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVER_SECRET}`,
+      },
+      body: JSON.stringify({ action, payload }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Server error");
+    return data;
+  }
 
   // CRUD akun siswa
   const addSiswa = async (data) => {
     const id = data.id || genSiswaId(data.nama);
     const password = data.password || genPassword(id);
-    const email = `${id}@astrolab.id`;
-    // 1. Buat Firebase Auth account
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const uid = cred.user.uid;
-    // 2. Simpan profil ke /users/{uid}
-    await set(ref(db, `users/${uid}`), {
-      uid, id, email, role: "siswa",
+    // Pakai server API — tidak switch session Auth
+    const result = await callServer("create", {
+      id, password,
       nama: data.nama,
-      namaDisplay: data.namaDisplay || genSiswaId(data.nama),
+      namaDisplay: data.namaDisplay || id,
+      jenjang: data.jenjang,
       kelas: data.kelas || `Kelas ${data.jenjang}`,
-      jenjang: data.jenjang,
-      createdAt: new Date().toISOString(),
-      password, // simpan untuk guru bisa lihat
     });
-    // 3. Index di /accounts/{id}
-    await set(ref(db, `accounts/${id}`), {
-      uid, id, email, role: "siswa",
-      jenjang: data.jenjang,
-      nama: data.nama,
-      namaDisplay: data.namaDisplay || genSiswaId(data.nama),
-      password, // guru bisa lihat & reset
-    });
-    return { id, password, uid };
+    return { id: result.id, password: result.password, uid: result.uid };
   };
 
   const deleteSiswa = async (id) => {
-    await remove(ref(db, `accounts/${id}`));
     const acc = fbAccounts.find(a => a.id === id);
-    if (acc?.uid) await remove(ref(db, `users/${acc.uid}`));
+    await callServer("delete", { uid: acc?.uid, id });
   };
 
   const resetPassword = async (id, newPassword) => {
-    // Update password di accounts + users
     const acc = fbAccounts.find(a => a.id === id);
-    if (acc) {
-      await update(ref(db, `accounts/${id}`), { password: newPassword });
-      if (acc.uid) await update(ref(db, `users/${acc.uid}`), { password: newPassword });
-      // Update Firebase Auth password via Admin (tidak bisa dari client)
-      // Password tersimpan di DB untuk referensi guru
-    }
+    await callServer("reset-password", { uid: acc?.uid, id, newPassword });
   };
   const isFbAccount = (id) => fbAccounts.some(a => a.id === id);
-
-  // IMPORT MASSAL dari array siswa
-  const importSiswaBulk = async (rows, onProgress) => {
-    const results = [];
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      try {
-        const result = await addSiswa(row);
-        results.push({ ...row, ...result, status: "ok" });
-      } catch (e) {
-        results.push({ ...row, status: "error", error: e.message });
-      }
-      onProgress?.(i + 1, rows.length);
-    }
-    return results;
-  };
 
   // LEADERBOARD — merge hardcoded + Firebase siswa
   const getLeaderboard = (jenjang) => {
@@ -1054,7 +1032,27 @@ function useStore() {
     await remove(ref(db, `badges/${sid}/${badgeId}`));
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId, genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
+  // IMPORT MASSAL
+  const importSiswaBulk = async (rows, onProgress) => {
+    const results = [];
+    const usedIds = new Set(fbAccounts.map(a => a.id));
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const id = genSiswaId(row.nama, usedIds);
+        const password = genPassword(id);
+        usedIds.add(id);
+        const result = await addSiswa({ ...row, id, password });
+        results.push({ ...row, ...result, status: "ok" });
+      } catch (e) {
+        results.push({ ...row, status: "error", error: e.message });
+      }
+      onProgress?.(i + 1, rows.length);
+    }
+    return results;
+  };
+
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
 }
 
 // ─── CONFIRM MODAL ───
