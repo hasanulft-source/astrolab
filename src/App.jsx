@@ -842,8 +842,12 @@ function useStore() {
   };
   const getContacts = (myId, myJenjang, myRole) => {
     const all = getAllAccounts();
-    if (myRole === "guru") return all.filter(a => a.role === "siswa");
-    return all.filter(a => a.id !== myId && (a.role === "guru" || a.jenjang === myJenjang));
+    // Tambahkan guru dari Firebase /users jika belum ada di ACCOUNTS
+    const guruFb = fbAccounts.find(a => a.role === "guru");
+    const guruHardcoded = all.find(a => a.role === "guru");
+    const allWithGuru = guruFb && !guruHardcoded ? [...all, { ...guruFb, role: "guru" }] : all;
+    if (myRole === "guru") return allWithGuru.filter(a => a.role === "siswa");
+    return allWithGuru.filter(a => a.id !== myId && (a.role === "guru" || a.jenjang === myJenjang));
   };
   const getLastMsg = (id1, id2) => {
     const thread = getThread(id1, id2);
@@ -916,14 +920,18 @@ function useStore() {
     await set(ref(db, `photos/${userId}`), compressed);
   };
 
-  // ACCOUNTS (Firebase) — siswa baru disimpan di /accounts/{id}
+  // ACCOUNTS (Firebase) — siswa baru + guru
   const [fbAccounts, setFbAccounts] = useState([]);
   useEffect(() => {
     const accRef = ref(db, "accounts");
     const u8 = onValue(accRef, snap => {
       const data = snap.val();
-      setFbAccounts(data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : []);
-    });
+      const list = data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : [];
+      // Tambah guru ke fbAccounts biar muncul di contacts
+      const guruProfile = { id: "fata", uid: GURU_UID, role: "guru", nama: "M. Hasanul Fatta", namaDisplay: "Pak Fatta", mapel: "IPA & Informatika", jabatan: "Guru IPA & Informatika" };
+      const withGuru = list.find(a => a.role === "guru") ? list : [...list, guruProfile];
+      setFbAccounts(withGuru);
+    }, () => setFbAccounts([]));
     return () => u8();
   }, []);
 
@@ -2714,7 +2722,7 @@ function DashboardGuru({ store, navigate }) {
         const tugasWithSoal = store.getTugas().filter(t => t.jenjang === jenjang && t.soal?.length > 0 && allSubs.some(s => s.tugasId === t.id));
         if (tugasWithSoal.length === 0) return null;
         return <>
-          <div className="sh"><h2>Analisis Soal</h2></div>
+          <div className="sh analisis-section"><h2>Analisis Soal</h2></div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
             {tugasWithSoal.slice(0, 5).map(t => {
               const subs = allSubs.filter(s => s.tugasId === t.id);
@@ -2753,7 +2761,7 @@ function DashboardGuru({ store, navigate }) {
 
 
 // ─── ANALISIS TUGAS DETAIL ───
-function AnalisisTugasDetail({ store, tugasId, navigate }) {
+function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
   const t = store.getTugas().find(x => x.id === tugasId);
   if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
   const subs = store.getSubs().filter(s => s.tugasId === t.id);
@@ -2785,7 +2793,7 @@ function AnalisisTugasDetail({ store, tugasId, navigate }) {
 
   return <>
     <div className="topbar">
-      <button className="topbar-back" onClick={() => navigate("home-guru")}><I n="chevL" s={18} /></button>
+      <button className="topbar-back" onClick={() => onBack ? onBack() : navigate("home-guru")}><I n="chevL" s={18} /></button>
       <div className="topbar-title">Analisis Soal</div>
       <div style={{ width: 36 }} />
     </div>
@@ -4065,7 +4073,7 @@ export default function App() {
       else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} />;
       else if (route === "kelas") screen = <KelasView store={store} navigate={navigate} />;
-      else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} />;
+      else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswa store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
