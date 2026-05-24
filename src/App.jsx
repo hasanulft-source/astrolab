@@ -841,13 +841,12 @@ function useStore() {
     if (Object.keys(updates).length > 0) await update(ref(db), updates);
   };
   const getContacts = (myId, myJenjang, myRole) => {
-    const all = getAllAccounts();
-    // Tambahkan guru dari Firebase /users jika belum ada di ACCOUNTS
-    const guruFb = fbAccounts.find(a => a.role === "guru");
-    const guruHardcoded = all.find(a => a.role === "guru");
-    const allWithGuru = guruFb && !guruHardcoded ? [...all, { ...guruFb, role: "guru" }] : all;
-    if (myRole === "guru") return allWithGuru.filter(a => a.role === "siswa");
-    return allWithGuru.filter(a => a.id !== myId && (a.role === "guru" || a.jenjang === myJenjang));
+    const allSiswa = getAllAccounts().filter(a => a.role === "siswa");
+    const guru = fbGuru || { id: "fata", uid: GURU_UID, role: "guru", nama: "M. Hasanul Fatta", namaDisplay: "Pak Fatta", mapel: "IPA & Informatika" };
+    if (myRole === "guru") return allSiswa;
+    // Siswa bisa chat ke guru + sesama siswa sekelas
+    const sekelas = allSiswa.filter(a => a.id !== myId && a.jenjang === myJenjang);
+    return [guru, ...sekelas];
   };
   const getLastMsg = (id1, id2) => {
     const thread = getThread(id1, id2);
@@ -920,22 +919,26 @@ function useStore() {
     await set(ref(db, `photos/${userId}`), compressed);
   };
 
-  // ACCOUNTS (Firebase) — siswa baru + guru
+  // ACCOUNTS (Firebase) — siswa baru di /accounts/{id}
   const [fbAccounts, setFbAccounts] = useState([]);
+  const [fbGuru, setFbGuru] = useState(null);
   useEffect(() => {
     const accRef = ref(db, "accounts");
     const u8 = onValue(accRef, snap => {
       const data = snap.val();
       const list = data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : [];
-      // Tambah guru ke fbAccounts biar muncul di contacts
-      const guruProfile = { id: "fata", uid: GURU_UID, role: "guru", nama: "M. Hasanul Fatta", namaDisplay: "Pak Fatta", mapel: "IPA & Informatika", jabatan: "Guru IPA & Informatika" };
-      const withGuru = list.find(a => a.role === "guru") ? list : [...list, guruProfile];
-      setFbAccounts(withGuru);
+      setFbAccounts(list.filter(a => a.role !== "guru"));
     }, () => setFbAccounts([]));
-    return () => u8();
+    // Load guru profile dari /users/{GURU_UID}
+    const guruRef = ref(db, `users/${GURU_UID}`);
+    const u9 = onValue(guruRef, snap => {
+      if (snap.exists()) setFbGuru(snap.val());
+      else setFbGuru({ id: "fata", uid: GURU_UID, role: "guru", nama: "M. Hasanul Fatta", namaDisplay: "Pak Fatta", mapel: "IPA & Informatika" });
+    });
+    return () => { u8(); u9(); };
   }, []);
 
-  // Merge: hardcoded + Firebase (Firebase override jika id sama — untuk reset password)
+  // Merge: hardcoded siswa + Firebase siswa
   const getAllAccounts = () => {
     const fbIds = new Set(fbAccounts.map(a => a.id));
     const hardcoded = ACCOUNTS.filter(a => !fbIds.has(a.id));
@@ -967,11 +970,12 @@ function useStore() {
   const addSiswa = async (data) => {
     const id = data.id || genSiswaId(data.nama);
     const password = data.password || genPassword(id);
-    // Pakai server API — tidak switch session Auth
+    // namaDisplay: capitalize huruf pertama
+    const namaDisplay = data.namaDisplay || (id.charAt(0).toUpperCase() + id.slice(1));
     const result = await callServer("create", {
       id, password,
       nama: data.nama,
-      namaDisplay: data.namaDisplay || id,
+      namaDisplay,
       jenjang: data.jenjang,
       kelas: data.kelas || `Kelas ${data.jenjang}`,
     });
@@ -1060,7 +1064,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -3794,29 +3798,38 @@ function ImportSiswaModal({ store, onClose, onSuccess }) {
   );
 }
 function TambahSiswaModal({ store, onClose, onSuccess }) {
-  const [form, setForm] = useState({ nama: "", jenjang: "VII", password: "" });
+  const [form, setForm] = useState({ nama: "", jenjang: "VII", password: "", customId: "" });
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const previewId = form.nama.trim() ? store.genSiswaId(form.nama) : "—";
-  const autoPassword = previewId !== "—" ? store.genPassword(previewId) : "—";
+  const autoId = form.nama.trim() ? store.genSiswaId(form.nama) : "—";
+  const finalId = form.customId.trim().toLowerCase().replace(/[^a-z0-9]/g, "") || autoId;
+  const autoPassword = finalId !== "—" ? store.genPassword(finalId) : "—";
 
   async function submit() {
     if (!form.nama.trim()) { setErr("Nama lengkap wajib diisi."); return; }
+    if (finalId === "—") { setErr("ID tidak valid."); return; }
     setSaving(true); setErr("");
     try {
       const pw = form.password.trim() || autoPassword;
+      const namaDisplay = form.nama.trim().split(/\s+/).find(w => {
+        const lower = w.toLowerCase().replace(/\./g, "");
+        return lower.length > 1 && !["muhammad","muhamad","ahmad","abdul","nur","siti","m","h","a"].includes(lower);
+      }) || form.nama.trim().split(" ")[0];
       const { id, password } = await store.addSiswa({
         nama: form.nama.trim(),
-        namaDisplay: previewId,
+        namaDisplay,
         jenjang: form.jenjang,
         kelas: `Kelas ${form.jenjang}`,
         password: pw,
+        id: finalId,
       });
       onSuccess(id, password);
     } catch (e) {
-      setErr(e.message?.includes("email-already") ? "ID sudah dipakai, coba nama berbeda." : `Gagal: ${e.message}`);
+      setErr(e.message?.includes("email-already") || e.message?.includes("already in use")
+        ? `ID "${finalId}" sudah dipakai. Ganti ID di field bawah.`
+        : `Gagal: ${e.message}`);
       setSaving(false);
     }
   }
@@ -3829,12 +3842,15 @@ function TambahSiswaModal({ store, onClose, onSuccess }) {
           <div className="fg">
             <label className="lbl">Nama Lengkap</label>
             <input className="inp" value={form.nama} onChange={e => set("nama", e.target.value)} placeholder="Contoh: M. Alif Ramadhan" autoFocus />
-            {form.nama.trim() && (
-              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
-                ID: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{previewId}</span>
-                {" · "}Password otomatis: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{autoPassword}</span>
-              </div>
-            )}
+          </div>
+          <div className="fg">
+            <label className="lbl">ID Login</label>
+            <input className="inp" value={form.customId} onChange={e => set("customId", e.target.value)}
+              placeholder={`Otomatis: ${autoId}`} />
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+              ID final: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{finalId}</span>
+              {" · "}Password: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{autoPassword}</span>
+            </div>
           </div>
           <div className="fg">
             <label className="lbl">Kelas</label>
@@ -3845,7 +3861,6 @@ function TambahSiswaModal({ store, onClose, onSuccess }) {
           <div className="fg">
             <label className="lbl">Password (opsional)</label>
             <input className="inp" value={form.password} onChange={e => set("password", e.target.value)} placeholder={`Default: ${autoPassword}`} />
-            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3 }}>Kosongkan untuk pakai password otomatis.</div>
           </div>
         </div>
         {err && <div style={{ fontSize: 12, color: "var(--bad)", marginTop: 10, padding: "8px 12px", background: "var(--bad-bg)", borderRadius: 8 }}>{err}</div>}
