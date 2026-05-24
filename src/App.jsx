@@ -792,14 +792,16 @@ function useStore() {
   };
 
   const [messages, setMessages] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
+    if (!currentUser) return; // Tunggu user login dulu
     const msgsRef = ref(db, "messages");
     const u4 = onValue(msgsRef, snap => {
       setMessages(snap.val() || {});
-    });
+    }, () => setMessages({}));
     return () => u4();
-  }, []);
+  }, [currentUser?.uid]);
 
   // CHAT — threadId = sorted pair of IDs e.g. "FATA-001__YJS-42"
   const getThreadId = (id1, id2) => [id1, id2].sort().join("__");
@@ -1064,7 +1066,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -4027,6 +4029,7 @@ export default function App() {
             console.log("[Astrolab] Profile loaded:", profile.role, profile.id);
             const u = { ...profile, uid: firebaseUser.uid };
             setUser(u);
+            store.setCurrentUser(u);
             setRoute(profile.role === "guru" ? "home-guru" : "home");
             setTimeout(() => setOnline(firebaseUser.uid), 500);
           } else {
