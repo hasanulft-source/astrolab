@@ -4051,6 +4051,12 @@ export default function App() {
             const namaDisplay = profile.namaDisplay
               ? profile.namaDisplay.charAt(0).toUpperCase() + profile.namaDisplay.slice(1)
               : profile.nama?.split(" ")[0] || profile.id;
+            // Auto-fix di Firebase kalau masih lowercase
+            if (namaDisplay !== profile.namaDisplay) {
+              update(ref(db, `users/${firebaseUser.uid}`), { namaDisplay });
+              const accId = profile.id;
+              if (accId) update(ref(db, `accounts/${accId}`), { namaDisplay });
+            }
             const u = { ...profile, uid: firebaseUser.uid, namaDisplay };
             setUser(u);
             store.setCurrentUser(u);
