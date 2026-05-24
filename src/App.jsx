@@ -816,7 +816,7 @@ function useStore() {
     const newRef = push(ref(db, `messages/${tid}`));
     await set(newRef, { fromId, toId, text: text.trim(), ts: Date.now() });
     // Push notif ke penerima
-    const allAcc = [...ACCOUNTS, ...fbAccounts];
+    const allAcc = [...fbAccounts, ...(fbGuru ? [fbGuru] : [])];
     const sender = allAcc.find(a => a.id === fromId);
     callNotifyServer("chat", {
       toUserId: toId,
@@ -896,7 +896,16 @@ function useStore() {
   }, []);
 
   // FOTO PROFIL — simpan base64 terkompresi ke Firebase
-  const getPhoto = (userId) => photos[userId] || null;
+  const getPhoto = (userId) => {
+    if (!userId) return null;
+    // Coba langsung pakai userId sebagai key
+    if (photos[userId]) return photos[userId];
+    // Cari uid dari fbAccounts atau fbGuru
+    const acc = fbAccounts.find(a => a.id === userId);
+    if (acc?.uid && photos[acc.uid]) return photos[acc.uid];
+    if (fbGuru?.id === userId && photos[GURU_UID]) return photos[GURU_UID];
+    return null;
+  };
   const savePhoto = async (userId, base64OrNull) => {
     if (!base64OrNull) {
       await remove(ref(db, `photos/${userId}`));
@@ -1027,7 +1036,14 @@ function useStore() {
     const unsub = onValue(presRef, snap => setPresenceData(snap.val() || {}));
     return () => unsub();
   }, []);
-  const isOnline = (userId) => presenceData[userId]?.online === true;
+  const isOnline = (userId) => {
+    // userId bisa berupa id ("akhdan") atau uid — coba keduanya
+    if (presenceData[userId]?.online) return true;
+    const acc = fbAccounts.find(a => a.id === userId);
+    if (acc?.uid && presenceData[acc.uid]?.online) return true;
+    if (fbGuru?.id === userId && presenceData[GURU_UID]?.online) return true;
+    return false;
+  };
   const getLastSeen = (userId) => presenceData[userId]?.lastSeen || null;
   const getOnlineUsers = () => Object.entries(presenceData).filter(([, v]) => v?.online).map(([id]) => id);
   const [badgesData, setBadgesData] = useState({});
@@ -2312,7 +2328,7 @@ function BuatTugas({ store, navigate, editId = null }) {
                 <div className="target-kelas-badge">{form.jenjang}</div>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>Kelas {form.jenjang}</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{ACCOUNTS.filter(a => a.role === "siswa" && a.jenjang === form.jenjang).length} siswa</div>
+                  <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{store.getAllSiswa(form.jenjang).length} siswa</div>
                 </div>
               </div>
             </div>
@@ -2373,7 +2389,7 @@ async function exportNilai(store, jenjang) {
     });
   }
   const ExcelJS = window.ExcelJS;
-  const siswaList = ACCOUNTS.filter(a => a.role === "siswa" && a.jenjang === jenjang);
+  const siswaList = store.getAllSiswa(jenjang);
   const tugasList = store.getTugas().filter(t => t.jenjang === jenjang);
   const subs = store.getSubs();
   const mapelGroups = jenjang === "VII" ? ["IPA", "Informatika"] : [null];
@@ -2592,7 +2608,7 @@ function DashboardGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const tugasAll = store.getTugas().filter(t => t.jenjang === jenjang);
   const lb = store.getLeaderboard(jenjang);
-  const siswa = ACCOUNTS.filter(a => a.role === "siswa" && a.jenjang === jenjang);
+  const siswa = store.getAllSiswa(jenjang);
   const subs = store.getSubs();
   const totalSubs = subs.filter(s => { const t = store.getTugas().find(x => x.id === s.tugasId); return t && t.jenjang === jenjang; }).length;
   const tugasAktif = tugasAll.filter(t => fmtDl(t.deadline).tone !== "bad");
@@ -3040,7 +3056,8 @@ function ChatThread({ user, contact, store, onBack }) {
         )}
         {msgs.map((m, i) => {
           const isMe = m.fromId === user.id;
-          const sender = ACCOUNTS.find(a => a.id === m.fromId);
+          const allAcc = store.getAllSiswa ? [...store.getAllSiswa(), store.fbGuru].filter(Boolean) : [];
+          const sender = allAcc.find(a => a.id === m.fromId) || { namaDisplay: m.fromId };
           const prevMsg = msgs[i - 1];
           const showName = !isMe && (!prevMsg || prevMsg.fromId !== m.fromId);
           return (
@@ -3879,10 +3896,14 @@ function TambahSiswaModal({ store, onClose, onSuccess }) {
 
 // ─── BADGE MANAGER (Guru) ───
 function BadgeManager({ store }) {
-  const siswaList = ACCOUNTS.filter(a => a.role === "siswa");
-  const [selected, setSelected] = useState(siswaList[0]?.id || "");
   const [tab, setTab] = useState("VII");
+  const siswaAll = store.getAllSiswa();
+  const siswaList = siswaAll;
   const filtered = siswaList.filter(s => s.jenjang === tab);
+  const [selected, setSelected] = useState("");
+  useEffect(() => {
+    if (!selected && filtered.length > 0) setSelected(filtered[0].id);
+  }, [tab, filtered.length]);
   const activeSiswa = siswaList.find(s => s.id === selected) || filtered[0];
   const badges = store.getBadges(activeSiswa?.id || "");
 
@@ -3904,7 +3925,7 @@ function BadgeManager({ store }) {
             <button key={s.id} onClick={() => setSelected(s.id)}
               style={{ textAlign: "left", padding: "12px 14px", borderRadius: 12, border: `2px solid ${selected === s.id ? "var(--accent)" : "var(--line)"}`, background: selected === s.id ? "var(--accent-soft)" : "var(--surface)", cursor: "pointer", transition: "all .15s" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <Avatar name={s.nama} size="sm" photo={store.getPhoto(s.id)} />
+                <Avatar name={s.nama} size="sm" photo={store.getPhoto(s.uid || s.id)} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.namaDisplay}</div>
                   <div style={{ fontSize: 10, color: lv.color, fontWeight: 600 }}>{lv.emoji} {lv.name}</div>
@@ -4026,8 +4047,11 @@ export default function App() {
           const snap = await get(ref(db, `users/${firebaseUser.uid}`));
           if (snap.exists()) {
             const profile = snap.val();
-            console.log("[Astrolab] Profile loaded:", profile.role, profile.id);
-            const u = { ...profile, uid: firebaseUser.uid };
+            // Ensure namaDisplay is properly capitalized
+            const namaDisplay = profile.namaDisplay
+              ? profile.namaDisplay.charAt(0).toUpperCase() + profile.namaDisplay.slice(1)
+              : profile.nama?.split(" ")[0] || profile.id;
+            const u = { ...profile, uid: firebaseUser.uid, namaDisplay };
             setUser(u);
             store.setCurrentUser(u);
             setRoute(profile.role === "guru" ? "home-guru" : "home");
