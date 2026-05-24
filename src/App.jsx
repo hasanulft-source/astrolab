@@ -3904,53 +3904,47 @@ function ImportSiswaModal({ store, onClose, onSuccess }) {
   );
 }
 function TambahSiswaModal({ store, onClose, onSuccess }) {
-  const [form, setForm] = useState({ nama: "", namaDisplay: "", jenjang: "VII", password: "" });
+  const [form, setForm] = useState({ nama: "", jenjang: "VII", password: "" });
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Preview ID
-  const previewId = form.nama.trim()
-    ? (() => {
-        const words = form.nama.trim().split(/\s+/);
-        let akronim = words.length >= 3 ? words[0][0]+words[1][0]+words[2][0]
-          : words.length === 2 ? words[0][0]+words[1][0]+(words[1][1]||words[0][1]||"X")
-          : (words[0].slice(0,3));
-        return akronim.toUpperCase().replace(/[^A-Z]/g,"X").slice(0,3) + "-9XX";
-      })()
-    : "—";
+  const previewId = form.nama.trim() ? store.genSiswaId(form.nama) : "—";
+  const autoPassword = previewId !== "—" ? store.genPassword(previewId) : "—";
 
   async function submit() {
     if (!form.nama.trim()) { setErr("Nama lengkap wajib diisi."); return; }
-    if (!form.password.trim() || form.password.length < 6) { setErr("Password minimal 6 karakter."); return; }
-    setSaving(true);
+    setSaving(true); setErr("");
     try {
-      const id = await store.addSiswa({
+      const pw = form.password.trim() || autoPassword;
+      const { id, password } = await store.addSiswa({
         nama: form.nama.trim(),
-        namaDisplay: form.namaDisplay.trim() || form.nama.trim().split(" ")[0],
+        namaDisplay: previewId,
         jenjang: form.jenjang,
         kelas: `Kelas ${form.jenjang}`,
-        password: form.password.trim(),
+        password: pw,
       });
-      onSuccess(id);
-    } catch (e) { setErr("Gagal menambahkan siswa. Coba lagi."); setSaving(false); }
+      onSuccess(id, password);
+    } catch (e) {
+      setErr(e.message?.includes("email-already") ? "ID sudah dipakai, coba nama berbeda." : `Gagal: ${e.message}`);
+      setSaving(false);
+    }
   }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
         <h3>Tambah Siswa Baru</h3>
-        <p style={{ marginBottom: 16 }}>ID akan digenerate otomatis dari akronim nama.</p>
-
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="fg">
             <label className="lbl">Nama Lengkap</label>
-            <input className="inp" value={form.nama} onChange={e => set("nama", e.target.value)} placeholder="Contoh: Budi Santoso Pratama" autoFocus />
-            {form.nama.trim() && <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>ID akan jadi: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{previewId}</span></div>}
-          </div>
-          <div className="fg">
-            <label className="lbl">Nama Panggilan</label>
-            <input className="inp" value={form.namaDisplay} onChange={e => set("namaDisplay", e.target.value)} placeholder="Contoh: Budi (opsional)" />
+            <input className="inp" value={form.nama} onChange={e => set("nama", e.target.value)} placeholder="Contoh: M. Alif Ramadhan" autoFocus />
+            {form.nama.trim() && (
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+                ID: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{previewId}</span>
+                {" · "}Password otomatis: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{autoPassword}</span>
+              </div>
+            )}
           </div>
           <div className="fg">
             <label className="lbl">Kelas</label>
@@ -3959,14 +3953,12 @@ function TambahSiswaModal({ store, onClose, onSuccess }) {
             </div>
           </div>
           <div className="fg">
-            <label className="lbl">Password</label>
-            <input className="inp" value={form.password} onChange={e => set("password", e.target.value)} placeholder="Min. 6 karakter" />
-            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3 }}>Siswa pakai ini untuk login pertama kali.</div>
+            <label className="lbl">Password (opsional)</label>
+            <input className="inp" value={form.password} onChange={e => set("password", e.target.value)} placeholder={`Default: ${autoPassword}`} />
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3 }}>Kosongkan untuk pakai password otomatis.</div>
           </div>
         </div>
-
         {err && <div style={{ fontSize: 12, color: "var(--bad)", marginTop: 10, padding: "8px 12px", background: "var(--bad-bg)", borderRadius: 8 }}>{err}</div>}
-
         <div className="modal-actions" style={{ marginTop: 20 }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
           <button className="btn btn-primary btn-sm" onClick={submit} disabled={saving}>
