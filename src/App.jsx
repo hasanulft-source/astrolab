@@ -783,13 +783,6 @@ function useStore() {
     const tid = getThreadId(fromId, toId);
     const newRef = push(ref(db, `messages/${tid}`));
     await set(newRef, { fromId, toId, text: text.trim(), ts: Date.now() });
-    // Push notif ke penerima
-    const allAcc = [...fbAccounts, ...(fbGuru ? [fbGuru] : [])];
-    const sender = allAcc.find(a => a.id === fromId);
-      toUserId: toId,
-      fromName: sender?.namaDisplay || sender?.nama || fromId,
-      message: text.trim(),
-    });
   };
   const getUnreadCount = (myId) => {
     let count = 0;
