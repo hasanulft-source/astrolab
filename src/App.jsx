@@ -3,7 +3,7 @@
 // UI: Original (Plus Jakarta Sans + teal #0d6b7a)
 // Engine: Firebase Realtime Database + Firebase Authentication
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
@@ -25,9 +25,7 @@ const auth = getAuth(firebaseApp);
 // ─── GURU UID (hardcoded, immutable) ───
 const GURU_UID = "bSfqRHsI3iadcjX56cShfDiuupq1";
 
-// ─── FCM VAPID KEY ───
 // ─── ONLINE PRESENCE ───
-// Firebase node: /presence/{userId} = { online: true, lastSeen: timestamp }
 async function setOnline(userId) {
   const presRef = ref(db, `presence/${userId}`);
   await set(presRef, { online: true, lastSeen: serverTimestamp() });
@@ -36,31 +34,6 @@ async function setOnline(userId) {
 async function setOffline(userId) {
   try { await set(ref(db, `presence/${userId}`), { online: false, lastSeen: serverTimestamp() }); } catch {}
 }
-
-// no-op — push notif dihapus
-async function callNotifyServer() {}
-
-// ─── INIT GURU PROFILE ───
-// Jalankan sekali untuk setup profil guru di /users/{GURU_UID}
-async function initGuruProfile() {
-  const snap = await get(ref(db, `users/${GURU_UID}`));
-  if (!snap.exists()) {
-    await set(ref(db, `users/${GURU_UID}`), {
-      uid: GURU_UID,
-      id: "fatta",
-      email: "fatta@astrolab.id",
-      role: "guru",
-      nama: "M. Hasanul Fatta",
-      namaDisplay: "Pak Fatta",
-      nip: "",
-      jabatan: "Guru IPA & Informatika",
-      motto: "",
-    });
-    console.log("[Astrolab] Guru profile initialized.");
-  }
-}
-// Auto-run sekali
-initGuruProfile().catch(() => {});
 
 // ─── SHUFFLE (Fisher-Yates) ───
 function shuffle(arr) {
@@ -73,15 +46,9 @@ function shuffle(arr) {
 }
 
 // ─── ACCOUNTS ───
-const ACCOUNTS = [
-  { id: "FATA-001", password: "MY_SCH119", role: "guru", nama: "M. Hasanul Fatta, S.Pd.", namaDisplay: "Pak Fatta", mapel: "IPA & Informatika" },
-  { id: "YJS-42",   password: "yusuf2026",  role: "siswa", nama: "Yusuf Julian Saputra", namaDisplay: "Yusuf",  kelas: "VIII", jenjang: "VIII" },
-  { id: "SAN-17",   password: "shelia2026", role: "siswa", nama: "Shelia Anatasha",       namaDisplay: "Shelia", kelas: "VII",  jenjang: "VII"  },
-  { id: "TAZ-01",   password: "talita2026",  role: "siswa", nama: "Talita Az-Zahra",      namaDisplay: "Talita",  kelas: "VIII", jenjang: "VIII" },
-  { id: "AZW-02",   password: "azwa2026",    role: "siswa", nama: "Azwa Shakila",         namaDisplay: "Azwa",    kelas: "VIII", jenjang: "VIII" },
-  { id: "RSK-03",   password: "riski2026",   role: "siswa", nama: "Riski Ramadhan",       namaDisplay: "Riski",   kelas: "VIII", jenjang: "VIII" },
-  { id: "ZHF-04",   password: "zahrah2026",  role: "siswa", nama: "Zahrah Felicia",       namaDisplay: "Zahrah",  kelas: "VIII", jenjang: "VIII" },
-];
+// Hardcoded accounts removed — semua akun dikelola via Firebase Auth + /accounts/{id}
+// Data siswa diambil dari fbAccounts (Firebase Realtime DB)
+const ACCOUNTS = [];
 
 // ─── CSS ───
 const CSS = `
@@ -185,6 +152,8 @@ button,input,select,textarea{font-family:var(--font);}
 .btn-danger{background:var(--bad-bg);color:var(--bad);border:1px solid #fca5a5;}
 .btn-danger:hover{background:#fee2e2;}
 .btn-ghost{background:transparent;color:var(--ink-3);border:none;}
+.btn-warn{background:#fffbeb;color:#92400e;border:1.5px solid #fde68a;}
+.btn-warn:hover{background:#fef3c7;}
 .btn-ghost:hover{background:var(--surface-alt);color:var(--ink-2);}
 .btn-sm{padding:5px 12px;font-size:12px;}
 .btn-lg{padding:12px 20px;font-size:14px;}
@@ -745,7 +714,6 @@ function useStore() {
   const addTugas = async (t) => {
     const newRef = push(ref(db, "tugas"));
     await set(newRef, { ...t, createdAt: new Date().toISOString(), status: t.scheduledAt ? "scheduled" : "aktif" });
-    if (!t.scheduledAt) callNotifyServer("tugas", { jenjang: t.jenjang, judul: t.judul, mapel: t.mapel });
   };
   const deleteTugas = async (id) => { await remove(ref(db, `tugas/${id}`)); };
   const updateTugas = async (id, patch) => { await update(ref(db, `tugas/${id}`), patch); };
@@ -803,7 +771,7 @@ function useStore() {
     return () => u4();
   }, [currentUser?.uid]);
 
-  // CHAT — threadId = sorted pair of IDs e.g. "FATA-001__YJS-42"
+  // CHAT — threadId = sorted pair of IDs e.g. "akhdan__fata"
   const getThreadId = (id1, id2) => [id1, id2].sort().join("__");
   const getThread = (id1, id2) => {
     const tid = getThreadId(id1, id2);
@@ -818,7 +786,6 @@ function useStore() {
     // Push notif ke penerima
     const allAcc = [...fbAccounts, ...(fbGuru ? [fbGuru] : [])];
     const sender = allAcc.find(a => a.id === fromId);
-    callNotifyServer("chat", {
       toUserId: toId,
       fromName: sender?.namaDisplay || sender?.nama || fromId,
       message: text.trim(),
@@ -876,7 +843,6 @@ function useStore() {
     const now = Date.now();
     const newRef = push(ref(db, "broadcasts"));
     await set(newRef, { pesan, target, createdAt: now, expiresAt: now + durasiHari * 86400000, durasiHari });
-    callNotifyServer("broadcast", { target, pesan });
   };
   const editBroadcast = async (id, pesan, target, durasiHari) => {
     const now = Date.now();
@@ -1189,7 +1155,7 @@ function LoginScreen({ onLogin }) {
           <div className="login-field">
             <label className="login-lbl">ID Siswa / Guru</label>
             <input className="login-inp" value={id} onChange={e => { setId(e.target.value); setErr(""); }}
-              placeholder="Contoh: FATA-001" onKeyDown={e => e.key === "Enter" && submit()} autoCapitalize="none" />
+              placeholder="Contoh: fata" onKeyDown={e => e.key === "Enter" && submit()} autoCapitalize="none" />
           </div>
           <div className="login-field">
             <label className="login-lbl">Password</label>
@@ -1210,7 +1176,9 @@ function LoginScreen({ onLogin }) {
 // ─── DASHBOARD SISWA ───
 function DashboardSiswa({ user, store, navigate }) {
   const stats = store.getStats(user.id);
-  const tugas = store.getTugas().filter(t => t.jenjang === user.jenjang && t.status === "aktif");
+  const allTugas = store.getTugas().filter(t => t.jenjang === user.jenjang && t.status === "aktif");
+  const tugas = allTugas.filter(t => fmtDl(t.deadline).tone !== "bad"); // belum lewat deadline
+  const tugasLewat = allTugas.filter(t => fmtDl(t.deadline).tone === "bad" && !store.hasSub(user.id, t.id));
   const lb = store.getLeaderboard(user.jenjang);
   const myRank = lb.find(s => s.id === user.id);
 
@@ -2729,7 +2697,10 @@ function DashboardGuru({ store, navigate }) {
                   <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nama}</div>
                   <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{s.tugasSelesai || 0}/{tugasAktif.length} tugas · streak {s.streak || 0}</div>
                 </div>
-                <span className="chip chip-warn" style={{ fontSize: 10 }}>Follow up</span>
+                <button className="btn btn-warn btn-sm" style={{ fontSize: 10, padding: "4px 10px" }}
+                  onClick={() => navigate("chat", { openChat: s.id })}>
+                  Follow up
+                </button>
               </div>
             ))}
         </Card>
@@ -3088,13 +3059,21 @@ function ChatThread({ user, contact, store, onBack }) {
   );
 }
 
-function ChatScreen({ user, store }) {
+function ChatScreen({ user, store, params = {} }) {
   const [activeContact, setActiveContact] = useState(null);
   const [tab, setTab] = useState("VII");
   const [showBcModal, setShowBcModal] = useState(false);
   const [editBc, setEditBc] = useState(null);
   const isGuru = user.role === "guru";
   const contacts = store.getContacts(user.id, user.jenjang, user.role);
+
+  // Auto-open chat dari Follow Up button
+  useEffect(() => {
+    if (params.openChat && contacts.length > 0) {
+      const target = contacts.find(c => c.id === params.openChat);
+      if (target) setActiveContact(target);
+    }
+  }, [params.openChat, contacts.length]);
   const broadcasts = isGuru
     ? store.getBroadcasts("semua") // guru lihat semua
     : store.getBroadcasts(user.jenjang);
@@ -4070,7 +4049,7 @@ export default function App() {
           setUser(null); setRoute("home");
         }
       } catch (e) {
-        console.warn("[Astrolab] Auth error:", e);
+        console.warn("[Astrolab] Auth error:", e.code || e.message);
         setUser(null); setRoute("home");
       } finally {
         setAuthLoading(false);
@@ -4087,6 +4066,11 @@ export default function App() {
 
   async function handleLogout() {
     if (user) setOffline(user.uid);
+    // Clear semua cache localStorage
+    try {
+      const keys = Object.keys(localStorage).filter(k => k.startsWith("astrolab."));
+      keys.forEach(k => localStorage.removeItem(k));
+    } catch {}
     await signOut(auth);
     setUser(null); setRoute("home"); setParams({});
   }
@@ -4119,7 +4103,7 @@ export default function App() {
       else if (route === "buat-tugas") screen = <BuatTugas store={store} navigate={navigate} />;
       else if (route === "edit-tugas") screen = <BuatTugas store={store} navigate={navigate} editId={params.tugasId} />;
       else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
-      else if (route === "chat") screen = <ChatScreen user={user} store={store} />;
+      else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
       else if (route === "kelas") screen = <KelasView store={store} navigate={navigate} />;
       else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
@@ -4133,7 +4117,7 @@ export default function App() {
       else if (route === "tugas-detail") screen = <DetailTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "profil") screen = <ProfilSiswa user={user} store={store} />;
-      else if (route === "chat") screen = <ChatScreen user={user} store={store} />;
+      else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
       else screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
     }
   }
