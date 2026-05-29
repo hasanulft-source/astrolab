@@ -2567,6 +2567,7 @@ function backupFromStore(store) {
 // ─── DASHBOARD GURU ───
 function DashboardGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
+  const [showLaporan, setShowLaporan] = useState(false);
   const tugasAll = store.getTugas().filter(t => t.jenjang === jenjang);
   const lb = store.getLeaderboard(jenjang);
   const siswa = store.getAllSiswa(jenjang);
@@ -2588,18 +2589,11 @@ function DashboardGuru({ store, navigate }) {
   const greetingGuru = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
 
   return <>
+    {showLaporan && <LaporanModal store={store} onClose={() => setShowLaporan(false)} />}
     <div className="page">
-      {/* Greeting — mobile & desktop */}
-      <div style={{ paddingTop: 12, paddingBottom: 12 }}>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta</h1>
-        <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
-      </div>
-      <div className="dt" style={{ paddingTop: 0, marginBottom: 8 }}>
-        <div />
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => backupFromStore(store)} title="Download backup data"><I n="chartBar" s={13} /> Backup</button>
-          <button className="btn btn-outline btn-sm" onClick={() => exportLaporan(store, jenjang)}><I n="chartBar" s={13} /> Laporan</button>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowLaporan(true)}><I n="chartBar" s={13} /> Laporan</button>
           <button className="btn btn-outline btn-sm" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={13} /> Export Nilai</button>
           <button className="btn btn-primary" onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Tugas baru</button>
         </div>
@@ -3190,74 +3184,335 @@ function ChatScreen({ user, store, params = {} }) {
 
 // ─── KELAS VIEW ───
 // ─── EXPORT LAPORAN PRINT-FRIENDLY ───
-function exportLaporan(store, jenjang) {
+// ─── LAPORAN HELPER ───
+function generateBarSVG(nilai, max = 100, color = "#0d9488") {
+  const w = Math.round((nilai / max) * 120);
+  return `<svg width="120" height="10" style="vertical-align:middle"><rect width="120" height="10" rx="5" fill="#e2e8f0"/><rect width="${w}" height="10" rx="5" fill="${color}"/></svg>`;
+}
+
+function getNilaiColor(n) {
+  if (n >= 85) return "#059669";
+  if (n >= 70) return "#0d9488";
+  if (n >= 55) return "#d97706";
+  return "#dc2626";
+}
+
+function getNilaiLabel(n) {
+  if (n >= 85) return "Sangat Baik";
+  if (n >= 70) return "Baik";
+  if (n >= 55) return "Cukup";
+  return "Perlu Perhatian";
+}
+
+// CSS bersama untuk semua laporan
+const LAPORAN_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Plus Jakarta Sans',system-ui,sans-serif; color:#1a2332; font-size:12px; background:#fff; }
+  .page { padding:32px 36px; max-width:800px; margin:0 auto; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:16px; border-bottom:3px solid #0d6b7a; margin-bottom:24px; }
+  .logo { font-size:18px; font-weight:800; color:#0d6b7a; letter-spacing:-.02em; }
+  .logo small { display:block; font-size:11px; font-weight:400; color:#7a8fa3; margin-top:2px; }
+  .meta { text-align:right; font-size:11px; color:#7a8fa3; line-height:1.7; }
+  .section { margin-bottom:20px; }
+  .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#0d9488; margin-bottom:10px; padding-bottom:4px; border-bottom:1px solid #e2e8f0; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#f0fdfa; color:#0d6b7a; padding:9px 10px; text-align:left; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; border-bottom:2px solid #0d9488; }
+  td { padding:9px 10px; border-bottom:1px solid #f1f5f9; font-size:11px; vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  .badge-pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:10px; font-weight:600; margin:1px; }
+  .chip-green { background:#d1fae5; color:#065f46; }
+  .chip-teal { background:#ccfbf1; color:#0f766e; }
+  .chip-yellow { background:#fef9c3; color:#713f12; }
+  .chip-red { background:#fee2e2; color:#991b1b; }
+  .chip-gray { background:#f1f5f9; color:#475569; }
+  .footer { margin-top:24px; padding-top:12px; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; font-size:10px; color:#94a3b8; }
+  .sign-box { text-align:center; }
+  .sign-line { width:140px; border-bottom:1px solid #1a2332; margin:40px auto 4px; }
+  .page-break { page-break-after:always; }
+  @media print {
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .no-print { display:none; }
+  }
+`;
+
+// ─── LAPORAN PER SISWA ───
+function generateLaporanSiswa(s, store, jenjang, periode) {
+  const stats = store.getStats(s.id);
+  const lv = getLevel(stats.poin || 0);
+  const badges = store.getBadges(s.id);
+  const allTugas = store.getTugas().filter(t => t.jenjang === jenjang);
+  const subs = store.getSubs().filter(sub => sub.siswaId === s.id);
+  const now = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
+  const nilaiRata = stats.nilaiRata || (subs.length ? Math.round(subs.reduce((a,b) => a+b.nilai,0)/subs.length) : 0);
+
+  const tugasRows = allTugas.map(t => {
+    const sub = subs.find(x => x.tugasId === t.id);
+    const nilai = sub ? sub.nilai : null;
+    const color = nilai !== null ? getNilaiColor(nilai) : "#94a3b8";
+    const label = nilai !== null ? getNilaiLabel(nilai) : "Belum";
+    return `<tr>
+      <td>${t.judul}</td>
+      <td style="color:#64748b">${t.mapel}</td>
+      <td style="text-align:center">
+        ${nilai !== null
+          ? `<span style="font-weight:700;color:${color}">${nilai}</span>`
+          : `<span style="color:#94a3b8">—</span>`}
+      </td>
+      <td style="text-align:center">
+        <span class="badge-pill ${nilai >= 85 ? 'chip-green' : nilai >= 70 ? 'chip-teal' : nilai >= 55 ? 'chip-yellow' : nilai !== null ? 'chip-red' : 'chip-gray'}">${label}</span>
+      </td>
+      <td>${generateBarSVG(nilai || 0, 100, color)}</td>
+    </tr>`;
+  }).join("");
+
+  const badgeHtml = badges.length
+    ? badges.map(bid => {
+        const b = ALL_BADGES?.find(x => x.id === bid) || { nama: bid, emoji: "🏅" };
+        return `<span class="badge-pill chip-teal">${b.emoji} ${b.nama}</span>`;
+      }).join("")
+    : '<span style="color:#94a3b8;font-size:11px">Belum ada badge</span>';
+
+  return `
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="logo">Astrolab · Our Classroom<small>Laporan Hasil Belajar Siswa</small></div>
+        <div style="margin-top:8px;font-size:13px;font-weight:700">${s.nama}</div>
+        <div style="font-size:11px;color:#64748b">Kelas ${jenjang} · ID: ${s.id}</div>
+      </div>
+      <div class="meta">
+        Periode: <b>${periode}</b><br>
+        Dicetak: ${now}<br>
+        M. Hasanul Fatta, S.Pd.
+      </div>
+    </div>
+
+    <!-- Ringkasan -->
+    <div class="section">
+      <div class="section-title">Ringkasan Capaian</div>
+      <table>
+        <tr>
+          <td style="width:25%;font-weight:600">Total Poin XP</td>
+          <td style="font-weight:800;color:#0d9488;font-size:16px">${stats.poin || 0}</td>
+          <td style="width:25%;font-weight:600">Level</td>
+          <td><span class="badge-pill chip-teal">${lv.emoji} ${lv.name}</span></td>
+        </tr>
+        <tr>
+          <td style="font-weight:600">Tugas Selesai</td>
+          <td><b>${stats.tugasSelesai || 0}</b> dari ${allTugas.length} tugas</td>
+          <td style="font-weight:600">Nilai Rata-rata</td>
+          <td style="font-weight:800;color:${getNilaiColor(nilaiRata)};font-size:16px">
+            ${nilaiRata || "—"}
+            ${nilaiRata ? `<span style="font-size:11px;font-weight:400;margin-left:6px">${getNilaiLabel(nilaiRata)}</span>` : ""}
+          </td>
+        </tr>
+        <tr>
+          <td style="font-weight:600">Streak Belajar</td>
+          <td>${stats.streak || 0} hari berturut-turut</td>
+          <td style="font-weight:600">Badge Diraih</td>
+          <td>${badges.length} badge</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Badge -->
+    <div class="section">
+      <div class="section-title">Badge & Penghargaan</div>
+      <div style="padding:8px 0">${badgeHtml}</div>
+    </div>
+
+    <!-- Detail Nilai per Tugas -->
+    <div class="section">
+      <div class="section-title">Detail Nilai per Tugas</div>
+      ${allTugas.length === 0
+        ? '<p style="color:#94a3b8">Belum ada tugas.</p>'
+        : `<table>
+          <thead><tr>
+            <th>Nama Tugas</th><th>Mata Pelajaran</th>
+            <th style="text-align:center">Nilai</th>
+            <th style="text-align:center">Keterangan</th>
+            <th>Grafik</th>
+          </tr></thead>
+          <tbody>${tugasRows}</tbody>
+        </table>`}
+    </div>
+
+    <!-- Catatan Guru -->
+    <div class="section">
+      <div class="section-title">Catatan Guru</div>
+      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;min-height:60px;color:#94a3b8;font-size:11px">
+        ${nilaiRata >= 85
+          ? `${s.namaDisplay} menunjukkan capaian yang sangat baik. Pertahankan konsistensi belajar dan terus tingkatkan kemampuan analitis.`
+          : nilaiRata >= 70
+            ? `${s.namaDisplay} menunjukkan capaian yang baik. Perlu sedikit peningkatan pada beberapa kompetensi.`
+            : nilaiRata >= 55
+              ? `${s.namaDisplay} cukup dalam mengikuti pembelajaran. Disarankan untuk lebih aktif berlatih soal dan berkonsultasi.`
+              : `${s.namaDisplay} perlu pendampingan lebih intensif. Harap segera berkomunikasi dengan guru untuk remedial.`}
+      </div>
+    </div>
+
+    <!-- TTD -->
+    <div style="display:flex;justify-content:space-between;margin-top:28px;gap:20px">
+      <div class="sign-box" style="flex:1">
+        <div style="font-size:11px;color:#64748b">Mengetahui,</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">Orang Tua / Wali Murid</div>
+        <div class="sign-line"></div>
+        <div style="font-size:11px;color:#94a3b8">(................................)</div>
+      </div>
+      <div class="sign-box" style="flex:1">
+        <div style="font-size:11px;color:#64748b">Banda Aceh, ${now}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">Guru IPA & Informatika</div>
+        <div class="sign-line"></div>
+        <div style="font-size:12px;font-weight:700">M. Hasanul Fatta, S.Pd.</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>Astrolab · Our Classroom — © 2026 M. Hasanul Fatta</span>
+      <span>Dokumen ini digenerate otomatis oleh sistem</span>
+    </div>
+  </div>`;
+}
+
+// ─── LAPORAN PER KELAS ───
+function exportLaporan(store, jenjang, mode = "kelas", periode = "Semester Ganjil 2025/2026") {
   const siswa = store.getAllSiswa(jenjang);
   const tugas = store.getTugas().filter(t => t.jenjang === jenjang);
   const subs = store.getSubs();
-  const now = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  const now = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
 
-  const rows = siswa.map(s => {
-    const stats = store.getStats(s.id);
-    const lv = getLevel(stats.poin || 0);
-    const badges = store.getBadges(s.id);
-    return `
-      <tr>
-        <td>${s.nama}</td>
-        <td>${s.id}</td>
-        <td style="text-align:center;font-weight:700">${stats.poin || 0}</td>
+  let bodyContent = "";
+
+  if (mode === "siswa") {
+    // Per siswa — 1 halaman per siswa
+    bodyContent = siswa.map((s, i) =>
+      `${generateLaporanSiswa(s, store, jenjang, periode)}${i < siswa.length - 1 ? '<div class="page-break"></div>' : ''}`
+    ).join("");
+  } else {
+    // Per kelas — rekap semua siswa
+    const rows = siswa.map((s, i) => {
+      const stats = store.getStats(s.id);
+      const lv = getLevel(stats.poin || 0);
+      const badges = store.getBadges(s.id);
+      const nilaiRata = stats.nilaiRata || 0;
+      const rank = i + 1;
+      return `<tr>
+        <td style="text-align:center;font-weight:700;color:#64748b">${rank}</td>
+        <td style="font-weight:600">${s.nama}</td>
+        <td style="text-align:center;font-family:monospace">${s.id}</td>
+        <td style="text-align:center;font-weight:700;color:#0d9488">${stats.poin || 0}</td>
         <td style="text-align:center">${stats.tugasSelesai || 0}/${tugas.length}</td>
-        <td style="text-align:center">${stats.nilaiRata || "—"}</td>
-        <td style="text-align:center">${lv.name}</td>
+        <td style="text-align:center;font-weight:700;color:${getNilaiColor(nilaiRata)}">${nilaiRata || "—"}</td>
+        <td style="text-align:center"><span class="badge-pill chip-teal" style="font-size:10px">${lv.emoji} ${lv.name}</span></td>
         <td style="text-align:center">${badges.length}</td>
+        <td style="text-align:center">
+          <span class="badge-pill ${nilaiRata >= 85 ? 'chip-green' : nilaiRata >= 70 ? 'chip-teal' : nilaiRata >= 55 ? 'chip-yellow' : nilaiRata > 0 ? 'chip-red' : 'chip-gray'}" style="font-size:10px">
+            ${getNilaiLabel(nilaiRata)}
+          </span>
+        </td>
       </tr>`;
-  }).join("");
+    }).join("");
+
+    const avgNilai = siswa.length ? Math.round(siswa.reduce((a, s) => a + (store.getStats(s.id).nilaiRata || 0), 0) / siswa.length) : 0;
+    const avgPoin = siswa.length ? Math.round(siswa.reduce((a, s) => a + (store.getStats(s.id).poin || 0), 0) / siswa.length) : 0;
+
+    bodyContent = `
+    <div class="page">
+      <div class="header">
+        <div>
+          <div class="logo">Astrolab · Our Classroom<small>Laporan Rekap Hasil Belajar Kelas</small></div>
+          <div style="margin-top:6px;font-size:13px;font-weight:700">Kelas ${jenjang}</div>
+        </div>
+        <div class="meta">
+          Periode: <b>${periode}</b><br>
+          Dicetak: ${now}<br>
+          M. Hasanul Fatta, S.Pd.<br>
+          Total siswa: ${siswa.length} · Total tugas: ${tugas.length}
+        </div>
+      </div>
+
+      <!-- Ringkasan Kelas -->
+      <div class="section">
+        <div class="section-title">Ringkasan Kelas</div>
+        <table>
+          <tr>
+            <td style="width:25%;font-weight:600">Rata-rata Nilai</td>
+            <td style="font-weight:800;color:${getNilaiColor(avgNilai)};font-size:16px">${avgNilai} <span style="font-size:11px;font-weight:400">${getNilaiLabel(avgNilai)}</span></td>
+            <td style="width:25%;font-weight:600">Rata-rata Poin XP</td>
+            <td style="font-weight:800;color:#0d9488;font-size:16px">${avgPoin}</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">Siswa Aktif</td>
+            <td>${siswa.filter(s => (store.getStats(s.id).tugasSelesai || 0) > 0).length} dari ${siswa.length} siswa</td>
+            <td style="font-weight:600">Tingkat Ketuntasan</td>
+            <td style="font-weight:700;color:#059669">${siswa.length ? Math.round(siswa.filter(s => (store.getStats(s.id).nilaiRata || 0) >= 70).length / siswa.length * 100) : 0}%</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Tabel Rekap -->
+      <div class="section">
+        <div class="section-title">Rekap Nilai Seluruh Siswa</div>
+        <table>
+          <thead><tr>
+            <th style="text-align:center">#</th>
+            <th>Nama Siswa</th>
+            <th style="text-align:center">ID</th>
+            <th style="text-align:center">Poin XP</th>
+            <th style="text-align:center">Tugas</th>
+            <th style="text-align:center">Nilai Rata</th>
+            <th style="text-align:center">Level</th>
+            <th style="text-align:center">Badge</th>
+            <th style="text-align:center">Status</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+
+      <!-- TTD -->
+      <div style="display:flex;justify-content:space-between;margin-top:24px;gap:20px">
+        <div class="sign-box" style="flex:1">
+          <div style="font-size:11px;color:#64748b">Mengetahui,</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Kepala Sekolah</div>
+          <div class="sign-line"></div>
+          <div style="font-size:11px;color:#94a3b8">(................................)</div>
+        </div>
+        <div class="sign-box" style="flex:1">
+          <div style="font-size:11px;color:#64748b">Banda Aceh, ${now}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Guru IPA & Informatika</div>
+          <div class="sign-line"></div>
+          <div style="font-size:12px;font-weight:700">M. Hasanul Fatta, S.Pd.</div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span>Astrolab · Our Classroom — © 2026 M. Hasanul Fatta</span>
+        <span>Dokumen ini digenerate otomatis oleh sistem</span>
+      </div>
+    </div>`;
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<title>Laporan Kelas ${jenjang} — Astrolab</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; padding: 32px 40px; color: #1a2332; font-size: 13px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; padding-bottom: 16px; border-bottom: 2px solid #0d6b7a; }
-  .title { font-size: 22px; font-weight: 800; color: #0d6b7a; letter-spacing: -.02em; }
-  .subtitle { font-size: 12px; color: #7a8fa3; margin-top: 4px; }
-  .meta { text-align: right; font-size: 11px; color: #7a8fa3; line-height: 1.6; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th { background: #0d6b7a; color: white; padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
-  tr:nth-child(even) td { background: #f7fafa; }
-  .footer { margin-top: 24px; font-size: 11px; color: #7a8fa3; text-align: center; padding-top: 12px; border-top: 1px solid #e2e8f0; }
-  @media print { body { padding: 16px 20px; } }
-</style>
+<title>Laporan ${mode === "siswa" ? "Per Siswa" : "Kelas"} ${jenjang} — Astrolab</title>
+<style>${LAPORAN_CSS}</style>
 </head>
 <body>
-  <div class="header">
-    <div>
-      <div class="title">Astrolab · Our Classroom</div>
-      <div class="subtitle">Laporan Rekap Nilai — Kelas ${jenjang}</div>
-    </div>
-    <div class="meta">
-      Dicetak: ${now}<br>
-      Total siswa: ${siswa.length}<br>
-      Total tugas: ${tugas.length}
-    </div>
+  <div class="no-print" style="background:#0d6b7a;color:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100">
+    <span style="font-weight:700">Astrolab · Laporan ${mode === "siswa" ? "Per Siswa" : "Kelas"} ${jenjang} — ${periode}</span>
+    <button onclick="window.print()" style="background:#fff;color:#0d6b7a;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">Cetak / Save PDF</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Nama Siswa</th>
-        <th>ID</th>
-        <th style="text-align:center">Total Poin</th>
-        <th style="text-align:center">Tugas Selesai</th>
-        <th style="text-align:center">Rata-rata Nilai</th>
-        <th style="text-align:center">Level</th>
-        <th style="text-align:center">Badge</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
+  ${bodyContent}
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+}
   <div class="footer">© 2026 M. Hasanul Fatta · Astrolab Classroom</div>
   <script>window.onload = () => window.print();</script>
 </body>
@@ -3266,6 +3521,78 @@ function exportLaporan(store, jenjang) {
   const win = window.open("", "_blank");
   win.document.write(html);
   win.document.close();
+}
+
+// ─── LAPORAN MODAL ───
+function LaporanModal({ store, onClose }) {
+  const [jenjang, setJenjang] = useState("VII");
+  const [mode, setMode] = useState("kelas");
+  const [periode, setPeriode] = useState("Semester Ganjil 2025/2026");
+
+  const periodeOptions = [
+    "Semester Ganjil 2025/2026",
+    "Semester Genap 2025/2026",
+    "Tengah Semester Ganjil 2025/2026",
+    "Tengah Semester Genap 2025/2026",
+  ];
+
+  function handleExport() {
+    exportLaporan(store, jenjang, mode, periode);
+    onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+        <h3>Cetak Laporan</h3>
+        <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16 }}>Pilih format dan periode laporan.</p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="fg">
+            <label className="lbl">Kelas</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["VII","VIII"].map(j => (
+                <button key={j} className={`btn btn-sm ${jenjang === j ? "btn-primary" : "btn-outline"}`}
+                  style={{ flex: 1, justifyContent: "center" }} onClick={() => setJenjang(j)}>
+                  Kelas {j} ({store.getAllSiswa(j).length} siswa)
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Format Laporan</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { value: "kelas", label: "Rekap Per Kelas", desc: "1 dokumen berisi semua siswa — cocok untuk arsip sekolah" },
+                { value: "siswa", label: "Detail Per Siswa", desc: "1 halaman per siswa — cocok untuk dibagikan ke orang tua" },
+              ].map(opt => (
+                <div key={opt.value} onClick={() => setMode(opt.value)}
+                  style={{ padding: "10px 14px", border: `1.5px solid ${mode === opt.value ? "var(--accent)" : "var(--line)"}`, borderRadius: "var(--r-sm)", cursor: "pointer", background: mode === opt.value ? "var(--accent-tint)" : "var(--surface)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: mode === opt.value ? "var(--accent-2)" : "var(--ink)" }}>{opt.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{opt.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Periode</label>
+            <select className="inp" value={periode} onChange={e => setPeriode(e.target.value)}>
+              {periodeOptions.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 20 }}>
+          <button className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleExport}>
+            <I n="chartBar" s={13} /> Buka Laporan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── ACTIVITY HEATMAP ───
