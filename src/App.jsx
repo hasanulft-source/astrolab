@@ -2591,6 +2591,14 @@ function DashboardGuru({ store, navigate }) {
   return <>
     {showLaporan && <LaporanModal store={store} onClose={() => setShowLaporan(false)} />}
     <div className="page">
+      {/* Greeting */}
+      <div style={{ paddingTop: 12, paddingBottom: 12 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta</h1>
+        <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
+      </div>
+      <div className="dt" style={{ paddingTop: 0, marginBottom: 8 }}>
+        <div />
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => backupFromStore(store)} title="Download backup data"><I n="chartBar" s={13} /> Backup</button>
           <button className="btn btn-outline btn-sm" onClick={() => setShowLaporan(true)}><I n="chartBar" s={13} /> Laporan</button>
