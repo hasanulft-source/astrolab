@@ -3521,15 +3521,6 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = "Semester Ganji
   win.document.write(html);
   win.document.close();
 }
-  <div class="footer">© 2026 M. Hasanul Fatta · Astrolab Classroom</div>
-  <script>window.onload = () => window.print();</script>
-</body>
-</html>`;
-
-  const win = window.open("", "_blank");
-  win.document.write(html);
-  win.document.close();
-}
 
 // ─── LAPORAN MODAL ───
 function LaporanModal({ store, onClose }) {
