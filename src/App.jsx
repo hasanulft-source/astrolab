@@ -327,6 +327,10 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
   0% { background-position: -200% center; }
   100% { background-position: 200% center; }
 }
+@keyframes slideIn {
+  from { transform: translateX(120%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
 @keyframes podium-glow {
   0%, 100% { box-shadow: 0 0 12px rgba(251,191,36,.4), 0 4px 16px rgba(251,191,36,.2); }
   50% { box-shadow: 0 0 24px rgba(251,191,36,.7), 0 6px 24px rgba(251,191,36,.4); }
@@ -4315,12 +4319,163 @@ function BottomNav({ user, route, navigate, store }) {
 }
 
 // ─── APP ───
+// ─── NOTIFICATIONS HOOK ───
+function useNotifications(user, store) {
+  const [notifs, setNotifs] = useState([]);
+  // Anti-spam: simpan timestamp first load, hanya notify event setelah ini
+  const [bootTime] = useState(() => Date.now());
+
+  function pushNotif(notif) {
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setNotifs(n => [...n, { ...notif, id }]);
+    setTimeout(() => setNotifs(n => n.filter(x => x.id !== id)), 5000);
+  }
+
+  function dismissNotif(id) {
+    setNotifs(n => n.filter(x => x.id !== id));
+  }
+
+  // Listen tugas baru (untuk siswa)
+  useEffect(() => {
+    if (!user || user.role !== "siswa") return;
+    const tugasRef = ref(db, "tugas");
+    const unsub = onValue(tugasRef, snap => {
+      const data = snap.val() || {};
+      Object.entries(data).forEach(([id, t]) => {
+        if (!t.createdAt) return;
+        const createdMs = new Date(t.createdAt).getTime();
+        if (createdMs < bootTime) return; // skip old
+        if (t.jenjang !== user.jenjang) return;
+        if (t.status !== "aktif") return;
+        pushNotif({
+          type: "tugas",
+          icon: "tugas",
+          title: "Tugas baru!",
+          message: `${t.judul} · ${t.mapel}`,
+        });
+      });
+    });
+    return () => unsub();
+  }, [user?.uid, user?.role]);
+
+  // Listen submission baru (untuk guru)
+  useEffect(() => {
+    if (!user || user.role !== "guru") return;
+    const subsRef = ref(db, "submissions");
+    const unsub = onValue(subsRef, snap => {
+      const data = snap.val() || {};
+      Object.entries(data).forEach(([id, s]) => {
+        if (!s.submittedAt) return;
+        const subMs = new Date(s.submittedAt).getTime();
+        if (subMs < bootTime) return;
+        const siswaList = store.getAllSiswa();
+        const siswa = siswaList.find(x => x.id === s.siswaId);
+        const tugas = store.getTugas().find(x => x.id === s.tugasId);
+        if (!siswa || !tugas) return;
+        pushNotif({
+          type: "submission",
+          icon: "check",
+          title: "Submission baru",
+          message: `${siswa.nama} kumpul ${tugas.judul} · ${s.nilai}/100`,
+        });
+      });
+    });
+    return () => unsub();
+  }, [user?.uid, user?.role]);
+
+  // Listen pesan baru
+  useEffect(() => {
+    if (!user) return;
+    const msgsRef = ref(db, "messages");
+    const unsub = onValue(msgsRef, snap => {
+      const data = snap.val() || {};
+      Object.entries(data).forEach(([tid, thread]) => {
+        if (!tid.includes(user.id)) return;
+        Object.values(thread).forEach(msg => {
+          if (msg.ts < bootTime) return;
+          if (msg.fromId === user.id) return; // pesan dari diri sendiri
+          if (msg.toId !== user.id) return;
+          // Cari pengirim
+          const siswaList = store.getAllSiswa();
+          const guru = store.fbGuru;
+          const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
+          const senderName = sender?.namaDisplay || sender?.nama || msg.fromId;
+          pushNotif({
+            type: "pesan",
+            icon: "msg",
+            title: `Pesan dari ${senderName}`,
+            message: msg.text.length > 60 ? msg.text.slice(0, 60) + "..." : msg.text,
+          });
+        });
+      });
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
+  // Listen badge baru (untuk siswa)
+  useEffect(() => {
+    if (!user || user.role !== "siswa") return;
+    const badgesRef = ref(db, `badges/${user.id}`);
+    let initialLoad = true;
+    const unsub = onValue(badgesRef, snap => {
+      if (initialLoad) { initialLoad = false; return; }
+      const data = snap.val() || {};
+      // Notif badge terbaru
+      const latestBadge = Object.keys(data).pop();
+      if (latestBadge) {
+        const b = ALL_BADGES?.find(x => x.id === latestBadge) || { nama: latestBadge, emoji: "🏅" };
+        pushNotif({
+          type: "badge",
+          icon: "badge",
+          title: "Badge baru!",
+          message: `${b.emoji} ${b.nama}`,
+        });
+      }
+    });
+    return () => unsub();
+  }, [user?.uid, user?.role]);
+
+  return { notifs, dismissNotif };
+}
+
+// ─── NOTIF TOAST CONTAINER ───
+function NotifToastContainer({ notifs, onDismiss }) {
+  if (notifs.length === 0) return null;
+  return (
+    <div style={{
+      position: "fixed", bottom: 20, right: 20, zIndex: 9999,
+      display: "flex", flexDirection: "column-reverse", gap: 10,
+      maxWidth: 360, pointerEvents: "none",
+    }}>
+      {notifs.map(n => (
+        <div key={n.id} onClick={() => onDismiss(n.id)}
+          style={{
+            background: "#fff", border: "1px solid var(--line)",
+            borderLeft: `4px solid ${n.type === "submission" ? "#059669" : n.type === "badge" ? "#d97706" : n.type === "pesan" ? "#0d9488" : "#3b82f6"}`,
+            borderRadius: 10, padding: "12px 14px", boxShadow: "0 8px 24px rgba(0,0,0,.12)",
+            cursor: "pointer", pointerEvents: "auto",
+            animation: "slideIn .3s ease",
+            display: "flex", gap: 10, alignItems: "flex-start",
+          }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>{n.title}</div>
+            <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.4 }}>{n.message}</div>
+          </div>
+          <button onClick={(e) => { e.stopPropagation(); onDismiss(n.id); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [route, setRoute] = useState("home");
   const [params, setParams] = useState({});
   const store = useStore();
+  const { notifs, dismissNotif } = useNotifications(user, store);
   function navigate(r, p = {}) { setRoute(r); setParams(p); window.scrollTo(0, 0); }
 
   // Firebase Auth — session persist otomatis
@@ -4450,5 +4605,6 @@ export default function App() {
         <footer className="footer">Our Classroom · <b>© 2026 M. Hasanul Fatta</b> — All rights reserved</footer>
         {!hideNav && <BottomNav user={user} route={route} navigate={navigate} store={store} />}
       </div>}
+    <NotifToastContainer notifs={notifs} onDismiss={dismissNotif} />
   </>;
 }
