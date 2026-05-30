@@ -919,8 +919,8 @@ function useStore() {
   };
 
   // Generate ID otomatis: akronim 3 huruf + counter global 9XX
-  const SERVER_URL = "https://astrolab-push-server.vercel.app";
-  const SERVER_SECRET = "astrolab2026fatta";
+  const SERVER_URL = import.meta.env?.VITE_SERVER_URL || "https://astrolab-push-server.vercel.app";
+  const SERVER_SECRET = import.meta.env?.VITE_SERVER_SECRET || "";
 
   async function callServer(action, payload) {
     const res = await fetch(`${SERVER_URL}/api/create-user`, {
@@ -1073,23 +1073,6 @@ function LogoBold({ size = 32 }) {
 }
 
 // Versi teal — untuk pakai di background putih
-function LogoTeal({ size = 32 }) {
-  const s = size, c = s / 2, r1 = s * 0.38, r2 = s * 0.22, dot = s * 0.065, center = s * 0.115;
-  return (
-    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} fill="none">
-      <ellipse cx={c} cy={c} rx={r1} ry={r1 * 0.36} stroke="#0d6b7a" strokeWidth={s * 0.055} fill="none" strokeLinecap="round"/>
-      <ellipse cx={c} cy={c} rx={r1} ry={r1 * 0.36} stroke="#0d6b7a" strokeWidth={s * 0.04} fill="none" strokeLinecap="round" transform={`rotate(60 ${c} ${c})`} opacity=".5"/>
-      <ellipse cx={c} cy={c} rx={r1} ry={r1 * 0.36} stroke="#0d6b7a" strokeWidth={s * 0.04} fill="none" strokeLinecap="round" transform={`rotate(-60 ${c} ${c})`} opacity=".5"/>
-      <circle cx={c} cy={c} r={center} fill="#0d6b7a"/>
-      <circle cx={c} cy={c} r={center * 0.55} fill="rgba(255,255,255,0.6)"/>
-      <circle cx={c + r1} cy={c} r={dot} fill="#0d6b7a"/>
-      <circle cx={c - r1} cy={c} r={dot * 0.75} fill="#0d6b7a" opacity=".6"/>
-      <circle cx={c + r1 * 0.5} cy={c - r1 * 0.31} r={dot * 0.85} fill="#0d6b7a" opacity=".8"/>
-      <circle cx={c - r1 * 0.5} cy={c + r1 * 0.31} r={dot * 0.7} fill="#0d6b7a" opacity=".55"/>
-    </svg>
-  );
-}
-
 // ─── LOGIN ───
 function LoginScreen({ onLogin }) {
   const [id, setId] = useState(""); const [pw, setPw] = useState(""); const [err, setErr] = useState(""); const [loading, setLoading] = useState(false);
@@ -2702,7 +2685,10 @@ function DashboardGuru({ store, navigate }) {
       </div>
 
       {/* Export mobile */}
-      <button className="btn btn-outline btn-full" style={{ marginBottom: 8 }} onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={14} /> Export Nilai Kelas {jenjang}</button>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+        <button className="btn btn-outline btn-full" onClick={() => setShowLaporan(true)}><I n="chartBar" s={14} /> Cetak Laporan</button>
+        <button className="btn btn-outline btn-full" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={14} /> Export Nilai Kelas {jenjang}</button>
+      </div>
 
       {/* Analisis Soal per Tugas */}
       {(() => {
@@ -4368,7 +4354,7 @@ export default function App() {
           setUser(null); setRoute("home");
         }
       } catch (e) {
-        console.warn("[Astrolab] Auth error:", e.code || e.message);
+        // Silently fail — fallback to login screen
         setUser(null); setRoute("home");
       } finally {
         setAuthLoading(false);
