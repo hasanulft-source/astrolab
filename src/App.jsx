@@ -4324,6 +4324,8 @@ function useNotifications(user, store) {
   const [notifs, setNotifs] = useState([]);
   // Anti-spam: simpan timestamp first load, hanya notify event setelah ini
   const [bootTime] = useState(() => Date.now());
+  // Track event yang sudah ditampilkan agar tidak duplikat
+  const [seenIds] = useState(() => new Set());
 
   function pushNotif(notif) {
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -4347,9 +4349,11 @@ function useNotifications(user, store) {
         if (createdMs < bootTime) return; // skip old
         if (t.jenjang !== user.jenjang) return;
         if (t.status !== "aktif") return;
+        const eventKey = `tugas_${id}`;
+        if (seenIds.has(eventKey)) return; // skip duplikat
+        seenIds.add(eventKey);
         pushNotif({
           type: "tugas",
-          icon: "tugas",
           title: "Tugas baru!",
           message: `${t.judul} · ${t.mapel}`,
         });
@@ -4368,13 +4372,15 @@ function useNotifications(user, store) {
         if (!s.submittedAt) return;
         const subMs = new Date(s.submittedAt).getTime();
         if (subMs < bootTime) return;
+        const eventKey = `sub_${id}`;
+        if (seenIds.has(eventKey)) return;
+        seenIds.add(eventKey);
         const siswaList = store.getAllSiswa();
         const siswa = siswaList.find(x => x.id === s.siswaId);
         const tugas = store.getTugas().find(x => x.id === s.tugasId);
         if (!siswa || !tugas) return;
         pushNotif({
           type: "submission",
-          icon: "check",
           title: "Submission baru",
           message: `${siswa.nama} kumpul ${tugas.judul} · ${s.nilai}/100`,
         });
@@ -4391,18 +4397,19 @@ function useNotifications(user, store) {
       const data = snap.val() || {};
       Object.entries(data).forEach(([tid, thread]) => {
         if (!tid.includes(user.id)) return;
-        Object.values(thread).forEach(msg => {
+        Object.entries(thread).forEach(([msgId, msg]) => {
           if (msg.ts < bootTime) return;
-          if (msg.fromId === user.id) return; // pesan dari diri sendiri
+          if (msg.fromId === user.id) return;
           if (msg.toId !== user.id) return;
-          // Cari pengirim
+          const eventKey = `msg_${tid}_${msgId}`;
+          if (seenIds.has(eventKey)) return;
+          seenIds.add(eventKey);
           const siswaList = store.getAllSiswa();
           const guru = store.fbGuru;
           const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
           const senderName = sender?.namaDisplay || sender?.nama || msg.fromId;
           pushNotif({
             type: "pesan",
-            icon: "msg",
             title: `Pesan dari ${senderName}`,
             message: msg.text.length > 60 ? msg.text.slice(0, 60) + "..." : msg.text,
           });
@@ -4420,17 +4427,17 @@ function useNotifications(user, store) {
     const unsub = onValue(badgesRef, snap => {
       if (initialLoad) { initialLoad = false; return; }
       const data = snap.val() || {};
-      // Notif badge terbaru
-      const latestBadge = Object.keys(data).pop();
-      if (latestBadge) {
-        const b = ALL_BADGES?.find(x => x.id === latestBadge) || { nama: latestBadge, emoji: "🏅" };
+      Object.keys(data).forEach(bid => {
+        const eventKey = `badge_${bid}`;
+        if (seenIds.has(eventKey)) return;
+        seenIds.add(eventKey);
+        const b = ALL_BADGES?.find(x => x.id === bid) || { nama: bid, emoji: "🏅" };
         pushNotif({
           type: "badge",
-          icon: "badge",
           title: "Badge baru!",
           message: `${b.emoji} ${b.nama}`,
         });
-      }
+      });
     });
     return () => unsub();
   }, [user?.uid, user?.role]);
