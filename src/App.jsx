@@ -4320,7 +4320,7 @@ function BottomNav({ user, route, navigate, store }) {
 
 // ─── APP ───
 // ─── NOTIFICATIONS HOOK ───
-function useNotifications(user, store) {
+function useNotifications(user, store, route) {
   const [notifs, setNotifs] = useState([]);
   // Anti-spam: simpan timestamp first load, hanya notify event setelah ini
   const [bootTime] = useState(() => Date.now());
@@ -4337,7 +4337,7 @@ function useNotifications(user, store) {
     setNotifs(n => n.filter(x => x.id !== id));
   }
 
-  // Listen tugas baru (untuk siswa)
+  // Listen tugas baru (untuk siswa) — skip kalau lagi di halaman tugas
   useEffect(() => {
     if (!user || user.role !== "siswa") return;
     const tugasRef = ref(db, "tugas");
@@ -4346,12 +4346,14 @@ function useNotifications(user, store) {
       Object.entries(data).forEach(([id, t]) => {
         if (!t.createdAt) return;
         const createdMs = new Date(t.createdAt).getTime();
-        if (createdMs < bootTime) return; // skip old
+        if (createdMs < bootTime) return;
         if (t.jenjang !== user.jenjang) return;
         if (t.status !== "aktif") return;
         const eventKey = `tugas_${id}`;
-        if (seenIds.has(eventKey)) return; // skip duplikat
+        if (seenIds.has(eventKey)) return;
         seenIds.add(eventKey);
+        // Skip notif kalau lagi di halaman tugas
+        if (route === "tugas" || route === "tugas-detail" || route === "kerjakan") return;
         pushNotif({
           type: "tugas",
           title: "Tugas baru!",
@@ -4360,9 +4362,9 @@ function useNotifications(user, store) {
       });
     });
     return () => unsub();
-  }, [user?.uid, user?.role]);
+  }, [user?.uid, user?.role, route]);
 
-  // Listen submission baru (untuk guru)
+  // Listen submission baru (untuk guru) — skip kalau lagi di dashboard
   useEffect(() => {
     if (!user || user.role !== "guru") return;
     const subsRef = ref(db, "submissions");
@@ -4379,6 +4381,8 @@ function useNotifications(user, store) {
         const siswa = siswaList.find(x => x.id === s.siswaId);
         const tugas = store.getTugas().find(x => x.id === s.tugasId);
         if (!siswa || !tugas) return;
+        // Skip notif kalau guru lagi di dashboard atau analisis
+        if (route === "home-guru" || route === "analisis-tugas") return;
         pushNotif({
           type: "submission",
           title: "Submission baru",
@@ -4387,9 +4391,9 @@ function useNotifications(user, store) {
       });
     });
     return () => unsub();
-  }, [user?.uid, user?.role]);
+  }, [user?.uid, user?.role, route]);
 
-  // Listen pesan baru
+  // Listen pesan baru — skip kalau lagi di halaman chat
   useEffect(() => {
     if (!user) return;
     const msgsRef = ref(db, "messages");
@@ -4404,6 +4408,8 @@ function useNotifications(user, store) {
           const eventKey = `msg_${tid}_${msgId}`;
           if (seenIds.has(eventKey)) return;
           seenIds.add(eventKey);
+          // Skip notif kalau lagi di halaman pesan
+          if (route === "chat") return;
           const siswaList = store.getAllSiswa();
           const guru = store.fbGuru;
           const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
@@ -4417,7 +4423,7 @@ function useNotifications(user, store) {
       });
     });
     return () => unsub();
-  }, [user?.uid]);
+  }, [user?.uid, route]);
 
   // Listen badge baru (untuk siswa)
   useEffect(() => {
@@ -4482,7 +4488,7 @@ export default function App() {
   const [route, setRoute] = useState("home");
   const [params, setParams] = useState({});
   const store = useStore();
-  const { notifs, dismissNotif } = useNotifications(user, store);
+  const { notifs, dismissNotif } = useNotifications(user, store, route);
   function navigate(r, p = {}) { setRoute(r); setParams(p); window.scrollTo(0, 0); }
 
   // Firebase Auth — session persist otomatis
