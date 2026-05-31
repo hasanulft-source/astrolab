@@ -544,6 +544,29 @@ const LEVELS = [
 function getLevel(poin) {
   return LEVELS.find(l => poin >= l.min && poin <= l.max) || LEVELS[0];
 }
+
+// ─── LEVEL BADGE (compact pill untuk leaderboard, chat, dll) ───
+function LevelBadge({ poin = 0, size = "sm", showName = true }) {
+  const lv = getLevel(poin);
+  const sizes = {
+    xs: { padX: 5, padY: 1, fs: 9, gap: 3, emojiSize: 10 },
+    sm: { padX: 6, padY: 2, fs: 10, gap: 4, emojiSize: 11 },
+    md: { padX: 8, padY: 3, fs: 11, gap: 5, emojiSize: 13 },
+  };
+  const s = sizes[size] || sizes.sm;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: s.gap,
+      padding: `${s.padY}px ${s.padX}px`,
+      background: lv.bg, color: lv.color,
+      borderRadius: 99, fontSize: s.fs, fontWeight: 700,
+      lineHeight: 1, whiteSpace: "nowrap",
+    }}>
+      <span style={{ fontSize: s.emojiSize }}>{lv.emoji}</span>
+      {showName && lv.name}
+    </span>
+  );
+}
 function getLevelProgress(poin) {
   const lv = getLevel(poin);
   if (lv.id === LEVELS.length) return { pct: 100, current: poin, needed: 0, next: null };
@@ -1377,7 +1400,7 @@ function DashboardSiswa({ user, store, navigate }) {
       <div className="sh"><h2>Top 3 Kelas {user.jenjang}</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("leaderboard")}>Semua <I n="chevR" s={12} /></button></div>
       <Card pad="none" style={{ overflow: "hidden" }}>
         {lb.length === 0 ? <div className="empty">Belum ada ranking. Kerjakan tugas dulu!</div> :
-          lb.slice(0, 3).map(s => <div key={s.id} className="lb-row" style={{ gridTemplateColumns: "28px 34px 1fr auto" }}><div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : "top3"}`}>{s.rank}</div><UserAvatar userId={s.id} name={s.nama} size="sm" store={store} /><div><div className="lb-name">{s.nama}{s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</div><div className="lb-meta">{s.kelas}</div></div><div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div></div>)}
+          lb.slice(0, 3).map(s => <div key={s.id} className="lb-row" style={{ gridTemplateColumns: "28px 34px 1fr auto" }}><div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : "top3"}`}>{s.rank}</div><UserAvatar userId={s.id} name={s.nama} size="sm" store={store} /><div><div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span>{s.nama}{s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span><LevelBadge poin={s.poin || 0} size="xs" showName={false} /></div><div className="lb-meta">{s.kelas}</div></div><div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div></div>)}
       </Card>
     </div>
   </>;
@@ -1509,7 +1532,10 @@ function LeaderboardScreen({ user, store }) {
                 <div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : s.rank === 3 ? "top3" : ""}`}>{s.rank}</div>
                 <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
                 <div style={{ minWidth: 0 }}>
-                  <div className="lb-name">{s.nama}{!isGuru && s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</div>
+                  <div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span>{s.nama}{!isGuru && s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span>
+                    <LevelBadge poin={s.poin || 0} size="xs" showName={false} />
+                  </div>
                   <div className="lb-meta">
                     {s.kelas}
                     {(s.streak || 0) >= 3 && <span className="streak-pill" style={{ marginLeft: 4 }}><FlameAnimated size={14} streak={s.streak} /> {s.streak}x</span>}
@@ -1523,7 +1549,7 @@ function LeaderboardScreen({ user, store }) {
               <div className="lb-row me">
                 <div className="lb-rank">{myRow.rank}</div>
                 <UserAvatar userId={myRow.id} name={myRow.nama} size="md" store={store} />
-                <div style={{ minWidth: 0 }}><div className="lb-name">{myRow.nama}<span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span></div><div className="lb-meta">{myRow.kelas}</div></div>
+                <div style={{ minWidth: 0 }}><div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span>{myRow.nama}<span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span></span><LevelBadge poin={myRow.poin || 0} size="xs" showName={false} /></div><div className="lb-meta">{myRow.kelas}</div></div>
                 <div className="lb-pts">{myRow.poin.toLocaleString("id-ID")}</div>
               </div></>
             )}
@@ -1879,6 +1905,15 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [savedAt, setSavedAt] = useState(null); // timestamp untuk auto-save indicator
+  const [savedTick, setSavedTick] = useState(0); // force re-render setelah save
+
+  // Auto-fade save indicator setelah 2.5s
+  useEffect(() => {
+    if (!savedAt) return;
+    const t = setTimeout(() => setSavedTick(x => x + 1), 2500);
+    return () => clearTimeout(t);
+  }, [savedAt]);
 
   if (!t || !t.soal?.length) return <div className="empty">Soal tidak tersedia.</div>;
   const soalList = shuffledSoal.length ? shuffledSoal : t.soal.map((s, i) => ({ ...s, _origIdx: i }));
@@ -1889,14 +1924,14 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     if (submitted) return;
     const next = { ...answers, [idx]: val };
     setAnswers(next);
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ answers: next, idx })); } catch {}
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ answers: next, idx })); setSavedAt(Date.now()); } catch {}
   }
   function toggleMulti(val) {
     if (submitted) return;
     const cur = answers[idx] || [];
     const next = { ...answers, [idx]: cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val] };
     setAnswers(next);
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ answers: next, idx })); } catch {}
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ answers: next, idx })); setSavedAt(Date.now()); } catch {}
   }
   function goTo(i) {
     setIdx(i);
@@ -2031,9 +2066,15 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
         <div style={{ fontSize: 11, color: "var(--ink-3)" }}>Soal {idx + 1} dari {total} · {answered} dijawab</div>
       </div>
       {/* Auto-save indicator */}
-      <div style={{ fontSize: 10, color: "var(--ink-4)", display: "flex", alignItems: "center", gap: 3 }}>
-        <I n="check" s={10} /> Tersimpan
-      </div>
+      {savedAt && (Date.now() - savedAt < 2500) ? (
+        <div style={{ fontSize: 10, color: "var(--good)", display: "flex", alignItems: "center", gap: 3, fontWeight: 600 }}>
+          <I n="check" s={10} /> Tersimpan
+        </div>
+      ) : (
+        <div style={{ fontSize: 10, color: "var(--ink-4)", display: "flex", alignItems: "center", gap: 3 }}>
+          <I n="check" s={10} /> Auto-save
+        </div>
+      )}
       <div style={{ fontSize: 12, fontFamily: "var(--mono)", fontWeight: 600, color: "var(--accent)" }}>{pct}%</div>
     </div>
 
@@ -3808,7 +3849,10 @@ function ChatThread({ user, contact, store, onBack }) {
         <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
         <UserAvatar userId={contact.id} name={contact.nama} size="md" store={store} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contact.nama}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contact.nama}</span>
+            {contact.role !== "guru" && <LevelBadge poin={(store.getStats(contact.id).poin) || 0} size="xs" />}
+          </div>
           <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{contact.role === "guru" ? "Guru · IPA & Informatika" : `Kelas ${contact.jenjang}`}</div>
         </div>
       </div>
@@ -3917,9 +3961,10 @@ function ChatScreen({ user, store, params = {} }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-            <div style={{ fontSize: 14, fontWeight: unread > 0 ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {c.nama}
-              {c.role === "guru" && <span style={{ marginLeft: 6, fontSize: 10, background: "var(--accent-soft)", color: "var(--accent-2)", borderRadius: 99, padding: "1px 6px", fontWeight: 600 }}>Guru</span>}
+            <div style={{ fontSize: 14, fontWeight: unread > 0 ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nama}</span>
+              {c.role === "guru" && <span style={{ fontSize: 10, background: "var(--accent-soft)", color: "var(--accent-2)", borderRadius: 99, padding: "1px 6px", fontWeight: 600 }}>Guru</span>}
+              {c.role !== "guru" && <LevelBadge poin={(store.getStats(c.id).poin) || 0} size="xs" showName={false} />}
             </div>
             {last && <div style={{ fontSize: 11, color: "var(--ink-4)", flexShrink: 0 }}>{fmtTime(last.ts)}</div>}
           </div>
@@ -5095,6 +5140,7 @@ function ProfilGuru({ user, store, navigate }) {
   const photo = store.getPhoto(user.uid || user.id); // reaktif dari Firebase
   const [editing, setEditing] = useState(false);
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [showResetSemester, setShowResetSemester] = useState(false);
 
   // Load profil dari localStorage
   const defaultProfil = {
@@ -5232,8 +5278,163 @@ function ProfilGuru({ user, store, navigate }) {
           </div>
         </div>
       </Card>
+
+      {/* Zona Berbahaya */}
+      <Card pad="lg" style={{ marginTop: 16, border: "1.5px solid #fca5a5", background: "var(--bad-bg)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "#fff", color: "var(--bad)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+            <I n="alert" s={18} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--bad)", marginBottom: 4 }}>Zona Berbahaya</div>
+            <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5, marginBottom: 12 }}>
+              Reset semester akan menghapus <b>semua submission, statistik, dan badge siswa</b>. Akun siswa, tugas, dan bank soal <b>tetap aman</b>. Aksi ini tidak bisa di-undo.
+            </div>
+            <button className="btn btn-danger btn-sm" onClick={() => setShowResetSemester(true)}>
+              <I n="trash" s={13} /> Reset Semester
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      {showResetSemester && <ResetSemesterModal store={store} onClose={() => setShowResetSemester(false)} />}
     </div>
   </>;
+}
+
+// ─── RESET SEMESTER MODAL ───
+function ResetSemesterModal({ store, onClose }) {
+  const [confirmText, setConfirmText] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [backupFirst, setBackupFirst] = useState(true);
+
+  const subs = store.getSubs();
+  const siswa = store.getAllSiswa();
+  const totalSubs = subs.length;
+  const totalSiswa = siswa.length;
+
+  async function handleReset() {
+    if (confirmText !== "RESET") {
+      setError("Ketik RESET untuk konfirmasi");
+      return;
+    }
+    setProcessing(true);
+    setError("");
+
+    try {
+      // 1. Backup dulu kalau diminta
+      if (backupFirst) {
+        const backupData = {
+          tanggal: new Date().toISOString(),
+          submissions: subs,
+          stats: siswa.map(s => ({ id: s.id, nama: s.nama, ...store.getStats(s.id) })),
+          badges: siswa.reduce((acc, s) => { acc[s.id] = store.getBadges(s.id); return acc; }, {}),
+        };
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `astrolab-backup-semester-${new Date().toISOString().split("T")[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // 2. Hapus semua submissions
+      await remove(ref(db, "submissions"));
+
+      // 3. Reset semua stats (kosongkan, tidak hapus node — tetap empty object per siswa)
+      await remove(ref(db, "stats"));
+
+      // 4. Hapus semua badges
+      await remove(ref(db, "badges"));
+
+      // 5. Hapus semua broadcasts expired/lama (opsional, biar bersih)
+      await remove(ref(db, "broadcasts"));
+
+      setResult({
+        submissions: totalSubs,
+        siswaReset: totalSiswa,
+      });
+    } catch (e) {
+      setError(e?.message?.includes("PERMISSION_DENIED")
+        ? "Akses ditolak. Pastikan login sebagai guru."
+        : "Gagal reset: " + (e?.message || "error tidak diketahui"));
+      setProcessing(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal" onClick={e => e.stopPropagation()}>
+          <div style={{ textAlign: "center", padding: "12px 0" }}>
+            <div style={{ width: 60, height: 60, borderRadius: "50%", background: "var(--good-bg)", color: "var(--good)", display: "grid", placeItems: "center", margin: "0 auto 12px" }}>
+              <I n="check" s={30} />
+            </div>
+            <h3 style={{ margin: "0 0 8px" }}>Semester Berhasil Direset</h3>
+            <p style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
+              <b>{result.submissions}</b> submission dihapus<br />
+              <b>{result.siswaReset}</b> siswa di-reset statistiknya<br />
+              {backupFirst && <>Backup tersimpan di Downloads</>}
+            </p>
+            <button className="btn btn-primary btn-sm" style={{ marginTop: 16 }} onClick={onClose}>Tutup</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <h3>Reset Semester</h3>
+        <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 14 }}>Aksi ini akan menghapus:</p>
+
+        <div style={{ background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 8, padding: "12px 14px", marginBottom: 14 }}>
+          <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.8 }}>
+            <div>❌ <b>{totalSubs} submission</b> (jawaban siswa)</div>
+            <div>❌ Statistik <b>{totalSiswa} siswa</b> (poin, level, streak)</div>
+            <div>❌ Semua badge yang sudah didapat</div>
+            <div>❌ Semua broadcast/pengumuman</div>
+          </div>
+        </div>
+
+        <div style={{ background: "var(--good-bg)", border: "1px solid #86efac", borderRadius: 8, padding: "12px 14px", marginBottom: 14 }}>
+          <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.8 }}>
+            <div>✅ Akun siswa <b>tetap ada</b></div>
+            <div>✅ Tugas yang sudah dibuat <b>tetap ada</b></div>
+            <div>✅ Bank Soal <b>tetap ada</b></div>
+            <div>✅ Foto profil <b>tetap ada</b></div>
+          </div>
+        </div>
+
+        <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, cursor: "pointer", fontSize: 13 }}>
+          <input type="checkbox" checked={backupFirst} onChange={e => setBackupFirst(e.target.checked)} />
+          <span><b>Download backup</b> sebelum reset (rekomendasi)</span>
+        </label>
+
+        <div className="fg">
+          <label className="lbl" style={{ fontSize: 12 }}>Ketik <b>RESET</b> untuk konfirmasi:</label>
+          <input className="inp" value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="Ketik RESET..." style={{ fontFamily: "var(--mono)", letterSpacing: 2 }} autoFocus />
+        </div>
+
+        {error && (
+          <div style={{ marginTop: 10, padding: "8px 12px", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 6, fontSize: 12, color: "var(--bad)" }}>
+            ⚠ {error}
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: 18 }}>
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={processing}>Batal</button>
+          <button className="btn btn-danger btn-sm" onClick={handleReset} disabled={processing || confirmText !== "RESET"}>
+            {processing ? "Mereset..." : <><I n="trash" s={13} /> Reset Sekarang</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── MANAJEMEN SISWA (Guru) ───
