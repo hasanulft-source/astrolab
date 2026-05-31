@@ -535,7 +535,7 @@ function uid() { return Math.random().toString(36).slice(2, 10); }
 
 // ─── XP / LEVEL / BADGE SYSTEM ───
 const LEVELS = [
-  { id: 1, name: "Nebula",    min: 0,    max: 99,   emoji: "🌑", color: "#6b7280", bg: "#f3f4f6", desc: "Baru memulai perjalanan" },
+  { id: 1, name: "Nebula",    min: 0,    max: 99,   emoji: "✨", color: "#7c3aed", bg: "#f3e8ff", desc: "Baru memulai perjalanan" },
   { id: 2, name: "Bintang",   min: 100,  max: 299,  emoji: "⭐", color: "#d97706", bg: "#fffbeb", desc: "Mulai bersinar" },
   { id: 3, name: "Planet",    min: 300,  max: 599,  emoji: "🪐", color: "#0d6b7a", bg: "#eaf4f3", desc: "Semakin solid" },
   { id: 4, name: "Astronot",  min: 600,  max: 999,  emoji: "🚀", color: "#1d4ed8", bg: "#eff6ff", desc: "Sudah terbang tinggi" },
@@ -830,6 +830,18 @@ function genSiswaId(nama, usedIds = new Set()) {
   let counter = 2;
   while (usedIds.has(finalId)) { finalId = `${baseId}${counter}`; counter++; }
   return finalId;
+}
+
+// Get meaningful first name (skip "M.", "Muh.", "Abd.", "Siti", dll)
+function getFirstName(nama) {
+  if (!nama) return "";
+  const words = nama.trim().split(/\s+/);
+  // Cari kata pertama yang meaningful (skip prefix religius/initials)
+  const meaningful = words.find(w => {
+    const clean = w.toLowerCase().replace(/\./g, "");
+    return clean.length > 1 && !SKIP_PREFIXES.has(clean);
+  });
+  return meaningful || words[0] || "";
 }
 
 function genPassword(id) {
@@ -1497,7 +1509,7 @@ function LeaderboardScreen({ user, store }) {
                     ? <CelebrationAvatar userId={s.id} name={s.nama} size="lg" store={store} />
                     : <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
                   }
-                  <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingInline: 4 }}>{s.nama.split(" ")[0]}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingInline: 4 }}>{getFirstName(s.nama)}</div>
                   <div className="stat-num" style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>{s.poin.toLocaleString("id-ID")} pt</div>
                   <div className={isFirst ? "podium-1" : ""} style={{
                     height: podH,
@@ -1570,7 +1582,7 @@ function LeaderboardScreen({ user, store }) {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".08em", textTransform: "uppercase" }}>{item.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.siswa?.nama?.split(" ")[0] || "—"}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.siswa?.nama ? getFirstName(item.siswa.nama) : "—"}</div>
                     <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{item.sub}</div>
                   </div>
                   {item.siswa && <UserAvatar userId={item.siswa.id} name={item.siswa.nama} size="sm" store={store} />}
@@ -3873,7 +3885,7 @@ function ChatThread({ user, contact, store, onBack }) {
           const showName = !isMe && (!prevMsg || prevMsg.fromId !== m.fromId);
           return (
             <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
-              {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || sender?.nama?.split(" ")[0]}</div>}
+              {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
               <div className={`msg ${isMe ? "msg-me" : "msg-them"}`}>
                 {m.text}
                 <div className="msg-time">{fmtTime(m.ts)}</div>
@@ -6102,7 +6114,7 @@ export default function App() {
             // Ensure namaDisplay is properly capitalized
             const namaDisplay = profile.namaDisplay
               ? profile.namaDisplay.charAt(0).toUpperCase() + profile.namaDisplay.slice(1)
-              : profile.nama?.split(" ")[0] || profile.id;
+              : (getFirstName(profile.nama || "") || profile.id);
             // Auto-fix di Firebase kalau masih lowercase
             if (namaDisplay !== profile.namaDisplay) {
               update(ref(db, `users/${firebaseUser.uid}`), { namaDisplay });
