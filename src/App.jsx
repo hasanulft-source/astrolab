@@ -727,6 +727,32 @@ function useStore() {
     await set(newRef, { ...rest, judul: `${t.judul} (Salinan)`, createdAt: new Date().toISOString(), status: "aktif", scheduledAt: null });
   };
 
+  // BANK SOAL
+  const [bankSoal, setBankSoal] = useState([]);
+  useEffect(() => {
+    const bsRef = ref(db, "banksoal");
+    const unsub = onValue(bsRef, snap => {
+      const data = snap.val() || {};
+      setBankSoal(Object.entries(data).map(([id, s]) => ({ ...s, id })));
+    }, () => setBankSoal([]));
+    return () => unsub();
+  }, []);
+  const getBankSoal = () => bankSoal;
+  const addBankSoal = async (s) => {
+    const newRef = push(ref(db, "banksoal"));
+    await set(newRef, { ...s, createdAt: new Date().toISOString() });
+  };
+  const updateBankSoal = async (id, patch) => { await update(ref(db, `banksoal/${id}`), patch); };
+  const deleteBankSoal = async (id) => { await remove(ref(db, `banksoal/${id}`)); };
+  const addBankSoalBulk = async (soalList) => {
+    const updates = {};
+    soalList.forEach(s => {
+      const newRef = push(ref(db, "banksoal"));
+      updates[newRef.key] = { ...s, createdAt: new Date().toISOString() };
+    });
+    await update(ref(db, "banksoal"), updates);
+  };
+
   // SUBMISSIONS
   const getSubs = () => subs;
   const addSub = async (s) => {
@@ -1045,7 +1071,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -2117,8 +2143,30 @@ function BuatTugas({ store, navigate, editId = null }) {
   const [soal, setSoal] = useState(existing?.soal || []);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState("");
+  const [showBank, setShowBank] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const totalPoin = soal.reduce((s, q) => s + (q.poin || 0), 0);
+
+  function handleBankSelect(picked) {
+    // Convert bank soal format ke tugas soal format
+    const converted = picked.map(p => {
+      const base = { pertanyaan: p.pertanyaan, type: p.type === "kompleks" ? "komplex" : p.type === "pasangkan" ? "pasang" : p.type, poin: 10, pembahasan: p.pembahasan || "" };
+      if (p.type === "pg") return { ...base, opsi: p.opsi, jawaban: p.jawaban };
+      if (p.type === "tf") return { ...base, jawaban: p.jawaban };
+      if (p.type === "kompleks") {
+        const jawaban = (p.benarOpsi || []).map((b, i) => b ? i : null).filter(x => x !== null);
+        return { ...base, opsi: p.opsi, jawaban };
+      }
+      if (p.type === "pasangkan") {
+        const kiri = (p.pasangan || []).map(x => x[0]);
+        const kanan = (p.pasangan || []).map(x => x[1]);
+        return { ...base, kiri, kanan };
+      }
+      return base;
+    });
+    setSoal([...soal, ...converted]);
+    setShowBank(false);
+  }
 
   function submit() {
     if (!form.judul.trim()) { setErr("Judul tugas wajib diisi."); return; }
@@ -2249,7 +2297,12 @@ function BuatTugas({ store, navigate, editId = null }) {
             <button className="btn btn-ghost btn-sm" onClick={downloadTemplateSoal} title="Download template soal Excel">
               <I n="chartBar" s={14} /> Download Template
             </button>
+            <button className="btn btn-outline btn-sm" onClick={() => setShowBank(true)} title="Pilih dari Bank Soal">
+              <I n="book" s={14} /> Bank Soal
+            </button>
           </div>
+
+          {showBank && <PilihDariBankSoalModal store={store} defaultMapel={form.mapel} defaultJenjang={form.jenjang} onClose={() => setShowBank(false)} onSelect={handleBankSelect} />}
 
           <QuestionBuilder soal={soal} setSoal={setSoal} />
 
@@ -3182,6 +3235,403 @@ function ChatScreen({ user, store, params = {} }) {
 
 // ─── KELAS VIEW ───
 // ─── EXPORT LAPORAN PRINT-FRIENDLY ───
+// ─── BANK SOAL PAGE ───
+function BankSoal({ store, navigate }) {
+  const [filterMapel, setFilterMapel] = useState("semua");
+  const [filterJenjang, setFilterJenjang] = useState("semua");
+  const [filterLevel, setFilterLevel] = useState("semua");
+  const [filterTag, setFilterTag] = useState("");
+  const [search, setSearch] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [toast, setToast] = useState("");
+
+  const soalList = store.getBankSoal();
+
+  // Filter & search
+  const filtered = soalList.filter(s => {
+    if (filterMapel !== "semua" && s.mapel !== filterMapel) return false;
+    if (filterJenjang !== "semua" && s.jenjang !== filterJenjang) return false;
+    if (filterLevel !== "semua" && s.level !== filterLevel) return false;
+    if (filterTag && !(s.tags || []).some(t => t.toLowerCase().includes(filterTag.toLowerCase()))) return false;
+    if (search && !s.pertanyaan.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  // Collect all tags
+  const allTags = [...new Set(soalList.flatMap(s => s.tags || []))];
+
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    await store.deleteBankSoal(deleteTarget.id);
+    setDeleteTarget(null);
+    showToast("Soal dihapus.");
+  }
+
+  return (
+    <div className="page">
+      <div className="dt">
+        <div>
+          <h1>Bank Soal</h1>
+          <p>Kelola koleksi soal untuk dipakai ulang di tugas</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => { setEditTarget(null); setShowForm(true); }}>
+          <I n="plus" s={14} /> Tambah Soal
+        </button>
+      </div>
+
+      <div className="topbar">
+        <div style={{ width: 36 }} />
+        <div className="topbar-title">Bank Soal</div>
+        <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setShowForm(true); }}><I n="plus" s={13} /></button>
+      </div>
+
+      {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, boxShadow: "var(--shadow)" }}>{toast}</div>}
+      {deleteTarget && <Confirm title="Hapus soal?" desc={deleteTarget.pertanyaan.slice(0, 80) + "..."} onOk={handleDelete} onCancel={() => setDeleteTarget(null)} />}
+      {showForm && <BankSoalForm store={store} editTarget={editTarget} onClose={() => { setShowForm(false); setEditTarget(null); }} onSuccess={() => { setShowForm(false); setEditTarget(null); showToast(editTarget ? "Soal diupdate." : "Soal ditambahkan."); }} />}
+
+      {/* Filter bar */}
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input className="inp" placeholder="🔍 Cari pertanyaan..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <select className="inp" style={{ flex: "1 1 110px", maxWidth: 180 }} value={filterMapel} onChange={e => setFilterMapel(e.target.value)}>
+              <option value="semua">Semua Mapel</option>
+              <option value="IPA">IPA</option>
+              <option value="Informatika">Informatika</option>
+            </select>
+            <select className="inp" style={{ flex: "1 1 110px", maxWidth: 180 }} value={filterJenjang} onChange={e => setFilterJenjang(e.target.value)}>
+              <option value="semua">Semua Kelas</option>
+              <option value="VII">Kelas VII</option>
+              <option value="VIII">Kelas VIII</option>
+            </select>
+            <select className="inp" style={{ flex: "1 1 110px", maxWidth: 180 }} value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
+              <option value="semua">Semua Level</option>
+              <option value="mudah">Mudah</option>
+              <option value="sedang">Sedang</option>
+              <option value="sulit">Sulit</option>
+            </select>
+            <input className="inp" style={{ flex: "1 1 110px", maxWidth: 180 }} placeholder="Filter tag..." value={filterTag} onChange={e => setFilterTag(e.target.value)} />
+          </div>
+          {allTags.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {allTags.slice(0, 15).map(t => (
+                <button key={t} onClick={() => setFilterTag(t)} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 99, border: "1px solid var(--line)", background: filterTag === t ? "var(--accent-tint)" : "var(--surface)", color: filterTag === t ? "var(--accent-2)" : "var(--ink-2)", fontWeight: 600, cursor: "pointer" }}>{t}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 8 }}>
+        {filtered.length} dari {soalList.length} soal
+      </div>
+
+      {filtered.length === 0
+        ? <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada soal</h3><p>Tambah soal pertama atau ubah filter.</p></div></Card>
+        : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {filtered.map(s => (
+              <Card key={s.id} pad="sm">
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span className="chip chip-info" style={{ fontSize: 10 }}>{s.mapel}</span>
+                      <span className="chip" style={{ fontSize: 10, background: "var(--accent-tint)", color: "var(--accent-2)" }}>Kelas {s.jenjang}</span>
+                      <span className="chip" style={{ fontSize: 10, background: s.level === "mudah" ? "#d1fae5" : s.level === "sedang" ? "#fef3c7" : "#fee2e2", color: s.level === "mudah" ? "#065f46" : s.level === "sedang" ? "#713f12" : "#991b1b" }}>{s.level}</span>
+                      <span className="chip" style={{ fontSize: 10, background: "var(--surface-alt)" }}>{s.type === "pg" ? "Pilihan Ganda" : s.type === "tf" ? "Benar/Salah" : s.type === "kompleks" ? "PG Kompleks" : "Pasangkan"}</span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{s.pertanyaan}</div>
+                    {(s.tags || []).length > 0 && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                        {s.tags.map(t => <span key={t} style={{ fontSize: 10, color: "var(--ink-3)" }}>#{t}</span>)}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                    <button className="btn btn-soft btn-sm" style={{ fontSize: 11 }} onClick={() => { setEditTarget(s); setShowForm(true); }}><I n="edit" s={12} /></button>
+                    <button className="btn btn-danger btn-sm" style={{ fontSize: 11 }} onClick={() => setDeleteTarget(s)}><I n="trash" s={12} /></button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+      }
+    </div>
+  );
+}
+
+// ─── BANK SOAL FORM ───
+function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
+  const init = editTarget || {
+    mapel: "IPA", jenjang: "VII", level: "sedang", type: "pg",
+    pertanyaan: "", opsi: ["", "", "", ""], jawaban: 0,
+    benarOpsi: [false, false, false, false], // untuk kompleks
+    pasangan: [["", ""], ["", ""], ["", ""], ["", ""]], // untuk pasangkan
+    pembahasan: "", tags: [],
+  };
+  const [form, setForm] = useState(init);
+  const [tagInput, setTagInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function addTag() {
+    if (!tagInput.trim()) return;
+    const newTag = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
+    if ((form.tags || []).includes(newTag)) return;
+    set("tags", [...(form.tags || []), newTag]);
+    setTagInput("");
+  }
+
+  function removeTag(t) { set("tags", (form.tags || []).filter(x => x !== t)); }
+
+  async function submit() {
+    if (!form.pertanyaan.trim()) return;
+    setSaving(true);
+    try {
+      const data = {
+        mapel: form.mapel, jenjang: form.jenjang, level: form.level, type: form.type,
+        pertanyaan: form.pertanyaan.trim(),
+        tags: form.tags || [],
+        pembahasan: form.pembahasan.trim(),
+      };
+      if (form.type === "pg") { data.opsi = form.opsi; data.jawaban = form.jawaban; }
+      else if (form.type === "tf") { data.jawaban = form.jawaban; }
+      else if (form.type === "kompleks") { data.opsi = form.opsi; data.benarOpsi = form.benarOpsi; }
+      else if (form.type === "pasangkan") { data.pasangan = form.pasangan; }
+      if (editTarget) await store.updateBankSoal(editTarget.id, data);
+      else await store.addBankSoal(data);
+      onSuccess();
+    } catch (e) { console.warn(e); setSaving(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 520, maxHeight: "90vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+        <h3>{editTarget ? "Edit Soal" : "Tambah Soal Baru"}</h3>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div className="fg" style={{ flex: 1 }}>
+              <label className="lbl">Mapel</label>
+              <select className="inp" value={form.mapel} onChange={e => set("mapel", e.target.value)}>
+                <option value="IPA">IPA</option>
+                <option value="Informatika">Informatika</option>
+              </select>
+            </div>
+            <div className="fg" style={{ flex: 1 }}>
+              <label className="lbl">Kelas</label>
+              <select className="inp" value={form.jenjang} onChange={e => set("jenjang", e.target.value)}>
+                <option value="VII">VII</option>
+                <option value="VIII">VIII</option>
+              </select>
+            </div>
+            <div className="fg" style={{ flex: 1 }}>
+              <label className="lbl">Level</label>
+              <select className="inp" value={form.level} onChange={e => set("level", e.target.value)}>
+                <option value="mudah">Mudah</option>
+                <option value="sedang">Sedang</option>
+                <option value="sulit">Sulit</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Tipe Soal</label>
+            <select className="inp" value={form.type} onChange={e => set("type", e.target.value)}>
+              <option value="pg">Pilihan Ganda</option>
+              <option value="tf">Benar / Salah</option>
+              <option value="kompleks">PG Kompleks (multi jawab)</option>
+              <option value="pasangkan">Pasangkan</option>
+            </select>
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Pertanyaan</label>
+            <textarea className="inp" rows={3} value={form.pertanyaan} onChange={e => set("pertanyaan", e.target.value)} placeholder="Tulis pertanyaan..." />
+          </div>
+
+          {/* PG */}
+          {form.type === "pg" && (
+            <div className="fg">
+              <label className="lbl">Opsi (centang yang benar)</label>
+              {form.opsi.map((opt, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                  <input type="radio" checked={form.jawaban === i} onChange={() => set("jawaban", i)} />
+                  <input className="inp" value={opt} onChange={e => set("opsi", form.opsi.map((o, j) => j === i ? e.target.value : o))} placeholder={`Opsi ${String.fromCharCode(65 + i)}`} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* TF */}
+          {form.type === "tf" && (
+            <div className="fg">
+              <label className="lbl">Jawaban</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" className={`btn btn-sm ${form.jawaban === 1 ? "btn-primary" : "btn-outline"}`} style={{ flex: 1 }} onClick={() => set("jawaban", 1)}>Benar</button>
+                <button type="button" className={`btn btn-sm ${form.jawaban === 0 ? "btn-primary" : "btn-outline"}`} style={{ flex: 1 }} onClick={() => set("jawaban", 0)}>Salah</button>
+              </div>
+            </div>
+          )}
+
+          {/* Kompleks */}
+          {form.type === "kompleks" && (
+            <div className="fg">
+              <label className="lbl">Opsi (centang semua yang benar)</label>
+              {form.opsi.map((opt, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                  <input type="checkbox" checked={form.benarOpsi[i]} onChange={() => set("benarOpsi", form.benarOpsi.map((b, j) => j === i ? !b : b))} />
+                  <input className="inp" value={opt} onChange={e => set("opsi", form.opsi.map((o, j) => j === i ? e.target.value : o))} placeholder={`Opsi ${String.fromCharCode(65 + i)}`} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pasangkan */}
+          {form.type === "pasangkan" && (
+            <div className="fg">
+              <label className="lbl">Pasangan</label>
+              {form.pasangan.map((p, i) => (
+                <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                  <input className="inp" value={p[0]} onChange={e => set("pasangan", form.pasangan.map((x, j) => j === i ? [e.target.value, x[1]] : x))} placeholder="Kiri" />
+                  <span style={{ alignSelf: "center", color: "var(--ink-3)" }}>↔</span>
+                  <input className="inp" value={p[1]} onChange={e => set("pasangan", form.pasangan.map((x, j) => j === i ? [x[0], e.target.value] : x))} placeholder="Kanan" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="fg">
+            <label className="lbl">Pembahasan (opsional)</label>
+            <textarea className="inp" rows={2} value={form.pembahasan} onChange={e => set("pembahasan", e.target.value)} placeholder="Penjelasan jawaban..." />
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Tags (mis: bab-3, UTS, energi)</label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <input className="inp" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addTag())} placeholder="Ketik tag, tekan Enter" />
+              <button type="button" className="btn btn-outline btn-sm" onClick={addTag}>+ Tag</button>
+            </div>
+            {(form.tags || []).length > 0 && (
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {form.tags.map(t => (
+                  <span key={t} style={{ fontSize: 11, padding: "3px 8px", background: "var(--accent-tint)", color: "var(--accent-2)", borderRadius: 99, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    #{t} <button type="button" onClick={() => removeTag(t)} style={{ background: "none", border: "none", color: "var(--accent-2)", cursor: "pointer", padding: 0, fontSize: 12 }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 20 }}>
+          <button className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={submit} disabled={saving || !form.pertanyaan.trim()}>
+            {saving ? "Menyimpan..." : editTarget ? "Update" : "Tambah"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PILIH DARI BANK SOAL MODAL ───
+function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, onSelect }) {
+  const [filterMapel, setFilterMapel] = useState(defaultMapel || "semua");
+  const [filterJenjang, setFilterJenjang] = useState(defaultJenjang || "semua");
+  const [filterLevel, setFilterLevel] = useState("semua");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(new Set());
+
+  const soalList = store.getBankSoal();
+  const filtered = soalList.filter(s => {
+    if (filterMapel !== "semua" && s.mapel !== filterMapel) return false;
+    if (filterJenjang !== "semua" && s.jenjang !== filterJenjang) return false;
+    if (filterLevel !== "semua" && s.level !== filterLevel) return false;
+    if (search && !s.pertanyaan.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  function toggle(id) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelected(next);
+  }
+
+  function selectAll() { setSelected(new Set(filtered.map(s => s.id))); }
+  function clearAll() { setSelected(new Set()); }
+
+  function handleSelect() {
+    const picked = soalList.filter(s => selected.has(s.id));
+    onSelect(picked);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+        <h3>Pilih Soal dari Bank</h3>
+        <p style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 12 }}>Centang soal yang ingin dipakai di tugas ini</p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+          <input className="inp" placeholder="🔍 Cari pertanyaan..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <select className="inp" style={{ flex: 1 }} value={filterMapel} onChange={e => setFilterMapel(e.target.value)}>
+              <option value="semua">Semua Mapel</option>
+              <option value="IPA">IPA</option>
+              <option value="Informatika">Informatika</option>
+            </select>
+            <select className="inp" style={{ flex: 1 }} value={filterJenjang} onChange={e => setFilterJenjang(e.target.value)}>
+              <option value="semua">Semua Kelas</option>
+              <option value="VII">VII</option>
+              <option value="VIII">VIII</option>
+            </select>
+            <select className="inp" style={{ flex: 1 }} value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
+              <option value="semua">Semua Level</option>
+              <option value="mudah">Mudah</option>
+              <option value="sedang">Sedang</option>
+              <option value="sulit">Sulit</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: "var(--ink-3)" }}>
+            <span>{selected.size} dipilih dari {filtered.length} soal</span>
+            <button onClick={selectAll} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Pilih semua</button>
+            {selected.size > 0 && <button onClick={clearAll} style={{ background: "none", border: "none", color: "var(--bad)", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Clear</button>}
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+          {filtered.length === 0
+            ? <div style={{ padding: 20, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>Tidak ada soal yang cocok dengan filter.</div>
+            : filtered.map(s => (
+              <div key={s.id} onClick={() => toggle(s.id)} style={{ padding: "10px 12px", borderBottom: "1px solid var(--line-soft)", cursor: "pointer", background: selected.has(s.id) ? "var(--accent-tint)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} onClick={e => e.stopPropagation()} style={{ marginTop: 2 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, padding: "1px 6px", background: "var(--surface-alt)", color: "var(--ink-2)", borderRadius: 4 }}>{s.type === "pg" ? "PG" : s.type === "tf" ? "TF" : s.type === "kompleks" ? "Kompleks" : "Pasangkan"}</span>
+                    <span style={{ fontSize: 10, padding: "1px 6px", background: s.level === "mudah" ? "#d1fae5" : s.level === "sedang" ? "#fef3c7" : "#fee2e2", color: s.level === "mudah" ? "#065f46" : s.level === "sedang" ? "#713f12" : "#991b1b", borderRadius: 4 }}>{s.level}</span>
+                    <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{s.mapel} · {s.jenjang}</span>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.4 }}>{s.pertanyaan}</div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 14 }}>
+          <button className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSelect} disabled={selected.size === 0}>
+            Tambah {selected.size} Soal ke Tugas
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── LAPORAN HELPER ───
 function generateBarSVG(nilai, max = 100, color = "#0d9488") {
   const w = Math.round((nilai / max) * 120);
@@ -4271,7 +4721,7 @@ function BadgeManager({ store }) {
 
 // ─── NAV ───
 const SNAV = [{ id: "home", l: "Beranda", ic: "home" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "tugas", l: "Tugas", ic: "book" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "profil", l: "Profil", ic: "user" }];
-const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }];
+const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }];
 
 function Sidebar({ user, route, navigate, onLogout, store }) {
   const nav = user.role === "guru" ? GNAV : SNAV;
@@ -4580,6 +5030,7 @@ export default function App() {
       else if (route === "kelas") screen = <KelasView store={store} navigate={navigate} />;
       else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
+      else if (route === "bank-soal") screen = <BankSoal store={store} navigate={navigate} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswa store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
