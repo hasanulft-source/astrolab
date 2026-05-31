@@ -3,7 +3,7 @@
 // UI: Original (Plus Jakarta Sans + teal #0d6b7a)
 // Engine: Firebase Realtime Database + Firebase Authentication
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Component } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
@@ -1929,21 +1929,35 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
 
   if (!t || !t.soal?.length) return <div className="empty">Soal tidak tersedia.</div>;
   const soalList = shuffledSoal.length ? shuffledSoal : t.soal.map((s, i) => ({ ...s, _origIdx: i }));
-  const total = soalList.length, soal = soalList[idx];
+  const total = soalList.length;
+  // Safety: kalau idx out of bound (data corrupt / soal berubah), reset ke 0
+  const safeIdx = (idx >= 0 && idx < total) ? idx : 0;
+  const soal = soalList[safeIdx];
+  if (!soal) return <div className="empty">Data soal tidak valid. <button className="btn btn-primary btn-sm" onClick={() => { try { localStorage.removeItem(SAVE_KEY); } catch {} window.location.reload(); }}>Reset & Reload</button></div>;
 
-  // Auto-save setiap ada perubahan jawaban
+  // Auto-save setiap ada perubahan jawaban — PRESERVE order field
   function answer(val) {
     if (submitted) return;
-    const next = { ...answers, [idx]: val };
+    const next = { ...answers, [safeIdx]: val };
     setAnswers(next);
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ answers: next, idx })); setSavedAt(Date.now()); } catch {}
+    try {
+      const s = localStorage.getItem(SAVE_KEY);
+      const d = s ? JSON.parse(s) : {};
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ ...d, answers: next, idx: safeIdx }));
+      setSavedAt(Date.now());
+    } catch {}
   }
   function toggleMulti(val) {
     if (submitted) return;
-    const cur = answers[idx] || [];
-    const next = { ...answers, [idx]: cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val] };
+    const cur = answers[safeIdx] || [];
+    const next = { ...answers, [safeIdx]: cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val] };
     setAnswers(next);
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ answers: next, idx })); setSavedAt(Date.now()); } catch {}
+    try {
+      const s = localStorage.getItem(SAVE_KEY);
+      const d = s ? JSON.parse(s) : {};
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ ...d, answers: next, idx: safeIdx }));
+      setSavedAt(Date.now());
+    } catch {}
   }
   function goTo(i) {
     setIdx(i);
@@ -2075,7 +2089,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <button className="topbar-back" onClick={() => navigate("tugas-detail", { tugasId })}><I n="chevL" s={18} /></button>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 13, fontWeight: 700 }}>{t.judul}</div>
-        <div style={{ fontSize: 11, color: "var(--ink-3)" }}>Soal {idx + 1} dari {total} · {answered} dijawab</div>
+        <div style={{ fontSize: 11, color: "var(--ink-3)" }}>Soal {safeIdx + 1} dari {total} · {answered} dijawab</div>
       </div>
       {/* Auto-save indicator */}
       {savedAt && (Date.now() - savedAt < 2500) ? (
@@ -2116,25 +2130,25 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <div style={{ fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--mono)", marginBottom: 8 }}>SOAL {idx + 1} · {soal.poin || Math.floor(t.poinMax / total)} POIN</div>
       <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.55, marginBottom: 20 }}>{soal.pertanyaan}</div>
       {soal.gambar && <div style={{ marginBottom: 20, textAlign: "center" }}><img src={soal.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, border: "1px solid var(--line)" }} /></div>}
-      {soal.type === "excel" && <ExcelSandboxPlayer soal={soal} answer={answer} selected={answers[idx]} />}
+      {soal.type === "excel" && <ExcelSandboxPlayer soal={soal} answer={answer} selected={answers[safeIdx]} />}
       {soal.type === "essay" && <div>
         <textarea
           className="inp"
           rows={8}
           style={{ fontSize: 14, lineHeight: 1.5, fontFamily: "inherit" }}
           placeholder="Tulis jawaban kamu di sini..."
-          value={answers[idx] || ""}
+          value={answers[safeIdx] || ""}
           onChange={e => answer(e.target.value)}
         />
         <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6, display: "flex", justifyContent: "space-between" }}>
-          <span>{(answers[idx] || "").length} karakter · {((answers[idx] || "").trim().split(/\s+/).filter(Boolean) || []).length} kata</span>
+          <span>{(answers[safeIdx] || "").length} karakter · {((answers[safeIdx] || "").trim().split(/\s+/).filter(Boolean) || []).length} kata</span>
           <span>📝 Dinilai manual oleh guru</span>
         </div>
       </div>}
-      {soal.type === "pg" && soal.opsi?.map((o, i) => <button key={i} className={`quiz-opt ${answers[idx] === i ? "selected" : ""}`} onClick={() => answer(i)}><div className="quiz-letter">{String.fromCharCode(65 + i)}</div><span style={{ flex: 1 }}>{o}</span></button>)}
-      {soal.type === "tf" && <div style={{ display: "flex", gap: 10 }}>{["Benar", "Salah"].map((o, i) => <button key={i} className={`quiz-opt ${answers[idx] === i ? "selected" : ""}`} style={{ flex: 1 }} onClick={() => answer(i)}><div className="quiz-letter">{i === 0 ? "B" : "S"}</div><span style={{ flex: 1 }}>{o}</span></button>)}</div>}
-      {soal.type === "komplex" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pilih semua jawaban yang benar</div>{soal.opsi?.map((o, i) => { const sel = (answers[idx] || []).includes(i); return <button key={i} className={`quiz-opt ${sel ? "selected" : ""}`} onClick={() => toggleMulti(i)}><div style={{ width: 28, height: 28, borderRadius: 6, border: `2px solid ${sel ? "var(--accent)" : "var(--line)"}`, background: sel ? "var(--accent)" : "var(--surface-alt)", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel && <I n="check" s={13} style={{ color: "#fff" }} />}</div><span style={{ flex: 1 }}>{String.fromCharCode(65 + i)}. {o}</span></button>; })}</>}
-      {soal.type === "pasang" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pasangkan kolom kiri dengan kolom kanan</div>{soal.kiri?.map((k, ki) => <div key={ki} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}><div style={{ flex: 1, padding: "8px 12px", background: "var(--accent-soft)", borderRadius: "var(--r-sm)", fontSize: 13, fontWeight: 500, color: "var(--accent-2)" }}>{k}</div><I n="chevR" s={14} /><select className="inp" style={{ flex: 1, fontSize: 13 }} value={(answers[idx] || {})[ki] ?? ""} onChange={e => { const cur = answers[idx] || {}; answer({ ...cur, [ki]: Number(e.target.value) }); }}><option value="">Pilih...</option>{soal.kanan?.map((r, ri) => <option key={ri} value={ri}>{r}</option>)}</select></div>)}</>}
+      {soal.type === "pg" && soal.opsi?.map((o, i) => <button key={i} className={`quiz-opt ${answers[safeIdx] === i ? "selected" : ""}`} onClick={() => answer(i)}><div className="quiz-letter">{String.fromCharCode(65 + i)}</div><span style={{ flex: 1 }}>{o}</span></button>)}
+      {soal.type === "tf" && <div style={{ display: "flex", gap: 10 }}>{["Benar", "Salah"].map((o, i) => <button key={i} className={`quiz-opt ${answers[safeIdx] === i ? "selected" : ""}`} style={{ flex: 1 }} onClick={() => answer(i)}><div className="quiz-letter">{i === 0 ? "B" : "S"}</div><span style={{ flex: 1 }}>{o}</span></button>)}</div>}
+      {soal.type === "komplex" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pilih semua jawaban yang benar</div>{soal.opsi?.map((o, i) => { const sel = (answers[safeIdx] || []).includes(i); return <button key={i} className={`quiz-opt ${sel ? "selected" : ""}`} onClick={() => toggleMulti(i)}><div style={{ width: 28, height: 28, borderRadius: 6, border: `2px solid ${sel ? "var(--accent)" : "var(--line)"}`, background: sel ? "var(--accent)" : "var(--surface-alt)", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel && <I n="check" s={13} style={{ color: "#fff" }} />}</div><span style={{ flex: 1 }}>{String.fromCharCode(65 + i)}. {o}</span></button>; })}</>}
+      {soal.type === "pasang" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pasangkan kolom kiri dengan kolom kanan</div>{soal.kiri?.map((k, ki) => <div key={ki} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}><div style={{ flex: 1, padding: "8px 12px", background: "var(--accent-soft)", borderRadius: "var(--r-sm)", fontSize: 13, fontWeight: 500, color: "var(--accent-2)" }}>{k}</div><I n="chevR" s={14} /><select className="inp" style={{ flex: 1, fontSize: 13 }} value={(answers[safeIdx] || {})[ki] ?? ""} onChange={e => { const cur = answers[safeIdx] || {}; answer({ ...cur, [ki]: Number(e.target.value) }); }}><option value="">Pilih...</option>{soal.kanan?.map((r, ri) => <option key={ri} value={ri}>{r}</option>)}</select></div>)}</>}
     </div>
 
     {/* Footer nav */}
@@ -6094,7 +6108,48 @@ function NotifToastContainer({ notifs, onDismiss }) {
   );
 }
 
-export default function App() {
+// ─── ERROR BOUNDARY ───
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    // Silent log untuk production
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 20, background: "#f8fafc" }}>
+          <div style={{ maxWidth: 420, textAlign: "center", padding: 24, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fee2e2", color: "#dc2626", display: "grid", placeItems: "center", margin: "0 auto 14px" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 3.7L2 18a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.7a2 2 0 00-3.4 0zM12 9v4M12 17h.01" /></svg>
+            </div>
+            <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>Oops, ada gangguan teknis</h3>
+            <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16, lineHeight: 1.5 }}>Aplikasi mengalami error tak terduga. Klik tombol di bawah untuk reset, jawaban yang tersimpan tidak akan hilang.</p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button style={{ padding: "8px 16px", border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", cursor: "pointer", fontSize: 13 }} onClick={() => window.location.reload()}>Reload Halaman</button>
+              <button style={{ padding: "8px 16px", border: "none", borderRadius: 6, background: "#0d6b7a", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }} onClick={() => {
+                try {
+                  Object.keys(localStorage).forEach(k => {
+                    if (k.startsWith("astrolab.quiz.")) localStorage.removeItem(k);
+                  });
+                } catch {}
+                window.location.reload();
+              }}>Reset Quiz State</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function AppInner() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [route, setRoute] = useState("home");
@@ -6233,4 +6288,12 @@ export default function App() {
       </div>}
     <NotifToastContainer notifs={notifs} onDismiss={dismissNotif} />
   </>;
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  );
 }
