@@ -2468,7 +2468,7 @@ function BuatTugas({ store, navigate, editId = null }) {
   function handleBankSelect(picked) {
     // Convert bank soal format ke tugas soal format
     const converted = picked.map(p => {
-      const base = { pertanyaan: p.pertanyaan, type: p.type === "kompleks" ? "komplex" : p.type === "pasangkan" ? "pasang" : p.type, poin: 10, pembahasan: p.pembahasan || "" };
+      const base = { id: uid(), pertanyaan: p.pertanyaan, gambar: p.gambar || null, type: p.type === "kompleks" ? "komplex" : p.type === "pasangkan" ? "pasang" : p.type, poin: 10, pembahasan: p.pembahasan || "" };
       if (p.type === "pg") return { ...base, opsi: p.opsi, jawaban: p.jawaban };
       if (p.type === "tf") return { ...base, jawaban: p.jawaban };
       if (p.type === "kompleks") {
@@ -2478,8 +2478,9 @@ function BuatTugas({ store, navigate, editId = null }) {
       if (p.type === "pasangkan") {
         const kiri = (p.pasangan || []).map(x => x[0]);
         const kanan = (p.pasangan || []).map(x => x[1]);
-        return { ...base, kiri, kanan };
+        return { ...base, kiri, kanan, jawaban: kiri.map((_, i) => i) };
       }
+      if (p.type === "excel") return { ...base, headers: p.headers, table: p.table, opsi: p.opsi, jawaban: p.jawaban };
       return base;
     });
     setSoal([...soal, ...converted]);
@@ -3666,7 +3667,7 @@ function BankSoal({ store, navigate }) {
                       <span className="chip chip-info" style={{ fontSize: 10 }}>{s.mapel}</span>
                       <span className="chip" style={{ fontSize: 10, background: "var(--accent-tint)", color: "var(--accent-2)" }}>Kelas {s.jenjang}</span>
                       <span className="chip" style={{ fontSize: 10, background: s.level === "mudah" ? "#d1fae5" : s.level === "sedang" ? "#fef3c7" : "#fee2e2", color: s.level === "mudah" ? "#065f46" : s.level === "sedang" ? "#713f12" : "#991b1b" }}>{s.level}</span>
-                      <span className="chip" style={{ fontSize: 10, background: "var(--surface-alt)" }}>{s.type === "pg" ? "Pilihan Ganda" : s.type === "tf" ? "Benar/Salah" : s.type === "kompleks" ? "PG Kompleks" : "Pasangkan"}</span>
+                      <span className="chip" style={{ fontSize: 10, background: "var(--surface-alt)" }}>{s.type === "pg" ? "Pilihan Ganda" : s.type === "tf" ? "Benar/Salah" : s.type === "kompleks" ? "PG Kompleks" : s.type === "excel" ? "Excel Sandbox" : "Pasangkan"}</span>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{s.pertanyaan}</div>
                     {(s.tags || []).length > 0 && (
@@ -3692,9 +3693,10 @@ function BankSoal({ store, navigate }) {
 function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
   const init = editTarget || {
     mapel: "IPA", jenjang: "VII", level: "sedang", type: "pg",
-    pertanyaan: "", opsi: ["", "", "", ""], jawaban: 0,
+    pertanyaan: "", gambar: null, opsi: ["", "", "", ""], jawaban: 0,
     benarOpsi: [false, false, false, false], // untuk kompleks
     pasangan: [["", ""], ["", ""], ["", ""], ["", ""]], // untuk pasangkan
+    headers: ["Nama", "Nilai"], table: [["Budi", "85"], ["Sari", "92"], ["Andi", "78"]], // untuk excel
     pembahasan: "", tags: [],
   };
   const [form, setForm] = useState(init);
@@ -3719,6 +3721,7 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
       const data = {
         mapel: form.mapel, jenjang: form.jenjang, level: form.level, type: form.type,
         pertanyaan: form.pertanyaan.trim(),
+        gambar: form.gambar || null,
         tags: form.tags || [],
         pembahasan: form.pembahasan.trim(),
       };
@@ -3726,6 +3729,7 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
       else if (form.type === "tf") { data.jawaban = form.jawaban; }
       else if (form.type === "kompleks") { data.opsi = form.opsi; data.benarOpsi = form.benarOpsi; }
       else if (form.type === "pasangkan") { data.pasangan = form.pasangan; }
+      else if (form.type === "excel") { data.headers = form.headers; data.table = form.table; data.opsi = form.opsi; data.jawaban = form.jawaban; }
       if (editTarget) await store.updateBankSoal(editTarget.id, data);
       else await store.addBankSoal(data);
       onSuccess();
@@ -3770,12 +3774,34 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
               <option value="tf">Benar / Salah</option>
               <option value="kompleks">PG Kompleks (multi jawab)</option>
               <option value="pasangkan">Pasangkan</option>
+              <option value="excel">Excel Sandbox (Informatika)</option>
             </select>
           </div>
 
           <div className="fg">
             <label className="lbl">Pertanyaan</label>
             <textarea className="inp" rows={3} value={form.pertanyaan} onChange={e => set("pertanyaan", e.target.value)} placeholder="Tulis pertanyaan..." />
+          </div>
+
+          {/* Gambar (opsional) */}
+          <div className="fg">
+            <label className="lbl">Gambar (opsional)</label>
+            {form.gambar ? (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <img src={form.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, border: "1px solid var(--line)" }} />
+                <button type="button" onClick={() => set("gambar", null)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,.6)", color: "#fff", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 12 }}>×</button>
+              </div>
+            ) : (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", border: "1.5px dashed var(--line)", borderRadius: 6, cursor: "pointer", fontSize: 12, color: "var(--ink-2)" }}>
+                <I n="plus" s={12} /> Tambah Gambar
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={async e => {
+                  const file = e.target.files[0]; if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) { alert("Gambar maksimal 5MB"); return; }
+                  const compressed = await compressImage(file, 800, 0.7);
+                  set("gambar", compressed);
+                }} />
+              </label>
+            )}
           </div>
 
           {/* PG */}
@@ -3824,6 +3850,75 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
                   <input className="inp" value={p[0]} onChange={e => set("pasangan", form.pasangan.map((x, j) => j === i ? [e.target.value, x[1]] : x))} placeholder="Kiri" />
                   <span style={{ alignSelf: "center", color: "var(--ink-3)" }}>↔</span>
                   <input className="inp" value={p[1]} onChange={e => set("pasangan", form.pasangan.map((x, j) => j === i ? [x[0], e.target.value] : x))} placeholder="Kanan" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Excel Sandbox */}
+          {form.type === "excel" && (
+            <div className="fg">
+              <label className="lbl">Tabel Data + Opsi PG</label>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 8 }}>Siswa akan menggunakan rumus pada tabel ini, lalu pilih jawaban PG.</div>
+
+              {/* Headers */}
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>Header Kolom:</div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                {(form.headers || []).map((h, hi) => (
+                  <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>{String.fromCharCode(65 + hi)}</span>
+                    <input className="inp" style={{ fontSize: 12, padding: "5px 8px", width: 100 }} value={h} placeholder={`Kolom ${hi + 1}`} onChange={e => { const h2 = [...form.headers]; h2[hi] = e.target.value; set("headers", h2); }} />
+                    {form.headers.length > 1 && <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "2px 6px" }} onClick={() => {
+                      set("headers", form.headers.filter((_, i) => i !== hi));
+                      set("table", form.table.map(row => row.filter((_, i) => i !== hi)));
+                    }}><I n="x" s={11} /></button>}
+                  </div>
+                ))}
+                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: "4px 8px" }} onClick={() => {
+                  set("headers", [...form.headers, `Kolom ${form.headers.length + 1}`]);
+                  set("table", form.table.map(row => [...row, ""]));
+                }}><I n="plus" s={11} /> Kolom</button>
+              </div>
+
+              {/* Table data */}
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>Data:</div>
+              <div style={{ overflowX: "auto", marginBottom: 10, border: "1px solid var(--line)", borderRadius: 6 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "var(--surface-alt)" }}>
+                      <th style={{ padding: "4px 8px", fontSize: 10, color: "var(--ink-3)", borderRight: "1px solid var(--line)", width: 30 }}>#</th>
+                      {(form.headers || []).map((h, hi) => <th key={hi} style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, borderRight: "1px solid var(--line)" }}>{String.fromCharCode(65 + hi)} · {h}</th>)}
+                      <th style={{ width: 30 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(form.table || []).map((row, ri) => (
+                      <tr key={ri}>
+                        <td style={{ padding: "4px 8px", textAlign: "center", color: "var(--ink-3)", borderRight: "1px solid var(--line)", borderTop: "1px solid var(--line)", fontFamily: "var(--mono)" }}>{ri + 1}</td>
+                        {row.map((cell, ci) => (
+                          <td key={ci} style={{ borderRight: "1px solid var(--line)", borderTop: "1px solid var(--line)" }}>
+                            <input style={{ width: "100%", border: "none", padding: "5px 8px", fontSize: 12, background: "transparent", outline: "none" }} value={cell} onChange={e => {
+                              const t2 = form.table.map((r, i) => i === ri ? r.map((c, j) => j === ci ? e.target.value : c) : r);
+                              set("table", t2);
+                            }} />
+                          </td>
+                        ))}
+                        <td style={{ borderTop: "1px solid var(--line)", textAlign: "center" }}>
+                          {form.table.length > 1 && <button type="button" onClick={() => set("table", form.table.filter((_, i) => i !== ri))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 12 }}>×</button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, marginBottom: 12 }} onClick={() => set("table", [...form.table, new Array(form.headers.length).fill("")])}><I n="plus" s={11} /> Tambah Baris</button>
+
+              {/* Opsi PG */}
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>Opsi Jawaban PG (centang yang benar):</div>
+              {form.opsi.map((opt, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                  <input type="radio" checked={form.jawaban === i} onChange={() => set("jawaban", i)} />
+                  <input className="inp" value={opt} onChange={e => set("opsi", form.opsi.map((o, j) => j === i ? e.target.value : o))} placeholder={`Opsi ${String.fromCharCode(65 + i)}`} />
                 </div>
               ))}
             </div>
@@ -3935,7 +4030,7 @@ function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, 
                 <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} onClick={e => e.stopPropagation()} style={{ marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 10, padding: "1px 6px", background: "var(--surface-alt)", color: "var(--ink-2)", borderRadius: 4 }}>{s.type === "pg" ? "PG" : s.type === "tf" ? "TF" : s.type === "kompleks" ? "Kompleks" : "Pasangkan"}</span>
+                    <span style={{ fontSize: 10, padding: "1px 6px", background: "var(--surface-alt)", color: "var(--ink-2)", borderRadius: 4 }}>{s.type === "pg" ? "PG" : s.type === "tf" ? "TF" : s.type === "kompleks" ? "Kompleks" : s.type === "excel" ? "Excel" : "Pasangkan"}</span>
                     <span style={{ fontSize: 10, padding: "1px 6px", background: s.level === "mudah" ? "#d1fae5" : s.level === "sedang" ? "#fef3c7" : "#fee2e2", color: s.level === "mudah" ? "#065f46" : s.level === "sedang" ? "#713f12" : "#991b1b", borderRadius: 4 }}>{s.level}</span>
                     <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{s.mapel} · {s.jenjang}</span>
                   </div>
