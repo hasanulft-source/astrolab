@@ -451,6 +451,8 @@ const IC = {
   alert: "M10.3 3.7L2 18a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.7a2 2 0 00-3.4 0zM12 9v4M12 17h.01",
   chat: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z",
   send: "M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z",
+  upload: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12",
+  download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
 };
 function I({ n, s = 16, style, cls = "" }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={style} className={cls}><path d={IC[n] || ""} /></svg>;
@@ -4198,6 +4200,7 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
   const [form, setForm] = useState(init);
   const [tagInput, setTagInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [submitErr, setSubmitErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   function addTag() {
@@ -4213,6 +4216,7 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
   async function submit() {
     if (!form.pertanyaan.trim()) return;
     setSaving(true);
+    setSubmitErr("");
     try {
       const data = {
         mapel: form.mapel, jenjang: form.jenjang, level: form.level, type: form.type,
@@ -4230,7 +4234,12 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
       if (editTarget) await store.updateBankSoal(editTarget.id, data);
       else await store.addBankSoal(data);
       onSuccess();
-    } catch (e) { console.warn(e); setSaving(false); }
+    } catch (e) {
+      setSubmitErr(e?.message?.includes("PERMISSION_DENIED")
+        ? "Akses ditolak. Firebase Rules belum diupdate untuk Bank Soal."
+        : "Gagal menyimpan: " + (e?.message || "error tidak diketahui"));
+      setSaving(false);
+    }
   }
 
   return (
@@ -4454,6 +4463,12 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
             )}
           </div>
         </div>
+
+        {submitErr && (
+          <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 6, fontSize: 12, color: "var(--bad)" }}>
+            ⚠ {submitErr}
+          </div>
+        )}
 
         <div className="modal-actions" style={{ marginTop: 20 }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
