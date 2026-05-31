@@ -3536,9 +3536,15 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
 
   // Hitung akurasi per soal dari soalResults
   const soalStats = (t.soal || []).map((s, i) => {
-    const correctCount = subs.filter(sub =>
-      sub.soalResults?.find(r => r.origIdx === i && r.correct)
-    ).length;
+    const correctCount = subs.filter(sub => {
+      const r = sub.soalResults?.find(x => x.origIdx === i);
+      if (!r) return false;
+      if (s.type === "essay") {
+        // Essay: dianggap "benar" kalau nilai >= 60
+        return r.statusNilai === "dinilai" && (r.nilaiEssay || 0) >= 60;
+      }
+      return r.correct === true;
+    }).length;
     const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
     const label = pct >= 80 ? "Mudah" : pct >= 50 ? "Sedang" : "Sulit";
     const color = pct >= 80 ? "var(--good)" : pct >= 50 ? "var(--warn)" : "var(--bad)";
