@@ -659,6 +659,137 @@ function PoinChart({ data }) {
 }
 
 // ─── STORE (Firebase) ───
+// ─── IMAGE COMPRESSION HELPER ───
+async function compressImage(file, maxWidth = 800, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const b64 = canvas.toDataURL("image/jpeg", quality);
+        resolve(b64);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── EXCEL FORMULA EVALUATOR ───
+// Support: SUM, AVERAGE/AVG/MEAN, COUNT, COUNTA, MAX, MIN, IF, ROUND
+// Range: A1:A5, A1:C3 (cell refs)
+function evalExcelFormula(formula, tableData) {
+  if (!formula || !formula.startsWith("=")) return { error: "Rumus harus diawali dengan =" };
+  try {
+    const expr = formula.slice(1).trim();
+    // Build cell map: A1 -> value, B2 -> value, dst
+    const cellMap = {};
+    tableData.forEach((row, ri) => {
+      row.forEach((cell, ci) => {
+        const col = String.fromCharCode(65 + ci); // A, B, C...
+        cellMap[`${col}${ri + 1}`] = cell;
+      });
+    });
+
+    // Resolve range like A1:B3
+    function resolveRange(rangeStr) {
+      const m = rangeStr.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+      if (!m) {
+        // single cell
+        const val = cellMap[rangeStr];
+        return val !== undefined ? [val] : [];
+      }
+      const c1 = m[1].charCodeAt(0) - 65, r1 = parseInt(m[2]) - 1;
+      const c2 = m[3].charCodeAt(0) - 65, r2 = parseInt(m[4]) - 1;
+      const vals = [];
+      for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) {
+        for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
+          const col = String.fromCharCode(65 + c);
+          const v = cellMap[`${col}${r + 1}`];
+          if (v !== undefined) vals.push(v);
+        }
+      }
+      return vals;
+    }
+
+    function toNum(v) {
+      const n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    }
+
+    // Functions
+    const FUNCS = {
+      SUM: args => args.reduce((s, v) => s + toNum(v), 0),
+      AVERAGE: args => args.length ? args.reduce((s, v) => s + toNum(v), 0) / args.length : 0,
+      AVG: args => args.length ? args.reduce((s, v) => s + toNum(v), 0) / args.length : 0,
+      MEAN: args => args.length ? args.reduce((s, v) => s + toNum(v), 0) / args.length : 0,
+      COUNT: args => args.filter(v => !isNaN(parseFloat(v))).length,
+      COUNTA: args => args.filter(v => v !== "" && v !== undefined && v !== null).length,
+      MAX: args => Math.max(...args.map(toNum)),
+      MIN: args => Math.min(...args.map(toNum)),
+      ROUND: args => Math.round(toNum(args[0]) * Math.pow(10, toNum(args[1] || 0))) / Math.pow(10, toNum(args[1] || 0)),
+    };
+
+    // Parse function call: FN(ARG1, ARG2, ...)
+    const fnMatch = expr.match(/^([A-Z]+)\((.+)\)$/i);
+    if (fnMatch) {
+      const fnName = fnMatch[1].toUpperCase();
+      const argsStr = fnMatch[2];
+      if (!FUNCS[fnName]) return { error: `Fungsi ${fnName} belum didukung` };
+
+      // Split args (simple split by comma, considering ranges)
+      const argParts = argsStr.split(",").map(s => s.trim());
+      let args = [];
+      argParts.forEach(part => {
+        if (/^[A-Z]+\d+:[A-Z]+\d+$/.test(part)) {
+          args = args.concat(resolveRange(part));
+        } else if (/^[A-Z]+\d+$/.test(part)) {
+          const v = cellMap[part];
+          if (v !== undefined) args.push(v);
+        } else if (!isNaN(parseFloat(part))) {
+          args.push(parseFloat(part));
+        } else {
+          // Try eval as expression (basic: number or string)
+          args.push(part.replace(/^["']|["']$/g, ""));
+        }
+      });
+
+      const result = FUNCS[fnName](args);
+      return { value: typeof result === "number" ? (Number.isInteger(result) ? result : Math.round(result * 100) / 100) : result };
+    }
+
+    // Simple cell reference: =A1
+    if (/^[A-Z]+\d+$/.test(expr)) {
+      const v = cellMap[expr];
+      return v !== undefined ? { value: v } : { error: `Cell ${expr} kosong` };
+    }
+
+    // Simple arithmetic: =A1+B1*2
+    let arithExpr = expr.replace(/[A-Z]+\d+/g, (match) => {
+      const v = cellMap[match];
+      return v !== undefined ? toNum(v) : 0;
+    });
+    // Only allow safe characters
+    if (!/^[\d+\-*/().\s]+$/.test(arithExpr)) {
+      return { error: "Rumus tidak dikenali atau mengandung karakter tidak valid" };
+    }
+    // eslint-disable-next-line no-new-func
+    const result = Function(`"use strict"; return (${arithExpr})`)();
+    return { value: typeof result === "number" ? (Number.isInteger(result) ? result : Math.round(result * 100) / 100) : result };
+  } catch (e) {
+    return { error: "Error: " + e.message };
+  }
+}
+
 // ─── SISWA ID HELPERS ───
 const SKIP_PREFIXES = new Set([
   "muhammad","muhamad","ahmad","ahmed","abdul","abdu","abd",
@@ -1614,6 +1745,103 @@ function DetailTugas({ user, store, tugasId, navigate }) {
 }
 
 // ─── QUIZ ENGINE ───
+// ─── EXCEL SANDBOX PLAYER (siswa view) ───
+function ExcelSandboxPlayer({ soal, answer, selected }) {
+  const [formula, setFormula] = useState("");
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]); // simpan rumus & hasil yg sudah dicoba
+
+  function hitung() {
+    if (!formula.trim()) return;
+    const r = evalExcelFormula(formula, soal.table || []);
+    setResult(r);
+    if (!r.error) {
+      setHistory(h => [{ formula, value: r.value }, ...h.slice(0, 4)]);
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {/* Table */}
+      <div style={{ overflowX: "auto", marginBottom: 12, border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "var(--surface-alt)" }}>
+              <th style={{ padding: "6px 10px", fontSize: 10, color: "var(--ink-3)", borderRight: "1px solid var(--line)", borderBottom: "1px solid var(--line)", width: 32 }}></th>
+              {(soal.headers || []).map((h, hi) => (
+                <th key={hi} style={{ padding: "6px 10px", fontSize: 11, fontWeight: 700, borderRight: "1px solid var(--line)", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
+                  <div style={{ fontSize: 9, color: "var(--ink-3)", fontFamily: "var(--mono)", marginBottom: 2 }}>{String.fromCharCode(65 + hi)}</div>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(soal.table || []).map((row, ri) => (
+              <tr key={ri}>
+                <td style={{ padding: "6px 10px", textAlign: "center", color: "var(--ink-3)", borderRight: "1px solid var(--line)", borderTop: "1px solid var(--line-soft)", fontFamily: "var(--mono)", fontSize: 11, background: "var(--surface-alt)" }}>{ri + 1}</td>
+                {row.map((cell, ci) => (
+                  <td key={ci} style={{ padding: "6px 10px", borderRight: "1px solid var(--line)", borderTop: "1px solid var(--line-soft)", fontFamily: !isNaN(parseFloat(cell)) ? "var(--mono)" : "inherit", textAlign: !isNaN(parseFloat(cell)) ? "right" : "left" }}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Formula input */}
+      <div style={{ background: "var(--surface-alt)", border: "1px solid var(--line)", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+          <I n="chartBar" s={12} /> COBA RUMUS
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            className="inp"
+            style={{ flex: 1, fontFamily: "var(--mono)", fontSize: 13 }}
+            placeholder="Contoh: =SUM(B1:B3) atau =AVERAGE(B1:B3)"
+            value={formula}
+            onChange={e => setFormula(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && (e.preventDefault(), hitung())}
+          />
+          <button className="btn btn-primary btn-sm" onClick={hitung} disabled={!formula.trim()}>Hitung</button>
+        </div>
+
+        {result && (
+          <div style={{ marginTop: 10, padding: "8px 12px", background: result.error ? "var(--bad-bg)" : "var(--good-bg)", border: `1px solid ${result.error ? "#fca5a5" : "var(--good)"}`, borderRadius: 6, fontSize: 13, fontFamily: "var(--mono)" }}>
+            {result.error ? <span style={{ color: "var(--bad)" }}>⚠ {result.error}</span> : <span style={{ color: "var(--good)" }}>= {result.value}</span>}
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--ink-3)" }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Histori percobaan:</div>
+            {history.map((h, i) => (
+              <div key={i} style={{ fontFamily: "var(--mono)", fontSize: 11, padding: "2px 0" }}>
+                <span style={{ color: "var(--ink-2)" }}>{h.formula}</span> <span style={{ color: "var(--ink-3)" }}>→</span> <span style={{ color: "var(--accent-2)", fontWeight: 600 }}>{h.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 10, fontSize: 10, color: "var(--ink-3)" }}>
+          💡 Fungsi: <b>SUM</b>, <b>AVERAGE</b>, <b>COUNT</b>, <b>MAX</b>, <b>MIN</b>, <b>ROUND</b>. Range: <b>A1:B3</b>
+        </div>
+      </div>
+
+      {/* PG options */}
+      <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, fontWeight: 600 }}>Pilih jawaban yang benar:</div>
+      {(soal.opsi || []).map((o, i) => (
+        <button key={i} className={`quiz-opt ${selected === i ? "selected" : ""}`} onClick={() => answer(i)}>
+          <div className="quiz-letter">{String.fromCharCode(65 + i)}</div>
+          <span style={{ flex: 1 }}>{o}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function KerjakanTugas({ user, store, tugasId, navigate }) {
   const t = store.getTugas().find(x => x.id === tugasId);
   const SAVE_KEY = `astrolab.quiz.${user.id}.${tugasId}`;
@@ -1684,6 +1912,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       if (s.type === "pg" || s.type === "tf") correct = ans === s.jawaban;
       else if (s.type === "komplex") correct = (ans || []).slice().sort().join(",") === (s.jawaban || []).slice().sort().join(",");
       else if (s.type === "pasang") correct = s.jawaban?.every((j, ki) => (ans || {})[ki] === j);
+      else if (s.type === "excel") correct = ans === s.jawaban; // PG di excel sandbox
       if (correct) { totalPoin += poinSoal; correctCount++; }
       soalResults.push({ origIdx: s._origIdx ?? i, correct, poinSoal });
     });
@@ -1822,6 +2051,8 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     <div style={{ flex: 1, padding: "20px 16px 16px", maxWidth: 560, margin: "0 auto", width: "100%" }}>
       <div style={{ fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--mono)", marginBottom: 8 }}>SOAL {idx + 1} · {soal.poin || Math.floor(t.poinMax / total)} POIN</div>
       <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.55, marginBottom: 20 }}>{soal.pertanyaan}</div>
+      {soal.gambar && <div style={{ marginBottom: 20, textAlign: "center" }}><img src={soal.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, border: "1px solid var(--line)" }} /></div>}
+      {soal.type === "excel" && <ExcelSandboxPlayer soal={soal} answer={answer} selected={answers[idx]} />}
       {soal.type === "pg" && soal.opsi?.map((o, i) => <button key={i} className={`quiz-opt ${answers[idx] === i ? "selected" : ""}`} onClick={() => answer(i)}><div className="quiz-letter">{String.fromCharCode(65 + i)}</div><span style={{ flex: 1 }}>{o}</span></button>)}
       {soal.type === "tf" && <div style={{ display: "flex", gap: 10 }}>{["Benar", "Salah"].map((o, i) => <button key={i} className={`quiz-opt ${answers[idx] === i ? "selected" : ""}`} style={{ flex: 1 }} onClick={() => answer(i)}><div className="quiz-letter">{i === 0 ? "B" : "S"}</div><span style={{ flex: 1 }}>{o}</span></button>)}</div>}
       {soal.type === "komplex" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pilih semua jawaban yang benar</div>{soal.opsi?.map((o, i) => { const sel = (answers[idx] || []).includes(i); return <button key={i} className={`quiz-opt ${sel ? "selected" : ""}`} onClick={() => toggleMulti(i)}><div style={{ width: 28, height: 28, borderRadius: 6, border: `2px solid ${sel ? "var(--accent)" : "var(--line)"}`, background: sel ? "var(--accent)" : "var(--surface-alt)", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel && <I n="check" s={13} style={{ color: "#fff" }} />}</div><span style={{ flex: 1 }}>{String.fromCharCode(65 + i)}. {o}</span></button>; })}</>}
@@ -2045,6 +2276,7 @@ const QTYPES = [
   { id: "tf", name: "Benar / Salah", desc: "Pernyataan B/S", icon: "check" },
   { id: "komplex", name: "Mencocokkan", desc: "Multi jawaban benar", icon: "link2" },
   { id: "pasang", name: "Susun Urutan", desc: "Pasangan kiri-kanan", icon: "sortDesc" },
+  { id: "excel", name: "Excel Sandbox", desc: "Tabel + rumus + PG (Informatika)", icon: "chartBar" },
 ];
 
 function QuestionBuilder({ soal, setSoal }) {
@@ -2052,6 +2284,7 @@ function QuestionBuilder({ soal, setSoal }) {
     const base = { id: uid(), type, pertanyaan: "", poin: 10 };
     if (type === "pg" || type === "komplex") setSoal(s => [...s, { ...base, opsi: ["", "", "", ""], jawaban: type === "pg" ? 0 : [] }]);
     else if (type === "tf") setSoal(s => [...s, { ...base, jawaban: 0 }]);
+    else if (type === "excel") setSoal(s => [...s, { ...base, headers: ["Nama", "Nilai"], table: [["Budi", "85"], ["Sari", "92"], ["Andi", "78"]], opsi: ["", "", "", ""], jawaban: 0 }]);
     else setSoal(s => [...s, { ...base, kiri: ["", ""], kanan: ["", ""], jawaban: [0, 1] }]);
   }
   function upQ(id, patch) { setSoal(s => s.map(q => q.id === id ? { ...q, ...patch } : q)); }
@@ -2076,6 +2309,26 @@ function QuestionBuilder({ soal, setSoal }) {
         </div>
         <div className="qb-item-body">
           <textarea className="inp" rows={2} placeholder="Tulis pertanyaan / instruksi..." value={q.pertanyaan} onChange={e => upQ(q.id, { pertanyaan: e.target.value })} style={{ marginBottom: 12 }} />
+
+          {/* Image upload */}
+          <div style={{ marginBottom: 12 }}>
+            {q.gambar ? (
+              <div style={{ position: "relative", display: "inline-block", marginBottom: 6 }}>
+                <img src={q.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, border: "1px solid var(--line)" }} />
+                <button onClick={() => upQ(q.id, { gambar: null })} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,.6)", color: "#fff", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 12 }}>×</button>
+              </div>
+            ) : (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "1.5px dashed var(--line)", borderRadius: 6, cursor: "pointer", fontSize: 12, color: "var(--ink-2)" }}>
+                <I n="plus" s={12} /> Tambah Gambar (opsional)
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={async e => {
+                  const file = e.target.files[0]; if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) { alert("Gambar maksimal 5MB"); return; }
+                  const compressed = await compressImage(file, 800, 0.7);
+                  upQ(q.id, { gambar: compressed });
+                }} />
+              </label>
+            )}
+          </div>
 
           {/* PG */}
           {(q.type === "pg" || q.type === "komplex") && <div>
@@ -2112,6 +2365,71 @@ function QuestionBuilder({ soal, setSoal }) {
                 <option value="">Pilih...</option>
                 {(q.kanan || []).map((r, ri) => <option key={ri} value={ri}>{r || `Pasangan ${ri + 1}`}</option>)}
               </select>
+            </div>)}
+          </div>}
+
+          {/* Excel Sandbox */}
+          {q.type === "excel" && <div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 8 }}>Buat tabel data dan tentukan jawaban PG. Siswa akan menulis rumus untuk mengeksplorasi tabel ini.</div>
+
+            {/* Headers */}
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>Header Kolom:</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+              {(q.headers || []).map((h, hi) => (
+                <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>{String.fromCharCode(65 + hi)}</span>
+                  <input className="inp" style={{ fontSize: 12, padding: "5px 8px", width: 100 }} value={h} placeholder={`Kolom ${hi + 1}`} onChange={e => { const h2 = [...q.headers]; h2[hi] = e.target.value; upQ(q.id, { headers: h2 }); }} />
+                  {q.headers.length > 1 && <button className="btn btn-ghost btn-sm" style={{ padding: "2px 6px" }} onClick={() => {
+                    upQ(q.id, { headers: q.headers.filter((_, i) => i !== hi), table: q.table.map(row => row.filter((_, i) => i !== hi)) });
+                  }}><I n="x" s={11} /></button>}
+                </div>
+              ))}
+              <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: "4px 8px" }} onClick={() => upQ(q.id, { headers: [...q.headers, `Kolom ${q.headers.length + 1}`], table: q.table.map(row => [...row, ""]) })}><I n="plus" s={11} /> Kolom</button>
+            </div>
+
+            {/* Table data */}
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>Data Tabel:</div>
+            <div style={{ overflowX: "auto", marginBottom: 10, border: "1px solid var(--line)", borderRadius: 6 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "var(--surface-alt)" }}>
+                    <th style={{ padding: "4px 8px", fontSize: 10, color: "var(--ink-3)", borderRight: "1px solid var(--line)", width: 30 }}>#</th>
+                    {(q.headers || []).map((h, hi) => <th key={hi} style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, borderRight: "1px solid var(--line)" }}>{String.fromCharCode(65 + hi)} · {h}</th>)}
+                    <th style={{ width: 30 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(q.table || []).map((row, ri) => (
+                    <tr key={ri}>
+                      <td style={{ padding: "4px 8px", textAlign: "center", color: "var(--ink-3)", borderRight: "1px solid var(--line)", borderTop: "1px solid var(--line)", fontFamily: "var(--mono)" }}>{ri + 1}</td>
+                      {row.map((cell, ci) => (
+                        <td key={ci} style={{ borderRight: "1px solid var(--line)", borderTop: "1px solid var(--line)" }}>
+                          <input style={{ width: "100%", border: "none", padding: "5px 8px", fontSize: 12, background: "transparent", outline: "none" }} value={cell} onChange={e => {
+                            const t2 = q.table.map((r, i) => i === ri ? r.map((c, j) => j === ci ? e.target.value : c) : r);
+                            upQ(q.id, { table: t2 });
+                          }} />
+                        </td>
+                      ))}
+                      <td style={{ borderTop: "1px solid var(--line)", textAlign: "center" }}>
+                        {q.table.length > 1 && <button onClick={() => upQ(q.id, { table: q.table.filter((_, i) => i !== ri) })} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 12 }}>×</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, marginBottom: 12 }} onClick={() => upQ(q.id, { table: [...q.table, new Array(q.headers.length).fill("")] })}><I n="plus" s={11} /> Tambah Baris</button>
+
+            <div style={{ fontSize: 11, color: "var(--ink-3)", padding: "8px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 12 }}>
+              💡 Rumus yang didukung: <b>=SUM(A1:A5)</b>, <b>=AVERAGE(B2:B6)</b>, <b>=COUNT(C1:C10)</b>, <b>=MAX</b>, <b>=MIN</b>, <b>=IF</b>, <b>=ROUND</b>, <b>=A1+B1</b>
+            </div>
+
+            {/* Opsi PG */}
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>Opsi Jawaban PG:</div>
+            {(q.opsi || []).map((o, i) => <div key={i} className="qb-opt-row">
+              <div className={`qb-radio ${q.jawaban === i ? "on" : ""}`} onClick={() => upQ(q.id, { jawaban: i })}>{q.jawaban === i && <I n="check" s={11} style={{ color: "#fff" }} />}</div>
+              <div className="qb-letter">{String.fromCharCode(65 + i)}</div>
+              <input className="inp" style={{ flex: 1, padding: "7px 11px", fontSize: 13 }} placeholder={`Pilihan ${String.fromCharCode(65 + i)}`} value={o} onChange={e => upOpsi(q.id, i, e.target.value)} />
             </div>)}
           </div>}
         </div>
@@ -2186,6 +2504,13 @@ function BuatTugas({ store, navigate, editId = null }) {
         const kiriKosong = (q.kiri || []).some(k => !k?.trim());
         const kananKosong = (q.kanan || []).some(k => !k?.trim());
         if (kiriKosong || kananKosong) { setErr(`Soal ${num}: ada item pasangan yang masih kosong.`); return; }
+      }
+      if (q.type === "excel") {
+        if (!(q.headers || []).length) { setErr(`Soal ${num}: tabel butuh minimal 1 kolom.`); return; }
+        if (!(q.table || []).length) { setErr(`Soal ${num}: tabel butuh minimal 1 baris.`); return; }
+        const opsiKosong = (q.opsi || []).some(o => !o?.trim());
+        if (opsiKosong) { setErr(`Soal ${num}: ada opsi PG yang masih kosong.`); return; }
+        if (q.jawaban === undefined || q.jawaban === null) { setErr(`Soal ${num}: pilih jawaban PG yang benar.`); return; }
       }
     }
     const data = { ...form, soal, poinMax: totalPoin || Number(form.poinMax) };
