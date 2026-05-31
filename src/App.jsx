@@ -1912,11 +1912,20 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       if (s.type === "pg" || s.type === "tf") correct = ans === s.jawaban;
       else if (s.type === "komplex") correct = (ans || []).slice().sort().join(",") === (s.jawaban || []).slice().sort().join(",");
       else if (s.type === "pasang") correct = s.jawaban?.every((j, ki) => (ans || {})[ki] === j);
-      else if (s.type === "excel") correct = ans === s.jawaban; // PG di excel sandbox
-      if (correct) { totalPoin += poinSoal; correctCount++; }
-      soalResults.push({ origIdx: s._origIdx ?? i, correct, poinSoal });
+      else if (s.type === "excel") correct = ans === s.jawaban;
+      else if (s.type === "essay") { correct = null; /* perlu penilaian manual */ }
+      if (correct === true) { totalPoin += poinSoal; correctCount++; }
+      const resultItem = { origIdx: s._origIdx ?? i, correct, poinSoal };
+      if (s.type === "essay") {
+        resultItem.jawabanEssay = ans || "";
+        resultItem.statusNilai = "perlu_dinilai";
+      }
+      soalResults.push(resultItem);
     });
-    const nilai = Math.round((correctCount / total) * 100);
+    // Hitung nilai hanya dari soal non-essay (essay menyusul setelah dinilai guru)
+    const nonEssayTotal = t.soal.filter(s => s.type !== "essay").length || 1;
+    const nilai = Math.round((correctCount / nonEssayTotal) * 100);
+    const hasEssay = t.soal.some(s => s.type === "essay");
     const dl = fmtDl(t.deadline);
     const ontime = dl.tone !== "bad";
     const prevStats = store.getStats(user.id);
@@ -1926,7 +1935,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const subForBadge = { nilai, ontime, publishedAt: t.createdAt ? new Date(t.createdAt).getTime() : 0 };
     const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass);
     setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
-    store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults });
+    store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults, hasEssay });
     store.updateStats(user.id, nilai, totalPoin, ontime);
     newBadges.forEach(bid => store.awardBadge(user.id, bid));
     try { localStorage.removeItem(SAVE_KEY); } catch {}
@@ -2053,6 +2062,20 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.55, marginBottom: 20 }}>{soal.pertanyaan}</div>
       {soal.gambar && <div style={{ marginBottom: 20, textAlign: "center" }}><img src={soal.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, border: "1px solid var(--line)" }} /></div>}
       {soal.type === "excel" && <ExcelSandboxPlayer soal={soal} answer={answer} selected={answers[idx]} />}
+      {soal.type === "essay" && <div>
+        <textarea
+          className="inp"
+          rows={8}
+          style={{ fontSize: 14, lineHeight: 1.5, fontFamily: "inherit" }}
+          placeholder="Tulis jawaban kamu di sini..."
+          value={answers[idx] || ""}
+          onChange={e => answer(e.target.value)}
+        />
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6, display: "flex", justifyContent: "space-between" }}>
+          <span>{(answers[idx] || "").length} karakter · {((answers[idx] || "").trim().split(/\s+/).filter(Boolean) || []).length} kata</span>
+          <span>📝 Dinilai manual oleh guru</span>
+        </div>
+      </div>}
       {soal.type === "pg" && soal.opsi?.map((o, i) => <button key={i} className={`quiz-opt ${answers[idx] === i ? "selected" : ""}`} onClick={() => answer(i)}><div className="quiz-letter">{String.fromCharCode(65 + i)}</div><span style={{ flex: 1 }}>{o}</span></button>)}
       {soal.type === "tf" && <div style={{ display: "flex", gap: 10 }}>{["Benar", "Salah"].map((o, i) => <button key={i} className={`quiz-opt ${answers[idx] === i ? "selected" : ""}`} style={{ flex: 1 }} onClick={() => answer(i)}><div className="quiz-letter">{i === 0 ? "B" : "S"}</div><span style={{ flex: 1 }}>{o}</span></button>)}</div>}
       {soal.type === "komplex" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pilih semua jawaban yang benar</div>{soal.opsi?.map((o, i) => { const sel = (answers[idx] || []).includes(i); return <button key={i} className={`quiz-opt ${sel ? "selected" : ""}`} onClick={() => toggleMulti(i)}><div style={{ width: 28, height: 28, borderRadius: 6, border: `2px solid ${sel ? "var(--accent)" : "var(--line)"}`, background: sel ? "var(--accent)" : "var(--surface-alt)", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel && <I n="check" s={13} style={{ color: "#fff" }} />}</div><span style={{ flex: 1 }}>{String.fromCharCode(65 + i)}. {o}</span></button>; })}</>}
@@ -2277,6 +2300,7 @@ const QTYPES = [
   { id: "komplex", name: "Mencocokkan", desc: "Multi jawaban benar", icon: "link2" },
   { id: "pasang", name: "Susun Urutan", desc: "Pasangan kiri-kanan", icon: "sortDesc" },
   { id: "excel", name: "Excel Sandbox", desc: "Tabel + rumus + PG (Informatika)", icon: "chartBar" },
+  { id: "essay", name: "Essay", desc: "Jawaban panjang, dinilai manual", icon: "edit" },
 ];
 
 function QuestionBuilder({ soal, setSoal }) {
@@ -2285,6 +2309,7 @@ function QuestionBuilder({ soal, setSoal }) {
     if (type === "pg" || type === "komplex") setSoal(s => [...s, { ...base, opsi: ["", "", "", ""], jawaban: type === "pg" ? 0 : [] }]);
     else if (type === "tf") setSoal(s => [...s, { ...base, jawaban: 0 }]);
     else if (type === "excel") setSoal(s => [...s, { ...base, headers: ["Nama", "Nilai"], table: [["Budi", "85"], ["Sari", "92"], ["Andi", "78"]], opsi: ["", "", "", ""], jawaban: 0 }]);
+    else if (type === "essay") setSoal(s => [...s, { ...base, kataKunci: "", panduanNilai: "" }]);
     else setSoal(s => [...s, { ...base, kiri: ["", ""], kanan: ["", ""], jawaban: [0, 1] }]);
   }
   function upQ(id, patch) { setSoal(s => s.map(q => q.id === id ? { ...q, ...patch } : q)); }
@@ -2432,6 +2457,20 @@ function QuestionBuilder({ soal, setSoal }) {
               <input className="inp" style={{ flex: 1, padding: "7px 11px", fontSize: 13 }} placeholder={`Pilihan ${String.fromCharCode(65 + i)}`} value={o} onChange={e => upOpsi(q.id, i, e.target.value)} />
             </div>)}
           </div>}
+
+          {/* Essay */}
+          {q.type === "essay" && <div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 8 }}>Essay dinilai manual oleh guru. Tambahkan kata kunci & panduan agar penilaian lebih objektif.</div>
+            <div className="fg" style={{ marginBottom: 10 }}>
+              <label className="lbl" style={{ fontSize: 11 }}>Kata Kunci Jawaban (opsional)</label>
+              <input className="inp" value={q.kataKunci || ""} onChange={e => upQ(q.id, { kataKunci: e.target.value })} placeholder="mis: fotosintesis, klorofil, cahaya matahari" />
+              <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 4 }}>Pisahkan dengan koma. Ini akan ditampilkan saat guru menilai.</div>
+            </div>
+            <div className="fg">
+              <label className="lbl" style={{ fontSize: 11 }}>Panduan Penilaian (opsional)</label>
+              <textarea className="inp" rows={2} value={q.panduanNilai || ""} onChange={e => upQ(q.id, { panduanNilai: e.target.value })} placeholder="mis: nilai 100 jika jelaskan 3 tahap fotosintesis lengkap, 70 jika 2 tahap, 40 jika hanya menyebut" />
+            </div>
+          </div>}
         </div>
       </div>;
     })}
@@ -2481,6 +2520,7 @@ function BuatTugas({ store, navigate, editId = null }) {
         return { ...base, kiri, kanan, jawaban: kiri.map((_, i) => i) };
       }
       if (p.type === "excel") return { ...base, headers: p.headers, table: p.table, opsi: p.opsi, jawaban: p.jawaban };
+      if (p.type === "essay") return { ...base, kataKunci: p.kataKunci || "", panduanNilai: p.panduanNilai || "" };
       return base;
     });
     setSoal([...soal, ...converted]);
@@ -2695,11 +2735,170 @@ function downloadBase64Excel(b64, filename) {
 
 // ─── DOWNLOAD TEMPLATE SOAL ───
 async function downloadTemplateSoal() {
-  const b64 = "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";
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  const blob = new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  if (!window.ExcelJS) {
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const ExcelJS = window.ExcelJS;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Astrolab · Our Classroom";
+
+  const headerStyle = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF0D6B7A" } }, font: { name: "Arial", bold: true, color: { argb: "FFFFFFFF" }, size: 11 }, alignment: { horizontal: "center", vertical: "middle", wrapText: true } };
+  const exampleStyle = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF4F3" } }, font: { name: "Arial", italic: true, color: { argb: "FF6B7280" }, size: 10 }, alignment: { vertical: "top", wrapText: true } };
+
+  // Sheet 1: Pilihan Ganda
+  const ws1 = wb.addWorksheet("1. Pilihan Ganda", { properties: { tabColor: { argb: "FF3B82F6" } } });
+  ws1.columns = [
+    { header: "Pertanyaan", width: 50 },
+    { header: "Pilihan A", width: 20 },
+    { header: "Pilihan B", width: 20 },
+    { header: "Pilihan C", width: 20 },
+    { header: "Pilihan D", width: 20 },
+    { header: "Jawaban (A/B/C/D)", width: 18 },
+    { header: "Poin", width: 8 },
+  ];
+  ws1.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws1.getRow(1).height = 35;
+  ws1.addRow(["Apa ibukota Indonesia?", "Surabaya", "Jakarta", "Bandung", "Medan", "B", 10]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet 2: Benar/Salah
+  const ws2 = wb.addWorksheet("2. Benar Salah", { properties: { tabColor: { argb: "FF10B981" } } });
+  ws2.columns = [
+    { header: "Pernyataan", width: 60 },
+    { header: "Jawaban (Benar/Salah)", width: 22 },
+    { header: "Poin", width: 8 },
+  ];
+  ws2.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws2.getRow(1).height = 35;
+  ws2.addRow(["Matahari adalah bintang terdekat dengan bumi.", "Benar", 10]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet 3: PG Kompleks
+  const ws3 = wb.addWorksheet("3. PG Kompleks", { properties: { tabColor: { argb: "FFF97316" } } });
+  ws3.columns = [
+    { header: "Pertanyaan", width: 50 },
+    { header: "Pilihan A", width: 20 },
+    { header: "Pilihan B", width: 20 },
+    { header: "Pilihan C", width: 20 },
+    { header: "Pilihan D", width: 20 },
+    { header: "Jawaban Benar (A,B,C,D)", width: 22 },
+    { header: "Poin", width: 8 },
+  ];
+  ws3.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws3.getRow(1).height = 35;
+  ws3.addRow(["Manakah yang termasuk planet di tata surya?", "Bumi", "Mars", "Bulan", "Venus", "A,B,D", 15]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet 4: Pasangkan
+  const ws4 = wb.addWorksheet("4. Pasangkan", { properties: { tabColor: { argb: "FF8B5CF6" } } });
+  ws4.columns = [
+    { header: "Pertanyaan / Instruksi", width: 40 },
+    { header: "Item Kiri 1", width: 18 }, { header: "Pasangan Kanan 1", width: 22 },
+    { header: "Item Kiri 2", width: 18 }, { header: "Pasangan Kanan 2", width: 22 },
+    { header: "Item Kiri 3", width: 18 }, { header: "Pasangan Kanan 3", width: 22 },
+    { header: "Item Kiri 4", width: 18 }, { header: "Pasangan Kanan 4", width: 22 },
+    { header: "Poin", width: 8 },
+  ];
+  ws4.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws4.getRow(1).height = 35;
+  ws4.addRow(["Pasangkan negara dengan ibukotanya", "Indonesia", "Jakarta", "Malaysia", "Kuala Lumpur", "Thailand", "Bangkok", "Singapura", "Singapura", 10]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet 5: Excel Sandbox
+  const ws5 = wb.addWorksheet("5. Excel Sandbox", { properties: { tabColor: { argb: "FFEAB308" } } });
+  ws5.columns = [
+    { header: "Pertanyaan", width: 40 },
+    { header: "Header Kolom (pisah |)", width: 25 },
+    { header: "Data Tabel (baris pisah ;, kolom pisah |)", width: 40 },
+    { header: "Pilihan A", width: 15 },
+    { header: "Pilihan B", width: 15 },
+    { header: "Pilihan C", width: 15 },
+    { header: "Pilihan D", width: 15 },
+    { header: "Jawaban (A/B/C/D)", width: 18 },
+    { header: "Poin", width: 8 },
+  ];
+  ws5.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws5.getRow(1).height = 35;
+  ws5.addRow([
+    "Hitung rata-rata nilai siswa di tabel berikut",
+    "Nama|Nilai",
+    "Budi|85;Sari|92;Andi|78",
+    "75", "85", "92", "78", "B", 15
+  ]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet 6: Essay
+  const ws6 = wb.addWorksheet("6. Essay", { properties: { tabColor: { argb: "FFEC4899" } } });
+  ws6.columns = [
+    { header: "Pertanyaan", width: 50 },
+    { header: "Kata Kunci (pisah koma)", width: 35 },
+    { header: "Panduan Penilaian", width: 40 },
+    { header: "Poin", width: 8 },
+  ];
+  ws6.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws6.getRow(1).height = 35;
+  ws6.addRow([
+    "Jelaskan proses fotosintesis pada tumbuhan!",
+    "klorofil, cahaya matahari, karbondioksida, glukosa, oksigen",
+    "Nilai 100 jika menjelaskan 5 elemen lengkap, 70 jika 3 elemen, 40 jika hanya menyebut",
+    20
+  ]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet PETUNJUK
+  const ws7 = wb.addWorksheet("PETUNJUK", { properties: { tabColor: { argb: "FFDC2626" } } });
+  ws7.columns = [{ width: 90 }];
+  const petunjuk = [
+    "PETUNJUK PENGISIAN TEMPLATE SOAL ASTROLAB",
+    "",
+    "1. Isi soal di sheet sesuai TIPE soal yang diinginkan (tab di bawah).",
+    "2. Setiap baris = 1 soal. Hapus contoh sebelum import (atau biarkan, akan ikut terimport).",
+    "3. Kolom POIN: nilai per soal (default 10).",
+    "",
+    "=== TIPE SOAL ===",
+    "",
+    "Pilihan Ganda: 4 opsi, 1 jawaban. Tulis huruf A/B/C/D di kolom Jawaban.",
+    "",
+    "Benar/Salah: ketik 'Benar' atau 'Salah' di kolom Jawaban.",
+    "",
+    "PG Kompleks: Multi jawaban. Pisah dengan koma. Contoh: 'A,B,D'.",
+    "",
+    "Pasangkan: Isi pasangan kiri-kanan berurutan. Bisa 2-4 pasangan.",
+    "",
+    "Excel Sandbox (khusus Informatika):",
+    "   - Header Kolom: pisah dengan tanda | (pipe). Contoh: 'Nama|Nilai|Kelas'",
+    "   - Data Tabel: baris pisah ; (semicolon), kolom pisah | (pipe).",
+    "     Contoh: 'Budi|85|VII;Sari|92|VII;Andi|78|VIII'",
+    "   - Siswa akan mencoba rumus Excel (SUM, AVERAGE, dll) lalu pilih PG.",
+    "",
+    "Essay: Jawaban panjang, dinilai manual oleh guru.",
+    "   - Kata Kunci: pisah dengan koma. Akan ditampilkan ke guru saat menilai.",
+    "   - Panduan Penilaian: rubrik untuk guru, opsional.",
+    "",
+    "=== TIPS ===",
+    "",
+    "- Boleh kosongkan sheet yang tidak dipakai (akan diskip).",
+    "- Soal dengan pertanyaan kosong akan diskip otomatis.",
+    "- Setelah edit, simpan & upload via tombol 'Import Excel'.",
+    "",
+    "Astrolab · Our Classroom · © 2026 M. Hasanul Fatta",
+  ];
+  petunjuk.forEach((line, i) => {
+    const row = ws7.addRow([line]);
+    if (i === 0) {
+      row.font = { name: "Arial", bold: true, size: 14, color: { argb: "FF0D6B7A" } };
+      row.height = 26;
+    } else if (line.startsWith("===")) {
+      row.font = { name: "Arial", bold: true, size: 11, color: { argb: "FFDC2626" } };
+    } else if (line.match(/^[A-Z][a-z]+ (Ganda|Salah|Kompleks|Sandbox)/) || line === "Essay: Jawaban panjang, dinilai manual oleh guru." || line === "Pasangkan: Isi pasangan kiri-kanan berurutan. Bisa 2-4 pasangan.") {
+      row.font = { name: "Arial", bold: true, size: 10, color: { argb: "FF1A1C1E" } };
+    } else {
+      row.font = { name: "Arial", size: 10, color: { argb: "FF374151" } };
+    }
+    row.alignment = { wrapText: true, vertical: "top" };
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = "Template_Soal_Astrolab.xlsx";
   a.click(); URL.revokeObjectURL(url);
@@ -2846,14 +3045,16 @@ async function importSoalFromExcel(file) {
           // Deteksi tipe dari nama sheet
           const n = name.toLowerCase();
           let tipe = null;
-          if (n.includes("pilihan") || n.includes("ganda") || n.includes("pg") || n.includes("biru")) tipe = "pg";
-          else if (n.includes("benar") || n.includes("salah") || n.includes("tf") || n.includes("hijau")) tipe = "tf";
-          else if (n.includes("cocok") || n.includes("mcc") || n.includes("oranye") || n.includes("orange")) tipe = "komplex";
-          else if (n.includes("urutan") || n.includes("susun") || n.includes("ungu") || n.includes("pasang")) tipe = "pasang";
+          if (n.includes("pilihan ganda") || n.includes("1.") || n.includes("biru")) tipe = "pg";
+          else if (n.includes("benar") || n.includes("salah") || n.includes("2.") || n.includes("hijau")) tipe = "tf";
+          else if (n.includes("kompleks") || n.includes("cocok") || n.includes("3.") || n.includes("oranye") || n.includes("orange")) tipe = "komplex";
+          else if (n.includes("pasangkan") || n.includes("urutan") || n.includes("susun") || n.includes("4.") || n.includes("ungu") || n.includes("pasang")) tipe = "pasang";
+          else if (n.includes("excel") || n.includes("sandbox") || n.includes("5.") || n.includes("kuning")) tipe = "excel";
+          else if (n.includes("essay") || n.includes("6.") || n.includes("pink") || n.includes("magenta")) tipe = "essay";
           if (!tipe) return;
 
           rows.forEach(row => {
-            const pertanyaan = row["Pertanyaan / Instruksi"] || row["Pernyataan"] || "";
+            const pertanyaan = row["Pertanyaan"] || row["Pertanyaan / Instruksi"] || row["Pernyataan"] || "";
             if (!pertanyaan.toString().trim()) return;
             const poin = Number(row["Poin"]) || 10;
 
@@ -2867,14 +3068,34 @@ async function importSoalFromExcel(file) {
               soal.push({ id: uid(), type: "tf", pertanyaan: pertanyaan.toString(), jawaban: jwb === "benar" ? 0 : 1, poin });
             } else if (tipe === "komplex") {
               const opsi = [row["Pilihan A"], row["Pilihan B"], row["Pilihan C"], row["Pilihan D"]].map(String);
-              const jwbStr = (row["Jawaban Benar (misal: A,C)"] || row["Jawaban Benar\n(misal: A,C)"] || "A").toString();
+              const jwbStr = (row["Jawaban Benar (A,B,C,D)"] || row["Jawaban Benar (misal: A,C)"] || row["Jawaban Benar\n(misal: A,C)"] || "A").toString();
               const jwb = jwbStr.split(",").map(s => ["A","B","C","D"].indexOf(s.trim().toUpperCase())).filter(i => i >= 0);
               soal.push({ id: uid(), type: "komplex", pertanyaan: pertanyaan.toString(), opsi, jawaban: jwb, poin });
             } else if (tipe === "pasang") {
-              const kiri = [row["Item Kiri 1"], row["Item Kiri 2"], row["Item Kiri 3"]].map(String).filter(v => v && v !== "undefined");
-              const kanan = [row["Item Kanan 1 (pasangan Kiri 1)"], row["Item Kanan 2 (pasangan Kiri 2)"], row["Item Kanan 3 (pasangan Kiri 3)"]].map(String).filter(v => v && v !== "undefined");
+              const kiri = [], kanan = [];
+              for (let i = 1; i <= 4; i++) {
+                const k = row[`Item Kiri ${i}`] || row[`Item Kiri ${i} (pasangan Kiri ${i})`];
+                const kn = row[`Pasangan Kanan ${i}`] || row[`Item Kanan ${i} (pasangan Kiri ${i})`];
+                if (k && k.toString().trim()) kiri.push(k.toString());
+                if (kn && kn.toString().trim()) kanan.push(kn.toString());
+              }
+              if (kiri.length === 0) return;
               const jwb = kiri.map((_, i) => i);
               soal.push({ id: uid(), type: "pasang", pertanyaan: pertanyaan.toString(), kiri, kanan, jawaban: jwb, poin });
+            } else if (tipe === "excel") {
+              const headersStr = (row["Header Kolom (pisah |)"] || "").toString();
+              const dataStr = (row["Data Tabel (baris pisah ;, kolom pisah |)"] || "").toString();
+              if (!headersStr || !dataStr) return;
+              const headers = headersStr.split("|").map(h => h.trim());
+              const table = dataStr.split(";").map(rowStr => rowStr.split("|").map(c => c.trim()));
+              const opsi = [row["Pilihan A"], row["Pilihan B"], row["Pilihan C"], row["Pilihan D"]].map(String);
+              const jwb = (row["Jawaban (A/B/C/D)"] || "A").toString().trim().toUpperCase();
+              const jwbIdx = ["A","B","C","D"].indexOf(jwb);
+              soal.push({ id: uid(), type: "excel", pertanyaan: pertanyaan.toString(), headers, table, opsi, jawaban: jwbIdx >= 0 ? jwbIdx : 0, poin });
+            } else if (tipe === "essay") {
+              const kataKunci = (row["Kata Kunci (pisah koma)"] || "").toString();
+              const panduanNilai = (row["Panduan Penilaian"] || "").toString();
+              soal.push({ id: uid(), type: "essay", pertanyaan: pertanyaan.toString(), kataKunci, panduanNilai, poin });
             }
           });
         });
@@ -3118,11 +3339,190 @@ function DashboardGuru({ store, navigate }) {
 
 
 // ─── ANALISIS TUGAS DETAIL ───
+// ─── NILAI ESSAY MODAL ───
+function NilaiEssayModal({ tugas, store, onClose }) {
+  const allSubs = store.getSubs().filter(s => s.tugasId === tugas.id);
+  // Filter siswa yang punya essay perlu dinilai
+  const subsWithEssay = allSubs.filter(sub => (sub.soalResults || []).some(r => r.statusNilai === "perlu_dinilai"));
+  const siswaList = store.getAllSiswa();
+  const [activeSubIdx, setActiveSubIdx] = useState(0);
+  const [savingFor, setSavingFor] = useState(null);
+
+  const essaySoals = (tugas.soal || []).map((s, i) => ({ ...s, idx: i })).filter(s => s.type === "essay");
+
+  if (subsWithEssay.length === 0) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal" onClick={e => e.stopPropagation()}>
+          <h3>Tidak ada essay untuk dinilai</h3>
+          <p style={{ fontSize: 13, color: "var(--ink-3)" }}>Semua essay sudah dinilai. ✅</p>
+          <div className="modal-actions" style={{ marginTop: 14 }}>
+            <button className="btn btn-primary btn-sm" onClick={onClose}>Tutup</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentSub = subsWithEssay[activeSubIdx];
+  const siswa = siswaList.find(s => s.id === currentSub?.siswaId);
+
+  async function nilaiEssay(soalIdx, nilaiEssay, komentar) {
+    setSavingFor(soalIdx);
+    try {
+      const newResults = currentSub.soalResults.map(r => {
+        if (r.origIdx === soalIdx && r.statusNilai === "perlu_dinilai") {
+          return { ...r, statusNilai: "dinilai", nilaiEssay: Number(nilaiEssay), komentarGuru: komentar || "" };
+        }
+        return r;
+      });
+      // Hitung ulang nilai total
+      const allResults = newResults;
+      let totalPoinBaru = 0;
+      let correctCountBaru = 0;
+      allResults.forEach(r => {
+        if (r.correct === true) { totalPoinBaru += r.poinSoal; correctCountBaru++; }
+        else if (r.statusNilai === "dinilai") {
+          // Tambah poin proporsional dari nilai essay (nilai/100 * poinSoal)
+          totalPoinBaru += Math.round((r.nilaiEssay / 100) * r.poinSoal);
+          if (r.nilaiEssay >= 60) correctCountBaru++;
+        }
+      });
+      const totalSoal = (tugas.soal || []).length || 1;
+      const nilaiBaru = Math.round((correctCountBaru / totalSoal) * 100);
+
+      await update(ref(db, `submissions/${currentSub.id}`), {
+        soalResults: newResults,
+        nilai: nilaiBaru,
+        poinDapat: totalPoinBaru,
+        correctCount: correctCountBaru,
+      });
+
+      // Update stats siswa (selisih poin)
+      const selisihPoin = totalPoinBaru - (currentSub.poinDapat || 0);
+      if (selisihPoin !== 0) {
+        const stats = store.getStats(currentSub.siswaId);
+        await update(ref(db, `stats/${currentSub.siswaId}`), {
+          poin: (stats.poin || 0) + selisihPoin,
+        });
+      }
+    } catch (e) {
+      alert("Gagal menyimpan nilai: " + e.message);
+    } finally {
+      setSavingFor(null);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 600, maxHeight: "92vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>Nilai Essay</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--ink-3)" }}>×</button>
+        </div>
+
+        {/* Siswa navigator */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap", maxHeight: 80, overflowY: "auto" }}>
+          {subsWithEssay.map((sub, i) => {
+            const s = siswaList.find(x => x.id === sub.siswaId);
+            const isCurrent = i === activeSubIdx;
+            const perluDinilai = (sub.soalResults || []).filter(r => r.statusNilai === "perlu_dinilai").length;
+            return (
+              <button key={sub.id} onClick={() => setActiveSubIdx(i)} style={{
+                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                border: `1.5px solid ${isCurrent ? "var(--accent)" : "var(--line)"}`,
+                background: isCurrent ? "var(--accent)" : "var(--surface)",
+                color: isCurrent ? "#fff" : "var(--ink-2)",
+              }}>
+                {s?.namaDisplay || s?.nama || sub.siswaId} {perluDinilai > 0 && <span style={{ marginLeft: 4, padding: "1px 5px", background: isCurrent ? "rgba(255,255,255,.3)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 9 }}>{perluDinilai}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 4px" }}>
+          <div style={{ marginBottom: 14, padding: "10px 12px", background: "var(--accent-tint)", borderRadius: 8, fontSize: 13 }}>
+            <div style={{ fontWeight: 700, color: "var(--accent-2)" }}>{siswa?.namaDisplay || siswa?.nama || currentSub.siswaId}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{essaySoals.length} essay dalam tugas ini</div>
+          </div>
+
+          {essaySoals.map(s => {
+            const result = currentSub.soalResults?.find(r => r.origIdx === s.idx);
+            const isDinilai = result?.statusNilai === "dinilai";
+            return (
+              <EssayCard key={s.idx} soal={s} result={result} isDinilai={isDinilai} saving={savingFor === s.idx} onNilai={(n, k) => nilaiEssay(s.idx, n, k)} />
+            );
+          })}
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 14 }}>
+          {activeSubIdx > 0 && <button className="btn btn-outline btn-sm" onClick={() => setActiveSubIdx(activeSubIdx - 1)}>← Siswa sebelumnya</button>}
+          <div style={{ flex: 1 }} />
+          {activeSubIdx < subsWithEssay.length - 1 && <button className="btn btn-primary btn-sm" onClick={() => setActiveSubIdx(activeSubIdx + 1)}>Siswa berikutnya →</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EssayCard({ soal, result, isDinilai, saving, onNilai }) {
+  const [nilai, setNilai] = useState(result?.nilaiEssay ?? "");
+  const [komentar, setKomentar] = useState(result?.komentarGuru || "");
+
+  return (
+    <Card pad="md" style={{ marginBottom: 10, border: isDinilai ? "1.5px solid var(--good)" : "1.5px solid #fde68a" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>SOAL {soal.idx + 1}</span>
+        {isDinilai ? <span className="chip chip-good" style={{ fontSize: 10 }}>✓ Dinilai · {result.nilaiEssay}/100</span> : <span style={{ fontSize: 10, padding: "1px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: 600 }}>Perlu dinilai</span>}
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, lineHeight: 1.4 }}>{soal.pertanyaan}</div>
+      {soal.gambar && <img src={soal.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: 6, marginBottom: 8 }} />}
+
+      {soal.kataKunci && (
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 8, padding: "6px 10px", background: "var(--surface-alt)", borderRadius: 6 }}>
+          <b>Kata kunci:</b> {soal.kataKunci}
+        </div>
+      )}
+      {soal.panduanNilai && (
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 8, padding: "6px 10px", background: "var(--surface-alt)", borderRadius: 6 }}>
+          <b>Panduan:</b> {soal.panduanNilai}
+        </div>
+      )}
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4, fontWeight: 600 }}>Jawaban Siswa:</div>
+        <div style={{ padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+          {result?.jawabanEssay || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(tidak menjawab)</span>}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <div style={{ width: 90 }}>
+          <label className="lbl" style={{ fontSize: 11 }}>Nilai (0-100)</label>
+          <input className="inp" type="number" min={0} max={100} value={nilai} onChange={e => setNilai(e.target.value)} style={{ fontFamily: "var(--mono)" }} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label className="lbl" style={{ fontSize: 11 }}>Komentar (opsional)</label>
+          <input className="inp" value={komentar} onChange={e => setKomentar(e.target.value)} placeholder="Feedback untuk siswa..." />
+        </div>
+        <button className="btn btn-primary btn-sm" disabled={saving || nilai === "" || nilai < 0 || nilai > 100} onClick={() => onNilai(nilai, komentar)}>
+          {saving ? "..." : isDinilai ? "Update" : "Simpan"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
   const t = store.getTugas().find(x => x.id === tugasId);
   if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
   const subs = store.getSubs().filter(s => s.tugasId === t.id);
   const total = subs.length;
+  const [nilaiEssayTarget, setNilaiEssayTarget] = useState(null);
+  const hasEssay = (t.soal || []).some(s => s.type === "essay");
+  const perluDinilai = subs.filter(sub => (sub.soalResults || []).some(r => r.statusNilai === "perlu_dinilai")).length;
+
   if (total === 0) return <div className="empty">Belum ada siswa yang mengerjakan.</div>;
 
   const avgNilai = Math.round(subs.reduce((a, s) => a + s.nilai, 0) / total);
@@ -3160,6 +3560,30 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
         <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>{t.judul}</h1>
         <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>{total} siswa · {t.soal?.length || 0} soal</div>
       </div>
+
+      {/* Banner nilai essay */}
+      {hasEssay && (
+        <Card pad="lg" style={{ marginBottom: 12, background: perluDinilai > 0 ? "#fef3c7" : "var(--good-bg)", border: `1.5px solid ${perluDinilai > 0 ? "#fde68a" : "#86efac"}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: "#fff", display: "grid", placeItems: "center", color: perluDinilai > 0 ? "#92400e" : "var(--good)", flexShrink: 0 }}>
+              <I n={perluDinilai > 0 ? "edit" : "check"} s={20} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: perluDinilai > 0 ? "#92400e" : "var(--good)" }}>
+                {perluDinilai > 0 ? `${perluDinilai} essay perlu dinilai` : "Semua essay sudah dinilai"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>
+                {perluDinilai > 0 ? "Klik tombol di sebelah untuk mulai menilai." : "Bagus! Semua submission lengkap."}
+              </div>
+            </div>
+            {perluDinilai > 0 && (
+              <button className="btn btn-primary btn-sm" onClick={() => setNilaiEssayTarget(t)}>Nilai Essay</button>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {nilaiEssayTarget && <NilaiEssayModal tugas={nilaiEssayTarget} store={store} onClose={() => setNilaiEssayTarget(null)} />}
 
       {/* Summary */}
       <Card pad="lg" style={{ marginBottom: 12, background: avgNilai >= 80 ? "var(--good-bg)" : avgNilai >= 60 ? "#fffbeb" : "var(--bad-bg)", border: `1.5px solid ${avgNilai >= 80 ? "#86efac" : avgNilai >= 60 ? "#fde68a" : "#fca5a5"}` }}>
@@ -3604,15 +4028,86 @@ function BankSoal({ store, navigate }) {
           <h1>Bank Soal</h1>
           <p>Kelola koleksi soal untuk dipakai ulang di tugas</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setEditTarget(null); setShowForm(true); }}>
-          <I n="plus" s={14} /> Tambah Soal
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="btn btn-ghost btn-sm" onClick={downloadTemplateSoal} title="Download template Excel">
+            <I n="chartBar" s={13} /> Template
+          </button>
+          <label className="btn btn-outline btn-sm" style={{ cursor: "pointer", margin: 0 }} title="Import dari Excel">
+            <I n="upload" s={13} /> Import
+            <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={async e => {
+              const file = e.target.files[0]; if (!file) return;
+              try {
+                const imported = await importSoalFromExcel(file);
+                if (!imported.length) { showToast("Tidak ada soal yang valid di file."); e.target.value = ""; return; }
+                // Convert ke format bank soal
+                const bankSoalList = imported.map(s => {
+                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: ["import"], pembahasan: "" };
+                  if (s.type === "pg") return { ...base, opsi: s.opsi, jawaban: s.jawaban };
+                  if (s.type === "tf") return { ...base, jawaban: s.jawaban };
+                  if (s.type === "komplex") {
+                    const benarOpsi = (s.opsi || []).map((_, i) => (s.jawaban || []).includes(i));
+                    return { ...base, opsi: s.opsi, benarOpsi };
+                  }
+                  if (s.type === "pasang") {
+                    const pasangan = (s.kiri || []).map((k, i) => [k, (s.kanan || [])[i] || ""]);
+                    return { ...base, pasangan };
+                  }
+                  if (s.type === "excel") return { ...base, headers: s.headers, table: s.table, opsi: s.opsi, jawaban: s.jawaban };
+                  if (s.type === "essay") return { ...base, kataKunci: s.kataKunci || "", panduanNilai: s.panduanNilai || "" };
+                  return base;
+                });
+                await store.addBankSoalBulk(bankSoalList);
+                showToast(`${bankSoalList.length} soal berhasil diimport!`);
+              } catch (err) {
+                showToast("Gagal import: " + err.message);
+              }
+              e.target.value = "";
+            }} />
+          </label>
+          <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setShowForm(true); }}>
+            <I n="plus" s={13} /> Tambah
+          </button>
+        </div>
       </div>
 
       <div className="topbar">
         <div style={{ width: 36 }} />
         <div className="topbar-title">Bank Soal</div>
-        <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setShowForm(true); }}><I n="plus" s={13} /></button>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button className="btn btn-ghost btn-sm" onClick={downloadTemplateSoal} title="Template"><I n="chartBar" s={13} /></button>
+          <label className="btn btn-outline btn-sm" style={{ cursor: "pointer", margin: 0, padding: "6px 10px" }} title="Import">
+            <I n="upload" s={13} />
+            <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={async e => {
+              const file = e.target.files[0]; if (!file) return;
+              try {
+                const imported = await importSoalFromExcel(file);
+                if (!imported.length) { showToast("Tidak ada soal yang valid."); e.target.value = ""; return; }
+                const bankSoalList = imported.map(s => {
+                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: ["import"], pembahasan: "" };
+                  if (s.type === "pg") return { ...base, opsi: s.opsi, jawaban: s.jawaban };
+                  if (s.type === "tf") return { ...base, jawaban: s.jawaban };
+                  if (s.type === "komplex") {
+                    const benarOpsi = (s.opsi || []).map((_, i) => (s.jawaban || []).includes(i));
+                    return { ...base, opsi: s.opsi, benarOpsi };
+                  }
+                  if (s.type === "pasang") {
+                    const pasangan = (s.kiri || []).map((k, i) => [k, (s.kanan || [])[i] || ""]);
+                    return { ...base, pasangan };
+                  }
+                  if (s.type === "excel") return { ...base, headers: s.headers, table: s.table, opsi: s.opsi, jawaban: s.jawaban };
+                  if (s.type === "essay") return { ...base, kataKunci: s.kataKunci || "", panduanNilai: s.panduanNilai || "" };
+                  return base;
+                });
+                await store.addBankSoalBulk(bankSoalList);
+                showToast(`${bankSoalList.length} soal berhasil diimport!`);
+              } catch (err) {
+                showToast("Gagal import: " + err.message);
+              }
+              e.target.value = "";
+            }} />
+          </label>
+          <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setShowForm(true); }}><I n="plus" s={13} /></button>
+        </div>
       </div>
 
       {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, boxShadow: "var(--shadow)" }}>{toast}</div>}
@@ -3667,7 +4162,7 @@ function BankSoal({ store, navigate }) {
                       <span className="chip chip-info" style={{ fontSize: 10 }}>{s.mapel}</span>
                       <span className="chip" style={{ fontSize: 10, background: "var(--accent-tint)", color: "var(--accent-2)" }}>Kelas {s.jenjang}</span>
                       <span className="chip" style={{ fontSize: 10, background: s.level === "mudah" ? "#d1fae5" : s.level === "sedang" ? "#fef3c7" : "#fee2e2", color: s.level === "mudah" ? "#065f46" : s.level === "sedang" ? "#713f12" : "#991b1b" }}>{s.level}</span>
-                      <span className="chip" style={{ fontSize: 10, background: "var(--surface-alt)" }}>{s.type === "pg" ? "Pilihan Ganda" : s.type === "tf" ? "Benar/Salah" : s.type === "kompleks" ? "PG Kompleks" : s.type === "excel" ? "Excel Sandbox" : "Pasangkan"}</span>
+                      <span className="chip" style={{ fontSize: 10, background: "var(--surface-alt)" }}>{s.type === "pg" ? "Pilihan Ganda" : s.type === "tf" ? "Benar/Salah" : s.type === "kompleks" ? "PG Kompleks" : s.type === "excel" ? "Excel Sandbox" : s.type === "essay" ? "Essay" : "Pasangkan"}</span>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{s.pertanyaan}</div>
                     {(s.tags || []).length > 0 && (
@@ -3697,6 +4192,7 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
     benarOpsi: [false, false, false, false], // untuk kompleks
     pasangan: [["", ""], ["", ""], ["", ""], ["", ""]], // untuk pasangkan
     headers: ["Nama", "Nilai"], table: [["Budi", "85"], ["Sari", "92"], ["Andi", "78"]], // untuk excel
+    kataKunci: "", panduanNilai: "", // untuk essay
     pembahasan: "", tags: [],
   };
   const [form, setForm] = useState(init);
@@ -3730,6 +4226,7 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
       else if (form.type === "kompleks") { data.opsi = form.opsi; data.benarOpsi = form.benarOpsi; }
       else if (form.type === "pasangkan") { data.pasangan = form.pasangan; }
       else if (form.type === "excel") { data.headers = form.headers; data.table = form.table; data.opsi = form.opsi; data.jawaban = form.jawaban; }
+      else if (form.type === "essay") { data.kataKunci = form.kataKunci || ""; data.panduanNilai = form.panduanNilai || ""; }
       if (editTarget) await store.updateBankSoal(editTarget.id, data);
       else await store.addBankSoal(data);
       onSuccess();
@@ -3775,6 +4272,7 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
               <option value="kompleks">PG Kompleks (multi jawab)</option>
               <option value="pasangkan">Pasangkan</option>
               <option value="excel">Excel Sandbox (Informatika)</option>
+              <option value="essay">Essay (jawaban panjang)</option>
             </select>
           </div>
 
@@ -3924,6 +4422,16 @@ function BankSoalForm({ store, editTarget, onClose, onSuccess }) {
             </div>
           )}
 
+          {/* Essay */}
+          {form.type === "essay" && (
+            <div className="fg">
+              <label className="lbl">Essay (dinilai manual)</label>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 8 }}>Jawaban siswa akan dinilai manual oleh guru.</div>
+              <input className="inp" style={{ marginBottom: 8 }} value={form.kataKunci || ""} onChange={e => set("kataKunci", e.target.value)} placeholder="Kata kunci jawaban (pisah dengan koma)" />
+              <textarea className="inp" rows={2} value={form.panduanNilai || ""} onChange={e => set("panduanNilai", e.target.value)} placeholder="Panduan penilaian (mis: 100 jika lengkap, 70 jika hanya konsep dasar)" />
+            </div>
+          )}
+
           <div className="fg">
             <label className="lbl">Pembahasan (opsional)</label>
             <textarea className="inp" rows={2} value={form.pembahasan} onChange={e => set("pembahasan", e.target.value)} placeholder="Penjelasan jawaban..." />
@@ -4030,7 +4538,7 @@ function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, 
                 <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} onClick={e => e.stopPropagation()} style={{ marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 10, padding: "1px 6px", background: "var(--surface-alt)", color: "var(--ink-2)", borderRadius: 4 }}>{s.type === "pg" ? "PG" : s.type === "tf" ? "TF" : s.type === "kompleks" ? "Kompleks" : s.type === "excel" ? "Excel" : "Pasangkan"}</span>
+                    <span style={{ fontSize: 10, padding: "1px 6px", background: "var(--surface-alt)", color: "var(--ink-2)", borderRadius: 4 }}>{s.type === "pg" ? "PG" : s.type === "tf" ? "TF" : s.type === "kompleks" ? "Kompleks" : s.type === "excel" ? "Excel" : s.type === "essay" ? "Essay" : "Pasangkan"}</span>
                     <span style={{ fontSize: 10, padding: "1px 6px", background: s.level === "mudah" ? "#d1fae5" : s.level === "sedang" ? "#fef3c7" : "#fee2e2", color: s.level === "mudah" ? "#065f46" : s.level === "sedang" ? "#713f12" : "#991b1b", borderRadius: 4 }}>{s.level}</span>
                     <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{s.mapel} · {s.jenjang}</span>
                   </div>
