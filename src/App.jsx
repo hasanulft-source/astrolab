@@ -453,6 +453,15 @@ const IC = {
   send: "M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z",
   upload: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12",
   download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
+  // === Badge icons ===
+  star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+  trophy: "M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4zM7 4H4a2 2 0 00-2 2v1a4 4 0 004 4M17 4h3a2 2 0 012 2v1a4 4 0 01-4 4",
+  book: "M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 006.5 22H20V2H6.5A2.5 2.5 0 004 4.5v15z",
+  lightbulb: "M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7c.5.5.8 1.2.8 1.9V18h6.4v-1.4c0-.7.3-1.4.8-1.9A7 7 0 0012 2z",
+  users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+  flag: "M4 22V4a2 2 0 012-2h11l-3 5 3 5H6M4 22h4",
+  heart: "M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z",
+  award: "M12 15a7 7 0 100-14 7 7 0 000 14zM8.21 13.89L7 23l5-3 5 3-1.21-9.12",
 };
 function I({ n, s = 16, style, cls = "" }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={style} className={cls}><path d={IC[n] || ""} /></svg>;
@@ -534,24 +543,89 @@ function fmtDl(dl) {
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 // ─── XP / LEVEL / BADGE SYSTEM ───
-const LEVELS = [
-  { id: 1, name: "Nebula",    min: 0,    max: 99,   emoji: "✨", color: "#7c3aed", bg: "#f3e8ff", desc: "Baru memulai perjalanan" },
-  { id: 2, name: "Bintang",   min: 100,  max: 299,  emoji: "⭐", color: "#d97706", bg: "#fffbeb", desc: "Mulai bersinar" },
-  { id: 3, name: "Planet",    min: 300,  max: 599,  emoji: "🪐", color: "#0d6b7a", bg: "#eaf4f3", desc: "Semakin solid" },
-  { id: 4, name: "Astronot",  min: 600,  max: 999,  emoji: "🚀", color: "#1d4ed8", bg: "#eff6ff", desc: "Sudah terbang tinggi" },
-  { id: 5, name: "Commander", min: 1000, max: Infinity, emoji: "🌌", color: "#b45309", bg: "#fef3c7", desc: "Elite — puncak galaksi" },
+// ─── LEVEL SYSTEM: 5 Tier × 4 Sub-level = 20 Levels ───
+// Setiap tier punya icon SVG sendiri, sub-level dibedakan dengan jumlah pip / accent
+const TIERS = [
+  { id: "nebula",    name: "Nebula",    color: "#7c3aed", bg: "#f3e8ff", accent: "#a78bfa", desc: "Awal perjalanan" },
+  { id: "bintang",   name: "Bintang",   color: "#d97706", bg: "#fffbeb", accent: "#fbbf24", desc: "Mulai bersinar" },
+  { id: "planet",    name: "Planet",    color: "#0d6b7a", bg: "#eaf4f3", accent: "#5eead4", desc: "Semakin kokoh" },
+  { id: "astronot",  name: "Astronot",  color: "#1d4ed8", bg: "#eff6ff", accent: "#60a5fa", desc: "Terbang tinggi" },
+  { id: "commander", name: "Commander", color: "#b45309", bg: "#fef3c7", accent: "#f59e0b", desc: "Puncak galaksi" },
 ];
+
+// XP cumulative per level (progressive scaling)
+const LEVEL_XP = [
+  0,     200,   500,    950,    // Nebula I-IV
+  1500,  2200,  3000,   4000,   // Bintang I-IV
+  5200,  6700,  8500,   10700,  // Planet I-IV
+  13300, 16500, 20300,  24800,  // Astronot I-IV
+  30000, 36000, 43000,  51000,  // Commander I-IV
+];
+
+const SUB_ROMAN = ["I", "II", "III", "IV"];
+
+// Generate LEVELS array dari TIERS × 4 sub-level
+const LEVELS = TIERS.flatMap((tier, tIdx) =>
+  [0, 1, 2, 3].map((sub, sIdx) => {
+    const id = tIdx * 4 + sIdx + 1;
+    const min = LEVEL_XP[id - 1];
+    const max = id < 20 ? LEVEL_XP[id] - 1 : Infinity;
+    return {
+      id,
+      tierId: tier.id,
+      tierName: tier.name,
+      subLevel: sub + 1,
+      name: `${tier.name} ${SUB_ROMAN[sub]}`,
+      shortName: tier.name,
+      min, max,
+      color: tier.color,
+      bg: tier.bg,
+      accent: tier.accent,
+      desc: tier.desc,
+    };
+  })
+);
+
 function getLevel(poin) {
   return LEVELS.find(l => poin >= l.min && poin <= l.max) || LEVELS[0];
 }
+function getTier(poin) {
+  const lv = getLevel(poin);
+  return TIERS.find(t => t.id === lv.tierId);
+}
 
-// ─── LEVEL BADGE (compact pill untuk leaderboard, chat, dll) ───
-function LevelBadge({ poin = 0, size = "sm", showName = true }) {
+// ─── SVG TIER ICONS ───
+function TierIcon({ tierId, size = 16, color = "currentColor" }) {
+  const s = size;
+  const props = { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  switch (tierId) {
+    case "nebula":
+      // Sparkles / awan kosmik
+      return <svg {...props}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /><circle cx="12" cy="12" r="3" fill={color} stroke="none" opacity="0.7" /></svg>;
+    case "bintang":
+      // 5-point star
+      return <svg {...props}><polygon points="12,2 14.85,8.5 22,9.27 16.5,14.14 18.18,21.5 12,17.77 5.82,21.5 7.5,14.14 2,9.27 9.15,8.5" fill={color} fillOpacity="0.2" /></svg>;
+    case "planet":
+      // Saturn-like dengan ring
+      return <svg {...props}><circle cx="12" cy="12" r="5" fill={color} fillOpacity="0.2" /><ellipse cx="12" cy="12" rx="10" ry="3" transform="rotate(-20 12 12)" /></svg>;
+    case "astronot":
+      // Roket
+      return <svg {...props}><path d="M4.5 16.5l-1 4 4-1M14 6l4 4M9 11l2 2M4.5 16.5L13 8s1-1.5 3-1.5c1 0 2.5.5 3 1s1 2 1 3c0 2-1.5 3-1.5 3l-8.5 8.5-3-3z" /><circle cx="14" cy="10" r="1.5" fill={color} /></svg>;
+    case "commander":
+      // Galaksi spiral
+      return <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 015.66 16.07c-1.4-1.4-3.5-2.07-5.66-2.07-2.16 0-4.26.67-5.66 2.07A9 9 0 0112 3z" fill={color} fillOpacity="0.25" stroke="none" /><circle cx="12" cy="12" r="2.5" fill={color} stroke="none" /></svg>;
+    default:
+      return <svg {...props}><circle cx="12" cy="12" r="8" /></svg>;
+  }
+}
+
+// ─── LEVEL BADGE (compact pill — full SVG, no emoji) ───
+function LevelBadge({ poin = 0, size = "sm", showName = true, showSubLevel = true }) {
   const lv = getLevel(poin);
   const sizes = {
-    xs: { padX: 5, padY: 1, fs: 9, gap: 3, emojiSize: 10 },
-    sm: { padX: 6, padY: 2, fs: 10, gap: 4, emojiSize: 11 },
-    md: { padX: 8, padY: 3, fs: 11, gap: 5, emojiSize: 13 },
+    xs: { padX: 6, padY: 2, fs: 9, gap: 4, iconSize: 11 },
+    sm: { padX: 7, padY: 3, fs: 10, gap: 4, iconSize: 12 },
+    md: { padX: 9, padY: 4, fs: 11, gap: 5, iconSize: 14 },
   };
   const s = sizes[size] || sizes.sm;
   return (
@@ -562,8 +636,8 @@ function LevelBadge({ poin = 0, size = "sm", showName = true }) {
       borderRadius: 99, fontSize: s.fs, fontWeight: 700,
       lineHeight: 1, whiteSpace: "nowrap",
     }}>
-      <span style={{ fontSize: s.emojiSize }}>{lv.emoji}</span>
-      {showName && lv.name}
+      <TierIcon tierId={lv.tierId} size={s.iconSize} color={lv.color} />
+      {showName && (showSubLevel ? lv.name : lv.shortName)}
     </span>
   );
 }
@@ -577,33 +651,105 @@ function getLevelProgress(poin) {
   return { pct, current: poin, needed: lv.max + 1 - poin, next };
 }
 
+// ─── BADGES (SVG-based, no emoji, konsisten dengan tema teal) ───
+// 'icon' = nama icon dari ICONS map. 'category' = XP/Streak/Tugas/Prestasi/Special
 const AUTO_BADGES = [
-  { id: "perfect",   emoji: "🎯", name: "Perfect Score",   desc: "Nilai 100 di satu tugas",         color: "#b45309", bg: "#fef3c7" },
-  { id: "fast",      emoji: "⚡", name: "Fast Finisher",   desc: "Submit < 3 jam setelah publish",  color: "#7c3aed", bg: "#f5f3ff" },
-  { id: "onfire",    emoji: "🔥", name: "On Fire",         desc: "Streak 5x berturut-turut",        color: "#dc2626", bg: "#fef2f2" },
-  { id: "rajin",     emoji: "📚", name: "Rajin Belajar",   desc: "Selesaikan 10 tugas",             color: "#0d6b7a", bg: "#eaf4f3" },
-  { id: "topclass",  emoji: "👑", name: "Top of Class",    desc: "Rank #1 di leaderboard",         color: "#d97706", bg: "#fffbeb" },
-  { id: "firstblood",emoji: "🌟", name: "First Step",      desc: "Selesaikan tugas pertama",       color: "#16a34a", bg: "#f0fdf4" },
+  // === Prestasi (nilai/akurasi) ===
+  { id: "perfect",     icon: "target",     name: "Perfect Score",     desc: "Nilai 100 di satu tugas",                color: "#b45309", bg: "#fef3c7", category: "Prestasi" },
+  { id: "perfect5",    icon: "target",     name: "Perfectionist",     desc: "5x nilai 100",                            color: "#92400e", bg: "#fef3c7", category: "Prestasi" },
+  { id: "perfect10",   icon: "trophy",     name: "Master Mind",       desc: "10x nilai 100",                           color: "#78350f", bg: "#fde68a", category: "Prestasi" },
+
+  // === Streak ===
+  { id: "onfire",      icon: "flame",      name: "On Fire",           desc: "Streak 5 hari berturut-turut",            color: "#dc2626", bg: "#fef2f2", category: "Streak" },
+  { id: "blazing",     icon: "flame",      name: "Blazing Hot",       desc: "Streak 10 hari berturut-turut",           color: "#b91c1c", bg: "#fee2e2", category: "Streak" },
+  { id: "inferno",     icon: "flame",      name: "Inferno",           desc: "Streak 20 hari berturut-turut",           color: "#7f1d1d", bg: "#fecaca", category: "Streak" },
+
+  // === Tugas ===
+  { id: "firstblood",  icon: "check",      name: "First Step",        desc: "Selesaikan tugas pertama",                color: "#16a34a", bg: "#f0fdf4", category: "Tugas" },
+  { id: "rajin",       icon: "book",       name: "Rajin Belajar",     desc: "Selesaikan 10 tugas",                     color: "#0d6b7a", bg: "#eaf4f3", category: "Tugas" },
+  { id: "scholar",     icon: "book",       name: "Scholar",           desc: "Selesaikan 25 tugas",                     color: "#0e7490", bg: "#cffafe", category: "Tugas" },
+  { id: "veteran",     icon: "book",       name: "Veteran",           desc: "Selesaikan 50 tugas",                     color: "#155e75", bg: "#a5f3fc", category: "Tugas" },
+
+  // === Speed ===
+  { id: "fast",        icon: "zap",        name: "Fast Finisher",     desc: "Submit < 3 jam setelah publish",          color: "#7c3aed", bg: "#f5f3ff", category: "Speed" },
+  { id: "lightning",   icon: "zap",        name: "Lightning",         desc: "5x submit di hari yang sama",             color: "#6d28d9", bg: "#ede9fe", category: "Speed" },
+
+  // === Ranking ===
+  { id: "topclass",    icon: "trophy",     name: "Top of Class",      desc: "Rank #1 di leaderboard",                  color: "#d97706", bg: "#fffbeb", category: "Ranking" },
+  { id: "podium",      icon: "trophy",     name: "Podium",            desc: "Masuk Top 3 leaderboard",                 color: "#ea580c", bg: "#fff7ed", category: "Ranking" },
+
+  // === Level ===
+  { id: "lv5",         icon: "star",       name: "Rising Star",       desc: "Capai Level 5 (Bintang I)",               color: "#d97706", bg: "#fffbeb", category: "Level" },
+  { id: "lv10",        icon: "star",       name: "Stellar",           desc: "Capai Level 10 (Planet II)",              color: "#0d6b7a", bg: "#eaf4f3", category: "Level" },
+  { id: "lv15",        icon: "star",       name: "Celestial",         desc: "Capai Level 15 (Astronot III)",           color: "#1d4ed8", bg: "#eff6ff", category: "Level" },
+  { id: "lv20",        icon: "star",       name: "Galactic",          desc: "Capai Level 20 (Commander IV)",           color: "#b45309", bg: "#fef3c7", category: "Level" },
+
+  // === XP ===
+  { id: "xp1k",        icon: "trending",   name: "1K Club",           desc: "Total 1.000 XP",                          color: "#0d6b7a", bg: "#eaf4f3", category: "XP" },
+  { id: "xp5k",        icon: "trending",   name: "5K Club",           desc: "Total 5.000 XP",                          color: "#7c3aed", bg: "#f5f3ff", category: "XP" },
+  { id: "xp10k",       icon: "trending",   name: "10K Elite",         desc: "Total 10.000 XP",                         color: "#b45309", bg: "#fef3c7", category: "XP" },
 ];
+
 const MANUAL_BADGES = [
-  { id: "guruspick",   emoji: "🏅", name: "Guru's Pick",     desc: "Pilihan khusus dari guru",        color: "#0d6b7a", bg: "#eaf4f3" },
-  { id: "creative",   emoji: "💡", name: "Most Creative",   desc: "Kreativitas luar biasa",          color: "#7c3aed", bg: "#f5f3ff" },
-  { id: "teamplayer", emoji: "🤝", name: "Team Player",     desc: "Kontribusi luar biasa di kelas",  color: "#1d4ed8", bg: "#eff6ff" },
-  { id: "improver",   emoji: "📈", name: "Most Improved",   desc: "Peningkatan nilai terbaik",       color: "#16a34a", bg: "#f0fdf4" },
+  { id: "guruspick",   icon: "award",      name: "Guru's Pick",       desc: "Pilihan khusus dari guru",                color: "#0d6b7a", bg: "#eaf4f3", category: "Special" },
+  { id: "creative",   icon: "lightbulb",   name: "Most Creative",     desc: "Kreativitas luar biasa",                  color: "#7c3aed", bg: "#f5f3ff", category: "Special" },
+  { id: "teamplayer", icon: "users",       name: "Team Player",       desc: "Kontribusi luar biasa di kelas",          color: "#1d4ed8", bg: "#eff6ff", category: "Special" },
+  { id: "improver",   icon: "trending",    name: "Most Improved",     desc: "Peningkatan nilai terbaik",               color: "#16a34a", bg: "#f0fdf4", category: "Special" },
+  { id: "leader",     icon: "flag",        name: "Class Leader",      desc: "Memimpin diskusi & inspirasi",            color: "#d97706", bg: "#fffbeb", category: "Special" },
+  { id: "helper",     icon: "heart",       name: "Helper",            desc: "Selalu membantu teman sekelas",           color: "#dc2626", bg: "#fef2f2", category: "Special" },
 ];
 const ALL_BADGES = [...AUTO_BADGES, ...MANUAL_BADGES];
 
-function checkAutoBadges(stats, submission, isTopClass = false) {
+function checkAutoBadges(stats, submission, isTopClass = false, isTopThree = false) {
   const earned = [];
-  if ((stats.tugasSelesai || 0) === 0) earned.push("firstblood");
-  if (submission.nilai === 100) earned.push("perfect");
+  const nilai = submission.nilai || 0;
+  const tugasSelesai = (stats.tugasSelesai || 0) + 1; // setelah submission ini
+  const newStreak = (stats.streak || 0) + 1;
+  const totalPerfectBefore = stats.perfectCount || 0;
+  const totalPerfect = totalPerfectBefore + (nilai === 100 ? 1 : 0);
+  const newPoin = (stats.poin || 0) + (submission.poinDapat || 0);
+  const newLevel = getLevel(newPoin).id;
+
+  // First tugas
+  if (tugasSelesai === 1) earned.push("firstblood");
+
+  // Prestasi (nilai)
+  if (nilai === 100) earned.push("perfect");
+  if (totalPerfect >= 5 && totalPerfectBefore < 5) earned.push("perfect5");
+  if (totalPerfect >= 10 && totalPerfectBefore < 10) earned.push("perfect10");
+
+  // Speed
   if (submission.ontime) {
     const msPub = submission.publishedAt ? Date.now() - submission.publishedAt : Infinity;
     if (msPub < 3 * 3600000) earned.push("fast");
   }
-  if ((stats.streak || 0) + 1 >= 5) earned.push("onfire");
-  if ((stats.tugasSelesai || 0) + 1 >= 10) earned.push("rajin");
+
+  // Streak milestones
+  if (newStreak === 5) earned.push("onfire");
+  if (newStreak === 10) earned.push("blazing");
+  if (newStreak === 20) earned.push("inferno");
+
+  // Tugas milestones
+  if (tugasSelesai === 10) earned.push("rajin");
+  if (tugasSelesai === 25) earned.push("scholar");
+  if (tugasSelesai === 50) earned.push("veteran");
+
+  // Ranking
   if (isTopClass) earned.push("topclass");
+  if (isTopThree && !isTopClass) earned.push("podium");
+
+  // Level milestones — cek apakah crossing threshold
+  const prevLevel = getLevel(stats.poin || 0).id;
+  if (newLevel >= 5 && prevLevel < 5) earned.push("lv5");
+  if (newLevel >= 10 && prevLevel < 10) earned.push("lv10");
+  if (newLevel >= 15 && prevLevel < 15) earned.push("lv15");
+  if (newLevel >= 20 && prevLevel < 20) earned.push("lv20");
+
+  // XP milestones
+  if (newPoin >= 1000 && (stats.poin || 0) < 1000) earned.push("xp1k");
+  if (newPoin >= 5000 && (stats.poin || 0) < 5000) earned.push("xp5k");
+  if (newPoin >= 10000 && (stats.poin || 0) < 10000) earned.push("xp10k");
+
   return earned;
 }
 
@@ -623,14 +769,16 @@ function LevelCard({ poin, compact = false }) {
   const prog = getLevelProgress(poin);
   if (compact) return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 99, background: lv.bg, border: `1.5px solid ${lv.color}22` }}>
-      <span style={{ fontSize: 14 }}>{lv.emoji}</span>
+      <TierIcon tierId={lv.tierId} size={14} color={lv.color} />
       <span style={{ fontSize: 11, fontWeight: 700, color: lv.color }}>{lv.name}</span>
     </div>
   );
   return (
     <div style={{ background: lv.bg, border: `1.5px solid ${lv.color}33`, borderRadius: 12, padding: "14px 16px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <span style={{ fontSize: 28 }}>{lv.emoji}</span>
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+          <TierIcon tierId={lv.tierId} size={26} color={lv.color} />
+        </div>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: lv.color }}>{lv.name}</div>
           <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{lv.desc}</div>
@@ -645,7 +793,7 @@ function LevelCard({ poin, compact = false }) {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
         <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{poin} XP</span>
-        {prog.next ? <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{prog.needed} lagi → {prog.next.emoji} {prog.next.name}</span>
+        {prog.next ? <span style={{ fontSize: 10, color: "var(--ink-3)", display: "inline-flex", alignItems: "center", gap: 4 }}>{prog.needed} lagi → <TierIcon tierId={prog.next.tierId} size={11} color="var(--ink-3)" /> {prog.next.name}</span>
           : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>MAX LEVEL</span>}
       </div>
     </div>
@@ -657,11 +805,15 @@ function BadgeChip({ badgeId, size = "md" }) {
   const b = ALL_BADGES.find(x => x.id === badgeId);
   if (!b) return null;
   if (size === "sm") return (
-    <div title={`${b.name}: ${b.desc}`} style={{ width: 32, height: 32, borderRadius: 8, background: b.bg, border: `1.5px solid ${b.color}33`, display: "grid", placeItems: "center", fontSize: 16, cursor: "default" }}>{b.emoji}</div>
+    <div title={`${b.name}: ${b.desc}`} style={{ width: 32, height: 32, borderRadius: 8, background: b.bg, border: `1.5px solid ${b.color}33`, display: "grid", placeItems: "center", cursor: "default", color: b.color }}>
+      <I n={b.icon} s={16} />
+    </div>
   );
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "10px 8px", borderRadius: 12, background: b.bg, border: `1.5px solid ${b.color}33`, minWidth: 72, textAlign: "center" }}>
-      <span style={{ fontSize: 24 }}>{b.emoji}</span>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 8px", borderRadius: 12, background: b.bg, border: `1.5px solid ${b.color}33`, minWidth: 72, textAlign: "center" }}>
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", display: "grid", placeItems: "center", color: b.color }}>
+        <I n={b.icon} s={18} />
+      </div>
       <span style={{ fontSize: 10, fontWeight: 700, color: b.color, lineHeight: 1.3 }}>{b.name}</span>
     </div>
   );
@@ -1995,11 +2147,19 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const prevStreak = prevStats.streak || 0;
     const lb = store.getLeaderboard(user.jenjang);
     const isTopClass = lb.length > 0 && lb[0].id === user.id;
-    const subForBadge = { nilai, ontime, publishedAt: t.createdAt ? new Date(t.createdAt).getTime() : 0 };
-    const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass);
+    const isTopThree = lb.length > 0 && lb.slice(0, 3).some(s => s.id === user.id);
+    const subForBadge = { nilai, ontime, poinDapat: totalPoin, publishedAt: t.createdAt ? new Date(t.createdAt).getTime() : 0 };
+    const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass, isTopThree);
     setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
     store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults, hasEssay });
     store.updateStats(user.id, nilai, totalPoin, ontime);
+    // Update perfectCount in stats for next badge check
+    if (nilai === 100) {
+      try {
+        const cur = store.getStats(user.id);
+        update(ref(db, `stats/${user.id}`), { perfectCount: (cur.perfectCount || 0) + 1 });
+      } catch {}
+    }
     newBadges.forEach(bid => store.awardBadge(user.id, bid));
     try { localStorage.removeItem(SAVE_KEY); } catch {}
     setSubmitted(true);
@@ -4653,6 +4813,23 @@ function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, 
 }
 
 // ─── LAPORAN HELPER ───
+function tierIconSvg(tierId, color = "#0d6b7a", size = 12) {
+  const paths = {
+    nebula: `<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="${color}" stroke-width="1.8" stroke-linecap="round" fill="none"/><circle cx="12" cy="12" r="3" fill="${color}" opacity="0.7"/>`,
+    bintang: `<polygon points="12,2 14.85,8.5 22,9.27 16.5,14.14 18.18,21.5 12,17.77 5.82,21.5 7.5,14.14 2,9.27 9.15,8.5" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" fill="${color}" fill-opacity="0.2"/>`,
+    planet: `<circle cx="12" cy="12" r="5" stroke="${color}" stroke-width="1.8" fill="${color}" fill-opacity="0.2"/><ellipse cx="12" cy="12" rx="10" ry="3" transform="rotate(-20 12 12)" stroke="${color}" stroke-width="1.8" fill="none"/>`,
+    astronot: `<path d="M4.5 16.5l-1 4 4-1M14 6l4 4M9 11l2 2M4.5 16.5L13 8s1-1.5 3-1.5c1 0 2.5.5 3 1s1 2 1 3c0 2-1.5 3-1.5 3l-8.5 8.5-3-3z" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="14" cy="10" r="1.5" fill="${color}"/>`,
+    commander: `<circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="1.8" fill="none"/><path d="M12 3a9 9 0 015.66 16.07c-1.4-1.4-3.5-2.07-5.66-2.07-2.16 0-4.26.67-5.66 2.07A9 9 0 0112 3z" fill="${color}" fill-opacity="0.25"/><circle cx="12" cy="12" r="2.5" fill="${color}"/>`,
+  };
+  const body = paths[tierId] || `<circle cx="12" cy="12" r="8" stroke="${color}" stroke-width="1.8" fill="none"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block">${body}</svg>`;
+}
+
+function badgeIconSvg(iconName, color = "#0d6b7a", size = 12) {
+  const path = IC[iconName] || IC.medal;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;display:inline-block"><path d="${path}"/></svg>`;
+}
+
 function generateBarSVG(nilai, max = 100, color = "#0d9488") {
   const w = Math.round((nilai / max) * 120);
   return `<svg width="120" height="10" style="vertical-align:middle"><rect width="120" height="10" rx="5" fill="#e2e8f0"/><rect width="${w}" height="10" rx="5" fill="${color}"/></svg>`;
@@ -4736,8 +4913,8 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
 
   const badgeHtml = badges.length
     ? badges.map(bid => {
-        const b = ALL_BADGES?.find(x => x.id === bid) || { nama: bid, emoji: "🏅" };
-        return `<span class="badge-pill chip-teal">${b.emoji} ${b.nama}</span>`;
+        const b = ALL_BADGES?.find(x => x.id === bid) || { name: bid, icon: "medal", color: "#0d6b7a" };
+        return `<span class="badge-pill chip-teal">${badgeIconSvg(b.icon, b.color || "#0d6b7a", 11)} ${b.name}</span>`;
       }).join("")
     : '<span style="color:#94a3b8;font-size:11px">Belum ada badge</span>';
 
@@ -4764,7 +4941,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
           <td style="width:25%;font-weight:600">Total Poin XP</td>
           <td style="font-weight:800;color:#0d9488;font-size:16px">${stats.poin || 0}</td>
           <td style="width:25%;font-weight:600">Level</td>
-          <td><span class="badge-pill chip-teal">${lv.emoji} ${lv.name}</span></td>
+          <td><span class="badge-pill chip-teal">${tierIconSvg(lv.tierId, lv.color, 11)} ${lv.name}</span></td>
         </tr>
         <tr>
           <td style="font-weight:600">Tugas Selesai</td>
@@ -4872,7 +5049,7 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = "Semester Ganji
         <td style="text-align:center;font-weight:700;color:#0d9488">${stats.poin || 0}</td>
         <td style="text-align:center">${stats.tugasSelesai || 0}/${tugas.length}</td>
         <td style="text-align:center;font-weight:700;color:${getNilaiColor(nilaiRata)}">${nilaiRata || "—"}</td>
-        <td style="text-align:center"><span class="badge-pill chip-teal" style="font-size:10px">${lv.emoji} ${lv.name}</span></td>
+        <td style="text-align:center"><span class="badge-pill chip-teal" style="font-size:10px">${tierIconSvg(lv.tierId, lv.color, 10)} ${lv.name}</span></td>
         <td style="text-align:center">${badges.length}</td>
         <td style="text-align:center">
           <span class="badge-pill ${nilaiRata >= 85 ? 'chip-green' : nilaiRata >= 70 ? 'chip-teal' : nilaiRata >= 55 ? 'chip-yellow' : nilaiRata > 0 ? 'chip-red' : 'chip-gray'}" style="font-size:10px">
@@ -5148,8 +5325,8 @@ function KelasView({ store, navigate }) {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nama}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: lv.color }}>{lv.emoji} {lv.name}</span>
-                  {bdgs.slice(0,3).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ fontSize: 11 }}>{b.emoji}</span> : null; })}
+                  <span style={{ fontSize: 10, fontWeight: 600, color: lv.color, display: "inline-flex", alignItems: "center", gap: 3 }}><TierIcon tierId={lv.tierId} size={11} color={lv.color} /> {lv.name}</span>
+                  {bdgs.slice(0,3).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex", color: b.color }}><I n={b.icon} s={12} /></span> : null; })}
                   {bdgs.length > 3 && <span style={{ fontSize: 10, color: "var(--ink-4)" }}>+{bdgs.length-3}</span>}
                 </div>
               </div>
@@ -5558,7 +5735,7 @@ function ManajemenSiswa({ store }) {
                       <div style={{ fontSize: 14, fontWeight: 700 }}>{s.nama}</div>
                       <div style={{ display: "flex", gap: 6, marginTop: 3, flexWrap: "wrap", alignItems: "center" }}>
                         <span style={{ fontFamily: "var(--mono)", fontSize: 11, fontWeight: 600, color: "var(--accent-2)", background: "var(--accent-tint)", padding: "2px 7px", borderRadius: 5 }}>{s.id}</span>
-                        <span style={{ fontSize: 10, color: lv.color, fontWeight: 600 }}>{lv.emoji} {lv.name}</span>
+                        <span style={{ fontSize: 10, color: lv.color, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}><TierIcon tierId={lv.tierId} size={11} color={lv.color} /> {lv.name}</span>
                         <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{st.poin || 0} pt</span>
                       </div>
                       {/* Password row */}
@@ -5842,13 +6019,13 @@ function BadgeManager({ store }) {
                 <Avatar name={s.nama} size="sm" photo={store.getPhoto(s.uid || s.id)} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.namaDisplay}</div>
-                  <div style={{ fontSize: 10, color: lv.color, fontWeight: 600 }}>{lv.emoji} {lv.name}</div>
+                  <div style={{ fontSize: 10, color: lv.color, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}><TierIcon tierId={lv.tierId} size={11} color={lv.color} /> {lv.name}</div>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {bdgs.length === 0
                   ? <span style={{ fontSize: 10, color: "var(--ink-4)" }}>Belum ada badge</span>
-                  : bdgs.slice(0,4).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ fontSize: 14 }}>{b.emoji}</span> : null; })}
+                  : bdgs.slice(0,4).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex", color: b.color }}><I n={b.icon} s={14} /></span> : null; })}
                 {bdgs.length > 4 && <span style={{ fontSize: 10, color: "var(--ink-3)" }}>+{bdgs.length - 4}</span>}
               </div>
             </button>
@@ -5866,8 +6043,8 @@ function BadgeManager({ store }) {
             {AUTO_BADGES.map(b => {
               const has = badges.includes(b.id);
               return (
-                <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color + "44" : "var(--line)"}`, minWidth: 68, textAlign: "center", opacity: has ? 1 : 0.5 }}>
-                  <span style={{ fontSize: 22 }}>{b.emoji}</span>
+                <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color + "44" : "var(--line)"}`, minWidth: 68, textAlign: "center", opacity: has ? 1 : 0.5 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: has ? "#fff" : "transparent", display: "grid", placeItems: "center", color: has ? b.color : "var(--ink-3)" }}><I n={b.icon} s={18} /></div>
                   <span style={{ fontSize: 9, fontWeight: 700, color: has ? b.color : "var(--ink-3)", lineHeight: 1.3 }}>{b.name}</span>
                   <span style={{ fontSize: 9, color: "var(--ink-4)" }}>{has ? "✓ Earned" : "Auto"}</span>
                 </div>
@@ -5881,8 +6058,8 @@ function BadgeManager({ store }) {
               const has = badges.includes(b.id);
               return (
                 <button key={b.id} onClick={() => has ? store.removeBadge(activeSiswa.id, b.id) : store.awardBadge(activeSiswa.id, b.id)}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color : "var(--line)"}`, minWidth: 72, textAlign: "center", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)" }}>
-                  <span style={{ fontSize: 24 }}>{b.emoji}</span>
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color : "var(--line)"}`, minWidth: 72, textAlign: "center", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: has ? "#fff" : "transparent", display: "grid", placeItems: "center", color: has ? b.color : "var(--ink-3)" }}><I n={b.icon} s={20} /></div>
                   <span style={{ fontSize: 9, fontWeight: 700, color: has ? b.color : "var(--ink-3)", lineHeight: 1.3 }}>{b.name}</span>
                   <span style={{ fontSize: 9, color: has ? b.color : "var(--ink-4)", fontWeight: has ? 600 : 400 }}>{has ? "✓ Cabut" : "+ Beri"}</span>
                 </button>
@@ -6063,11 +6240,11 @@ function useNotifications(user, store, route) {
         const eventKey = `badge_${bid}`;
         if (seenIds.has(eventKey)) return;
         seenIds.add(eventKey);
-        const b = ALL_BADGES?.find(x => x.id === bid) || { nama: bid, emoji: "🏅" };
+        const b = ALL_BADGES?.find(x => x.id === bid) || { name: bid };
         pushNotif({
           type: "badge",
           title: "Badge baru!",
-          message: `${b.emoji} ${b.nama}`,
+          message: `${b.name}`,
         });
       });
     });
