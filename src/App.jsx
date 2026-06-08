@@ -594,38 +594,120 @@ function getTier(poin) {
   return TIERS.find(t => t.id === lv.tierId);
 }
 
-// ─── SVG TIER ICONS ───
+// ─── SVG TIER ICONS (Style C — Playful Dimensional) ───
+// Setiap icon punya unique gradient ID berbasis size+tierId untuk avoid conflict
 function TierIcon({ tierId, size = 16, color = "currentColor" }) {
-  const s = size;
-  const props = { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  const uid = `${tierId}-${size}`;
+  const props = { width: size, height: size, viewBox: "0 0 100 100", style: { display: "inline-block", verticalAlign: "middle" } };
+
   switch (tierId) {
     case "nebula":
-      // Sparkles / awan kosmik
-      return <svg {...props}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /><circle cx="12" cy="12" r="3" fill={color} stroke="none" opacity="0.7" /></svg>;
+      return (
+        <svg {...props}>
+          <defs>
+            <radialGradient id={`neb-${uid}`} cx="50%" cy="40%" r="60%">
+              <stop offset="0%" stopColor="#f0abfc" />
+              <stop offset="60%" stopColor="#a855f7" />
+              <stop offset="100%" stopColor="#581c87" />
+            </radialGradient>
+          </defs>
+          <circle cx="50" cy="50" r="42" fill={`url(#neb-${uid})`} />
+          <circle cx="38" cy="38" r="14" fill="#fff" opacity="0.35" />
+          <circle cx="50" cy="50" r="8" fill="#fef3c7" opacity="0.9" />
+          <circle cx="22" cy="28" r="2.5" fill="#fff" opacity="0.95" />
+          <circle cx="78" cy="38" r="2" fill="#fff" opacity="0.9" />
+          <circle cx="72" cy="72" r="1.8" fill="#fff" opacity="0.8" />
+          <circle cx="26" cy="68" r="2.2" fill="#fff" opacity="0.85" />
+        </svg>
+      );
     case "bintang":
-      // 5-point star
-      return <svg {...props}><polygon points="12,2 14.85,8.5 22,9.27 16.5,14.14 18.18,21.5 12,17.77 5.82,21.5 7.5,14.14 2,9.27 9.15,8.5" fill={color} fillOpacity="0.2" /></svg>;
+      return (
+        <svg {...props}>
+          <defs>
+            <radialGradient id={`bin-${uid}`} cx="40%" cy="30%" r="65%">
+              <stop offset="0%" stopColor="#fef3c7" />
+              <stop offset="50%" stopColor="#fbbf24" />
+              <stop offset="100%" stopColor="#d97706" />
+            </radialGradient>
+          </defs>
+          <polygon points="50,8 60,38 92,38 66,58 76,90 50,71 24,90 34,58 8,38 40,38" fill={`url(#bin-${uid})`} stroke="#92400e" strokeWidth="2" strokeLinejoin="round" />
+          <polygon points="50,22 55,38 70,38 58,49 62,65 50,55 38,65 42,49 30,38 45,38" fill="#fef3c7" opacity="0.55" />
+          <circle cx="42" cy="35" r="3" fill="#fff" opacity="0.9" />
+        </svg>
+      );
     case "planet":
-      // Saturn-like dengan ring
-      return <svg {...props}><circle cx="12" cy="12" r="5" fill={color} fillOpacity="0.2" /><ellipse cx="12" cy="12" rx="10" ry="3" transform="rotate(-20 12 12)" /></svg>;
+      return (
+        <svg {...props}>
+          <defs>
+            <radialGradient id={`pla-${uid}`} cx="30%" cy="30%" r="65%">
+              <stop offset="0%" stopColor="#a7f3d0" />
+              <stop offset="50%" stopColor="#14b8a6" />
+              <stop offset="100%" stopColor="#064e3b" />
+            </radialGradient>
+          </defs>
+          <ellipse cx="50" cy="58" rx="46" ry="9" transform="rotate(-15 50 58)" fill="#0e7490" opacity="0.5" />
+          <ellipse cx="50" cy="58" rx="44" ry="8" transform="rotate(-15 50 58)" fill="none" stroke="#fef3c7" strokeWidth="3" />
+          <circle cx="50" cy="50" r="30" fill={`url(#pla-${uid})`} stroke="#064e3b" strokeWidth="2" />
+          <ellipse cx="38" cy="38" rx="12" ry="9" fill="#fff" opacity="0.5" />
+          <ellipse cx="42" cy="48" rx="5" ry="3" fill="#0e7490" opacity="0.6" />
+          <ellipse cx="58" cy="56" rx="6" ry="3" fill="#0e7490" opacity="0.5" />
+          <ellipse cx="50" cy="58" rx="44" ry="8" transform="rotate(-15 50 58)" fill="none" stroke="#fef3c7" strokeWidth="3" strokeDasharray="0,250,80,300" />
+        </svg>
+      );
     case "astronot":
-      // Roket
-      return <svg {...props}><path d="M4.5 16.5l-1 4 4-1M14 6l4 4M9 11l2 2M4.5 16.5L13 8s1-1.5 3-1.5c1 0 2.5.5 3 1s1 2 1 3c0 2-1.5 3-1.5 3l-8.5 8.5-3-3z" /><circle cx="14" cy="10" r="1.5" fill={color} /></svg>;
+      return (
+        <svg {...props}>
+          <defs>
+            <radialGradient id={`ast-${uid}`} cx="30%" cy="30%" r="65%">
+              <stop offset="0%" stopColor="#bfdbfe" />
+              <stop offset="60%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#1e3a8a" />
+            </radialGradient>
+          </defs>
+          <ellipse cx="50" cy="92" rx="22" ry="5" fill="#1e3a8a" opacity="0.2" />
+          <path d="M44 22 Q28 38 28 60 L72 60 Q72 38 56 22 Q52 18 48 18 Q46 18 44 22 Z" fill={`url(#ast-${uid})`} stroke="#1e3a8a" strokeWidth="2" strokeLinejoin="round" />
+          <ellipse cx="50" cy="40" rx="12" ry="10" fill="#fef3c7" stroke="#1e3a8a" strokeWidth="2" />
+          <ellipse cx="46" cy="37" rx="4" ry="3" fill="#fff" opacity="0.85" />
+          <path d="M28 60 L18 72 L22 82 L34 76 Z" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M72 60 L82 72 L78 82 L66 76 Z" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1.5" strokeLinejoin="round" />
+          <circle cx="22" cy="74" r="2.5" fill="#fbbf24" />
+          <circle cx="78" cy="74" r="2.5" fill="#fbbf24" />
+          <path d="M40 50 L46 56 M40 56 L46 50" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
     case "commander":
-      // Galaksi spiral
-      return <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 015.66 16.07c-1.4-1.4-3.5-2.07-5.66-2.07-2.16 0-4.26.67-5.66 2.07A9 9 0 0112 3z" fill={color} fillOpacity="0.25" stroke="none" /><circle cx="12" cy="12" r="2.5" fill={color} stroke="none" /></svg>;
+      return (
+        <svg {...props}>
+          <defs>
+            <radialGradient id={`cmd-${uid}`} cx="50%" cy="50%" r="55%">
+              <stop offset="0%" stopColor="#fef08a" />
+              <stop offset="40%" stopColor="#f59e0b" />
+              <stop offset="100%" stopColor="#7c2d12" />
+            </radialGradient>
+          </defs>
+          <circle cx="50" cy="50" r="42" fill={`url(#cmd-${uid})`} />
+          <path d="M50 18 Q72 28 80 50 Q72 60 50 56 Q38 50 36 38 Q42 22 50 18 Z" fill="#fef08a" opacity="0.7" />
+          <path d="M50 82 Q28 72 20 50 Q28 40 50 44 Q62 50 64 62 Q58 78 50 82 Z" fill="#fef08a" opacity="0.7" />
+          <circle cx="50" cy="50" r="9" fill="#fff" />
+          <circle cx="50" cy="50" r="4.5" fill="#fef08a" />
+          <circle cx="30" cy="30" r="2" fill="#fef3c7" />
+          <circle cx="70" cy="32" r="1.8" fill="#fef3c7" />
+          <circle cx="32" cy="70" r="1.8" fill="#fef3c7" />
+          <circle cx="68" cy="68" r="2" fill="#fef3c7" />
+        </svg>
+      );
     default:
-      return <svg {...props}><circle cx="12" cy="12" r="8" /></svg>;
+      return <svg {...props}><circle cx="50" cy="50" r="40" fill={color} opacity="0.3" /></svg>;
   }
 }
 
-// ─── LEVEL BADGE (compact pill — full SVG, no emoji) ───
+// ─── LEVEL BADGE (compact pill — full SVG dimensional, no emoji) ───
 function LevelBadge({ poin = 0, size = "sm", showName = true, showSubLevel = true }) {
   const lv = getLevel(poin);
   const sizes = {
-    xs: { padX: 6, padY: 2, fs: 9, gap: 4, iconSize: 11 },
-    sm: { padX: 7, padY: 3, fs: 10, gap: 4, iconSize: 12 },
-    md: { padX: 9, padY: 4, fs: 11, gap: 5, iconSize: 14 },
+    xs: { padX: 6, padY: 2, fs: 9, gap: 4, iconSize: 14 },
+    sm: { padX: 8, padY: 3, fs: 10, gap: 5, iconSize: 16 },
+    md: { padX: 10, padY: 4, fs: 11, gap: 6, iconSize: 20 },
   };
   const s = sizes[size] || sizes.sm;
   return (
@@ -651,8 +733,158 @@ function getLevelProgress(poin) {
   return { pct, current: poin, needed: lv.max + 1 - poin, next };
 }
 
-// ─── BADGES (SVG-based, no emoji, konsisten dengan tema teal) ───
-// 'icon' = nama icon dari ICONS map. 'category' = XP/Streak/Tugas/Prestasi/Special
+// ─── BADGE ICONS (Style C — Playful Dimensional) ───
+function BadgeIcon({ type, size = 32 }) {
+  const uid = `${type}-${size}`;
+  const props = { width: size, height: size, viewBox: "0 0 58 58", style: { display: "inline-block" } };
+
+  switch (type) {
+    case "target": // Perfect Score / Perfectionist / Master Mind
+      return (
+        <svg {...props}>
+          <circle cx="29" cy="29" r="22" fill="#fef3c7" stroke="#fbbf24" strokeWidth="1.5" />
+          <circle cx="29" cy="29" r="17" fill="#fff" stroke="#fbbf24" strokeWidth="1.2" />
+          <circle cx="29" cy="29" r="12" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1" />
+          <circle cx="29" cy="29" r="6" fill="#fff" />
+          <circle cx="29" cy="29" r="2.5" fill="#dc2626" />
+          <circle cx="36" cy="22" r="3" fill="#fef08a" stroke="#d97706" strokeWidth="0.8" />
+        </svg>
+      );
+    case "flame": // On Fire / Blazing / Inferno
+      return (
+        <svg {...props}>
+          <path d="M29 6 Q17 18 17 32 Q17 40 21 44 Q18 38 24 32 Q26 42 31 38 Q36 48 28 54 Q42 54 46 44 Q50 32 42 22 Q34 12 29 6 Z" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1.2" />
+          <path d="M29 18 Q22 28 24 38 Q28 42 33 40 Q37 32 29 18 Z" fill="#fbbf24" />
+          <path d="M29 30 Q25 36 27 42 Q29 44 31 42 Q34 36 29 30 Z" fill="#fef3c7" />
+        </svg>
+      );
+    case "trophy": // Top of Class / Master Mind / Podium
+      return (
+        <svg {...props}>
+          <path d="M16 10 L42 10 L40 28 Q40 35 29 37 Q18 35 18 28 Z" fill="#fbbf24" stroke="#92400e" strokeWidth="1.2" />
+          <path d="M16 10 L42 10 L41 14 L17 14 Z" fill="#fef3c7" opacity="0.7" />
+          <path d="M14 14 Q4 14 4 22 Q4 30 14 30" fill="none" stroke="#fbbf24" strokeWidth="3" />
+          <path d="M44 14 Q54 14 54 22 Q54 30 44 30" fill="none" stroke="#fbbf24" strokeWidth="3" />
+          <rect x="25" y="37" width="8" height="9" fill="#92400e" />
+          <rect x="18" y="46" width="22" height="6" rx="1.5" fill="#b45309" />
+          <text x="29" y="26" textAnchor="middle" style={{ fontSize: "9px", fontWeight: 700, fill: "#92400e" }}>1</text>
+        </svg>
+      );
+    case "zap": // Fast Finisher / Lightning
+      return (
+        <svg {...props}>
+          <polygon points="34,4 14,30 25,30 22,54 46,24 34,24" fill="#a855f7" stroke="#581c87" strokeWidth="1.5" strokeLinejoin="round" />
+          <polygon points="34,10 21,28 28,28 25,46 40,26 34,26" fill="#fef3c7" opacity="0.85" />
+          <circle cx="30" cy="20" r="2" fill="#fff" />
+        </svg>
+      );
+    case "book": // Rajin / Scholar / Veteran
+      return (
+        <svg {...props}>
+          <path d="M8 14 Q29 9 50 14 L50 44 Q29 39 8 44 Z" fill="#0d6b7a" stroke="#064e3b" strokeWidth="1.2" />
+          <path d="M8 14 Q29 9 50 14 L50 20 Q29 15 8 20 Z" fill="#5eead4" opacity="0.65" />
+          <path d="M29 14 L29 43" stroke="#fef3c7" strokeWidth="1.8" />
+          <path d="M14 22 Q21 21 25 22 M14 27 Q21 26 25 27 M33 22 Q40 21 44 22 M33 27 Q40 26 44 27" stroke="#fef3c7" strokeWidth="1.2" strokeLinecap="round" />
+          <circle cx="29" cy="34" r="3.5" fill="#fef3c7" />
+        </svg>
+      );
+    case "check": // First Step
+      return (
+        <svg {...props}>
+          <circle cx="29" cy="29" r="22" fill="#16a34a" stroke="#15803d" strokeWidth="1.5" />
+          <circle cx="29" cy="29" r="17" fill="#22c55e" opacity="0.4" />
+          <path d="M19 30 L26 37 L40 22" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
+      );
+    case "star": // Level milestones
+      return (
+        <svg {...props}>
+          <defs>
+            <radialGradient id={`bstar-${uid}`} cx="40%" cy="30%" r="70%">
+              <stop offset="0%" stopColor="#fef3c7" />
+              <stop offset="50%" stopColor="#fbbf24" />
+              <stop offset="100%" stopColor="#d97706" />
+            </radialGradient>
+          </defs>
+          <polygon points="29,5 35,22 53,22 39,33 45,52 29,40 13,52 19,33 5,22 23,22" fill={`url(#bstar-${uid})`} stroke="#92400e" strokeWidth="1.5" strokeLinejoin="round" />
+          <polygon points="29,14 32,22 40,22 34,28 36,38 29,32 22,38 24,28 18,22 26,22" fill="#fef3c7" opacity="0.5" />
+          <circle cx="24" cy="20" r="2" fill="#fff" opacity="0.9" />
+        </svg>
+      );
+    case "trending": // Improver / XP milestones
+      return (
+        <svg {...props}>
+          <rect x="6" y="48" width="46" height="4" rx="1" fill="#16a34a" />
+          <rect x="8" y="38" width="8" height="10" fill="#86efac" stroke="#15803d" strokeWidth="1" />
+          <rect x="20" y="28" width="8" height="20" fill="#4ade80" stroke="#15803d" strokeWidth="1" />
+          <rect x="32" y="18" width="8" height="30" fill="#22c55e" stroke="#15803d" strokeWidth="1" />
+          <rect x="44" y="10" width="8" height="38" fill="#16a34a" stroke="#15803d" strokeWidth="1" />
+          <path d="M10 36 L24 26 L36 16 L48 8" stroke="#dc2626" strokeWidth="2" fill="none" strokeLinecap="round" />
+          <polygon points="48,8 44,12 50,14" fill="#dc2626" />
+        </svg>
+      );
+    case "lightbulb": // Creative
+      return (
+        <svg {...props}>
+          <path d="M19 38 Q14 32 14 24 Q14 12 29 12 Q44 12 44 24 Q44 32 39 38 L39 44 L19 44 Z" fill="#fbbf24" stroke="#92400e" strokeWidth="1.5" />
+          <path d="M19 38 Q14 32 14 24 Q14 16 22 14" fill="#fef3c7" opacity="0.6" />
+          <rect x="21" y="44" width="16" height="3" rx="1" fill="#374151" />
+          <rect x="22" y="48" width="14" height="2" rx="1" fill="#6b7280" />
+          <path d="M29 20 L29 35 M24 25 L29 30 L34 25" stroke="#92400e" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        </svg>
+      );
+    case "users": // Team Player
+      return (
+        <svg {...props}>
+          <circle cx="18" cy="22" r="8" fill="#3b82f6" stroke="#1e3a8a" strokeWidth="1.5" />
+          <circle cx="40" cy="22" r="8" fill="#60a5fa" stroke="#1e3a8a" strokeWidth="1.5" />
+          <path d="M6 48 Q6 36 18 36 Q30 36 30 48" fill="#3b82f6" stroke="#1e3a8a" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M28 48 Q28 36 40 36 Q52 36 52 48" fill="#60a5fa" stroke="#1e3a8a" strokeWidth="1.5" strokeLinejoin="round" />
+          <circle cx="16" cy="20" r="2.5" fill="#fff" opacity="0.8" />
+          <circle cx="38" cy="20" r="2.5" fill="#fff" opacity="0.8" />
+        </svg>
+      );
+    case "flag": // Class Leader
+      return (
+        <svg {...props}>
+          <rect x="10" y="6" width="2.5" height="48" fill="#78350f" />
+          <path d="M12 8 L46 8 L40 18 L46 28 L12 28 Z" fill="#d97706" stroke="#92400e" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M12 8 L46 8 L42 14 L12 14 Z" fill="#fbbf24" opacity="0.6" />
+          <circle cx="26" cy="18" r="4" fill="#fef3c7" stroke="#92400e" strokeWidth="1" />
+        </svg>
+      );
+    case "heart": // Helper
+      return (
+        <svg {...props}>
+          <path d="M29 50 Q8 36 8 22 Q8 12 18 12 Q24 12 29 18 Q34 12 40 12 Q50 12 50 22 Q50 36 29 50 Z" fill="#ef4444" stroke="#7f1d1d" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M16 18 Q14 20 14 24 Q14 28 18 30" fill="#fef3c7" opacity="0.5" />
+          <ellipse cx="22" cy="22" rx="4" ry="3" fill="#fff" opacity="0.5" />
+        </svg>
+      );
+    case "award": // Guru's Pick
+      return (
+        <svg {...props}>
+          <circle cx="29" cy="22" r="14" fill="#fbbf24" stroke="#92400e" strokeWidth="1.5" />
+          <circle cx="29" cy="22" r="9" fill="#fef3c7" stroke="#92400e" strokeWidth="1" />
+          <path d="M22 34 L18 52 L29 46 L40 52 L36 34" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1.2" strokeLinejoin="round" />
+          <text x="29" y="26" textAnchor="middle" style={{ fontSize: "10px", fontWeight: 700, fill: "#92400e" }}>★</text>
+        </svg>
+      );
+    case "medal":
+    default:
+      return (
+        <svg {...props}>
+          <circle cx="29" cy="32" r="16" fill="#fbbf24" stroke="#92400e" strokeWidth="1.5" />
+          <circle cx="29" cy="32" r="11" fill="#fef3c7" />
+          <path d="M22 10 L29 25 L36 10 Z M19 8 L29 27 L39 8" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1" />
+          <text x="29" y="36" textAnchor="middle" style={{ fontSize: "11px", fontWeight: 700, fill: "#92400e" }}>★</text>
+        </svg>
+      );
+  }
+}
+
+// ─── BADGES (SVG-based dimensional, no emoji) ───
+// 'iconType' = type yang dipakai oleh BadgeIcon component.
 const AUTO_BADGES = [
   // === Prestasi (nilai/akurasi) ===
   { id: "perfect",     icon: "target",     name: "Perfect Score",     desc: "Nilai 100 di satu tugas",                color: "#b45309", bg: "#fef3c7", category: "Prestasi" },
@@ -805,15 +1037,13 @@ function BadgeChip({ badgeId, size = "md" }) {
   const b = ALL_BADGES.find(x => x.id === badgeId);
   if (!b) return null;
   if (size === "sm") return (
-    <div title={`${b.name}: ${b.desc}`} style={{ width: 32, height: 32, borderRadius: 8, background: b.bg, border: `1.5px solid ${b.color}33`, display: "grid", placeItems: "center", cursor: "default", color: b.color }}>
-      <I n={b.icon} s={16} />
+    <div title={`${b.name}: ${b.desc}`} style={{ width: 36, height: 36, borderRadius: 10, background: b.bg, border: `1.5px solid ${b.color}33`, display: "grid", placeItems: "center", cursor: "default" }}>
+      <BadgeIcon type={b.icon} size={26} />
     </div>
   );
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 8px", borderRadius: 12, background: b.bg, border: `1.5px solid ${b.color}33`, minWidth: 72, textAlign: "center" }}>
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", display: "grid", placeItems: "center", color: b.color }}>
-        <I n={b.icon} s={18} />
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 8px", borderRadius: 12, background: b.bg, border: `1.5px solid ${b.color}33`, minWidth: 76, textAlign: "center" }}>
+      <BadgeIcon type={b.icon} size={42} />
       <span style={{ fontSize: 10, fontWeight: 700, color: b.color, lineHeight: 1.3 }}>{b.name}</span>
     </div>
   );
@@ -4814,20 +5044,77 @@ function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, 
 
 // ─── LAPORAN HELPER ───
 function tierIconSvg(tierId, color = "#0d6b7a", size = 12) {
+  // Unique gradient ID per tier (size in case multiple sizes used)
+  const gid = `gtier-${tierId}-${size}-${Math.floor(Math.random() * 9999)}`;
   const paths = {
-    nebula: `<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="${color}" stroke-width="1.8" stroke-linecap="round" fill="none"/><circle cx="12" cy="12" r="3" fill="${color}" opacity="0.7"/>`,
-    bintang: `<polygon points="12,2 14.85,8.5 22,9.27 16.5,14.14 18.18,21.5 12,17.77 5.82,21.5 7.5,14.14 2,9.27 9.15,8.5" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" fill="${color}" fill-opacity="0.2"/>`,
-    planet: `<circle cx="12" cy="12" r="5" stroke="${color}" stroke-width="1.8" fill="${color}" fill-opacity="0.2"/><ellipse cx="12" cy="12" rx="10" ry="3" transform="rotate(-20 12 12)" stroke="${color}" stroke-width="1.8" fill="none"/>`,
-    astronot: `<path d="M4.5 16.5l-1 4 4-1M14 6l4 4M9 11l2 2M4.5 16.5L13 8s1-1.5 3-1.5c1 0 2.5.5 3 1s1 2 1 3c0 2-1.5 3-1.5 3l-8.5 8.5-3-3z" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="14" cy="10" r="1.5" fill="${color}"/>`,
-    commander: `<circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="1.8" fill="none"/><path d="M12 3a9 9 0 015.66 16.07c-1.4-1.4-3.5-2.07-5.66-2.07-2.16 0-4.26.67-5.66 2.07A9 9 0 0112 3z" fill="${color}" fill-opacity="0.25"/><circle cx="12" cy="12" r="2.5" fill="${color}"/>`,
+    nebula: `
+      <defs><radialGradient id="${gid}" cx="50%" cy="40%" r="60%">
+        <stop offset="0%" stop-color="#f0abfc"/><stop offset="60%" stop-color="#a855f7"/><stop offset="100%" stop-color="#581c87"/>
+      </radialGradient></defs>
+      <circle cx="50" cy="50" r="42" fill="url(#${gid})"/>
+      <circle cx="38" cy="38" r="14" fill="#fff" opacity="0.35"/>
+      <circle cx="50" cy="50" r="8" fill="#fef3c7" opacity="0.9"/>
+      <circle cx="22" cy="28" r="2.5" fill="#fff"/><circle cx="78" cy="38" r="2" fill="#fff"/><circle cx="72" cy="72" r="1.8" fill="#fff" opacity="0.8"/><circle cx="26" cy="68" r="2.2" fill="#fff"/>`,
+    bintang: `
+      <defs><radialGradient id="${gid}" cx="40%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#fef3c7"/><stop offset="50%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#d97706"/>
+      </radialGradient></defs>
+      <polygon points="50,8 60,38 92,38 66,58 76,90 50,71 24,90 34,58 8,38 40,38" fill="url(#${gid})" stroke="#92400e" stroke-width="2" stroke-linejoin="round"/>
+      <polygon points="50,22 55,38 70,38 58,49 62,65 50,55 38,65 42,49 30,38 45,38" fill="#fef3c7" opacity="0.55"/>
+      <circle cx="42" cy="35" r="3" fill="#fff" opacity="0.9"/>`,
+    planet: `
+      <defs><radialGradient id="${gid}" cx="30%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#a7f3d0"/><stop offset="50%" stop-color="#14b8a6"/><stop offset="100%" stop-color="#064e3b"/>
+      </radialGradient></defs>
+      <ellipse cx="50" cy="58" rx="46" ry="9" transform="rotate(-15 50 58)" fill="#0e7490" opacity="0.5"/>
+      <ellipse cx="50" cy="58" rx="44" ry="8" transform="rotate(-15 50 58)" fill="none" stroke="#fef3c7" stroke-width="3"/>
+      <circle cx="50" cy="50" r="30" fill="url(#${gid})" stroke="#064e3b" stroke-width="2"/>
+      <ellipse cx="38" cy="38" rx="12" ry="9" fill="#fff" opacity="0.5"/>
+      <ellipse cx="50" cy="58" rx="44" ry="8" transform="rotate(-15 50 58)" fill="none" stroke="#fef3c7" stroke-width="3" stroke-dasharray="0,250,80,300"/>`,
+    astronot: `
+      <defs><radialGradient id="${gid}" cx="30%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#bfdbfe"/><stop offset="60%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1e3a8a"/>
+      </radialGradient></defs>
+      <ellipse cx="50" cy="92" rx="22" ry="5" fill="#1e3a8a" opacity="0.2"/>
+      <path d="M44 22 Q28 38 28 60 L72 60 Q72 38 56 22 Q52 18 48 18 Q46 18 44 22 Z" fill="url(#${gid})" stroke="#1e3a8a" stroke-width="2"/>
+      <ellipse cx="50" cy="40" rx="12" ry="10" fill="#fef3c7" stroke="#1e3a8a" stroke-width="2"/>
+      <ellipse cx="46" cy="37" rx="4" ry="3" fill="#fff" opacity="0.85"/>
+      <path d="M28 60 L18 72 L22 82 L34 76 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="1.5"/>
+      <path d="M72 60 L82 72 L78 82 L66 76 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="1.5"/>`,
+    commander: `
+      <defs><radialGradient id="${gid}" cx="50%" cy="50%" r="55%">
+        <stop offset="0%" stop-color="#fef08a"/><stop offset="40%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#7c2d12"/>
+      </radialGradient></defs>
+      <circle cx="50" cy="50" r="42" fill="url(#${gid})"/>
+      <path d="M50 18 Q72 28 80 50 Q72 60 50 56 Q38 50 36 38 Q42 22 50 18 Z" fill="#fef08a" opacity="0.7"/>
+      <path d="M50 82 Q28 72 20 50 Q28 40 50 44 Q62 50 64 62 Q58 78 50 82 Z" fill="#fef08a" opacity="0.7"/>
+      <circle cx="50" cy="50" r="9" fill="#fff"/>
+      <circle cx="50" cy="50" r="4.5" fill="#fef08a"/>`,
   };
-  const body = paths[tierId] || `<circle cx="12" cy="12" r="8" stroke="${color}" stroke-width="1.8" fill="none"/>`;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block">${body}</svg>`;
+  const body = paths[tierId] || `<circle cx="50" cy="50" r="40" fill="${color}" opacity="0.3"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="vertical-align:-2px;display:inline-block">${body}</svg>`;
 }
 
-function badgeIconSvg(iconName, color = "#0d6b7a", size = 12) {
-  const path = IC[iconName] || IC.medal;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;display:inline-block"><path d="${path}"/></svg>`;
+// Badge inline SVG untuk laporan HTML print (simplified dimensional)
+function badgeIconSvg(iconType, color = "#0d6b7a", size = 14) {
+  const gid = `gbdg-${iconType}-${Math.floor(Math.random() * 9999)}`;
+  const paths = {
+    target: `<circle cx="29" cy="29" r="22" fill="#fef3c7" stroke="#fbbf24" stroke-width="1.5"/><circle cx="29" cy="29" r="17" fill="#fff" stroke="#fbbf24" stroke-width="1.2"/><circle cx="29" cy="29" r="12" fill="#dc2626" stroke="#7f1d1d" stroke-width="1"/><circle cx="29" cy="29" r="6" fill="#fff"/><circle cx="29" cy="29" r="2.5" fill="#dc2626"/>`,
+    flame: `<path d="M29 6 Q17 18 17 32 Q17 40 21 44 Q18 38 24 32 Q26 42 31 38 Q36 48 28 54 Q42 54 46 44 Q50 32 42 22 Q34 12 29 6 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="1.2"/><path d="M29 18 Q22 28 24 38 Q28 42 33 40 Q37 32 29 18 Z" fill="#fbbf24"/>`,
+    trophy: `<path d="M16 10 L42 10 L40 28 Q40 35 29 37 Q18 35 18 28 Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.2"/><path d="M14 14 Q4 14 4 22 Q4 30 14 30" fill="none" stroke="#fbbf24" stroke-width="3"/><path d="M44 14 Q54 14 54 22 Q54 30 44 30" fill="none" stroke="#fbbf24" stroke-width="3"/><rect x="25" y="37" width="8" height="9" fill="#92400e"/><rect x="18" y="46" width="22" height="6" rx="1.5" fill="#b45309"/>`,
+    zap: `<polygon points="34,4 14,30 25,30 22,54 46,24 34,24" fill="#a855f7" stroke="#581c87" stroke-width="1.5" stroke-linejoin="round"/><polygon points="34,10 21,28 28,28 25,46 40,26 34,26" fill="#fef3c7" opacity="0.85"/>`,
+    book: `<path d="M8 14 Q29 9 50 14 L50 44 Q29 39 8 44 Z" fill="#0d6b7a" stroke="#064e3b" stroke-width="1.2"/><path d="M29 14 L29 43" stroke="#fef3c7" stroke-width="1.8"/><circle cx="29" cy="34" r="3.5" fill="#fef3c7"/>`,
+    check: `<circle cx="29" cy="29" r="22" fill="#16a34a" stroke="#15803d" stroke-width="1.5"/><path d="M19 30 L26 37 L40 22" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`,
+    star: `<defs><radialGradient id="${gid}" cx="40%" cy="30%" r="70%"><stop offset="0%" stop-color="#fef3c7"/><stop offset="50%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#d97706"/></radialGradient></defs><polygon points="29,5 35,22 53,22 39,33 45,52 29,40 13,52 19,33 5,22 23,22" fill="url(#${gid})" stroke="#92400e" stroke-width="1.5" stroke-linejoin="round"/>`,
+    trending: `<rect x="6" y="48" width="46" height="4" rx="1" fill="#16a34a"/><rect x="8" y="38" width="8" height="10" fill="#86efac" stroke="#15803d" stroke-width="1"/><rect x="20" y="28" width="8" height="20" fill="#4ade80" stroke="#15803d" stroke-width="1"/><rect x="32" y="18" width="8" height="30" fill="#22c55e" stroke="#15803d" stroke-width="1"/><rect x="44" y="10" width="8" height="38" fill="#16a34a" stroke="#15803d" stroke-width="1"/>`,
+    lightbulb: `<path d="M19 38 Q14 32 14 24 Q14 12 29 12 Q44 12 44 24 Q44 32 39 38 L39 44 L19 44 Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/><rect x="21" y="44" width="16" height="3" rx="1" fill="#374151"/>`,
+    users: `<circle cx="18" cy="22" r="8" fill="#3b82f6" stroke="#1e3a8a" stroke-width="1.5"/><circle cx="40" cy="22" r="8" fill="#60a5fa" stroke="#1e3a8a" stroke-width="1.5"/><path d="M6 48 Q6 36 18 36 Q30 36 30 48" fill="#3b82f6" stroke="#1e3a8a" stroke-width="1.5"/><path d="M28 48 Q28 36 40 36 Q52 36 52 48" fill="#60a5fa" stroke="#1e3a8a" stroke-width="1.5"/>`,
+    flag: `<rect x="10" y="6" width="2.5" height="48" fill="#78350f"/><path d="M12 8 L46 8 L40 18 L46 28 L12 28 Z" fill="#d97706" stroke="#92400e" stroke-width="1.5"/>`,
+    heart: `<path d="M29 50 Q8 36 8 22 Q8 12 18 12 Q24 12 29 18 Q34 12 40 12 Q50 12 50 22 Q50 36 29 50 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5"/>`,
+    award: `<circle cx="29" cy="22" r="14" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/><circle cx="29" cy="22" r="9" fill="#fef3c7" stroke="#92400e" stroke-width="1"/><path d="M22 34 L18 52 L29 46 L40 52 L36 34" fill="#dc2626" stroke="#7f1d1d" stroke-width="1.2"/>`,
+  };
+  const body = paths[iconType] || `<circle cx="29" cy="29" r="22" fill="${color}" opacity="0.3"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 58 58" style="vertical-align:-3px;display:inline-block">${body}</svg>`;
 }
 
 function generateBarSVG(nilai, max = 100, color = "#0d9488") {
@@ -4914,7 +5201,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
   const badgeHtml = badges.length
     ? badges.map(bid => {
         const b = ALL_BADGES?.find(x => x.id === bid) || { name: bid, icon: "medal", color: "#0d6b7a" };
-        return `<span class="badge-pill chip-teal">${badgeIconSvg(b.icon, b.color || "#0d6b7a", 11)} ${b.name}</span>`;
+        return `<span class="badge-pill chip-teal">${badgeIconSvg(b.icon, b.color || "#0d6b7a", 16)} ${b.name}</span>`;
       }).join("")
     : '<span style="color:#94a3b8;font-size:11px">Belum ada badge</span>';
 
@@ -4941,7 +5228,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
           <td style="width:25%;font-weight:600">Total Poin XP</td>
           <td style="font-weight:800;color:#0d9488;font-size:16px">${stats.poin || 0}</td>
           <td style="width:25%;font-weight:600">Level</td>
-          <td><span class="badge-pill chip-teal">${tierIconSvg(lv.tierId, lv.color, 11)} ${lv.name}</span></td>
+          <td><span class="badge-pill chip-teal">${tierIconSvg(lv.tierId, lv.color, 16)} ${lv.name}</span></td>
         </tr>
         <tr>
           <td style="font-weight:600">Tugas Selesai</td>
@@ -5049,7 +5336,7 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = "Semester Ganji
         <td style="text-align:center;font-weight:700;color:#0d9488">${stats.poin || 0}</td>
         <td style="text-align:center">${stats.tugasSelesai || 0}/${tugas.length}</td>
         <td style="text-align:center;font-weight:700;color:${getNilaiColor(nilaiRata)}">${nilaiRata || "—"}</td>
-        <td style="text-align:center"><span class="badge-pill chip-teal" style="font-size:10px">${tierIconSvg(lv.tierId, lv.color, 10)} ${lv.name}</span></td>
+        <td style="text-align:center"><span class="badge-pill chip-teal" style="font-size:10px">${tierIconSvg(lv.tierId, lv.color, 14)} ${lv.name}</span></td>
         <td style="text-align:center">${badges.length}</td>
         <td style="text-align:center">
           <span class="badge-pill ${nilaiRata >= 85 ? 'chip-green' : nilaiRata >= 70 ? 'chip-teal' : nilaiRata >= 55 ? 'chip-yellow' : nilaiRata > 0 ? 'chip-red' : 'chip-gray'}" style="font-size:10px">
@@ -5326,7 +5613,7 @@ function KelasView({ store, navigate }) {
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nama}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: lv.color, display: "inline-flex", alignItems: "center", gap: 3 }}><TierIcon tierId={lv.tierId} size={11} color={lv.color} /> {lv.name}</span>
-                  {bdgs.slice(0,3).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex", color: b.color }}><I n={b.icon} s={12} /></span> : null; })}
+                  {bdgs.slice(0,3).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex" }}><BadgeIcon type={b.icon} size={16} /></span> : null; })}
                   {bdgs.length > 3 && <span style={{ fontSize: 10, color: "var(--ink-4)" }}>+{bdgs.length-3}</span>}
                 </div>
               </div>
@@ -6025,7 +6312,7 @@ function BadgeManager({ store }) {
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {bdgs.length === 0
                   ? <span style={{ fontSize: 10, color: "var(--ink-4)" }}>Belum ada badge</span>
-                  : bdgs.slice(0,4).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex", color: b.color }}><I n={b.icon} s={14} /></span> : null; })}
+                  : bdgs.slice(0,4).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex" }}><BadgeIcon type={b.icon} size={18} /></span> : null; })}
                 {bdgs.length > 4 && <span style={{ fontSize: 10, color: "var(--ink-3)" }}>+{bdgs.length - 4}</span>}
               </div>
             </button>
@@ -6043,8 +6330,8 @@ function BadgeManager({ store }) {
             {AUTO_BADGES.map(b => {
               const has = badges.includes(b.id);
               return (
-                <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color + "44" : "var(--line)"}`, minWidth: 68, textAlign: "center", opacity: has ? 1 : 0.5 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 8, background: has ? "#fff" : "transparent", display: "grid", placeItems: "center", color: has ? b.color : "var(--ink-3)" }}><I n={b.icon} s={18} /></div>
+                <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color + "44" : "var(--line)"}`, minWidth: 72, textAlign: "center", opacity: has ? 1 : 0.45 }}>
+                  <BadgeIcon type={b.icon} size={36} />
                   <span style={{ fontSize: 9, fontWeight: 700, color: has ? b.color : "var(--ink-3)", lineHeight: 1.3 }}>{b.name}</span>
                   <span style={{ fontSize: 9, color: "var(--ink-4)" }}>{has ? "✓ Earned" : "Auto"}</span>
                 </div>
@@ -6058,8 +6345,8 @@ function BadgeManager({ store }) {
               const has = badges.includes(b.id);
               return (
                 <button key={b.id} onClick={() => has ? store.removeBadge(activeSiswa.id, b.id) : store.awardBadge(activeSiswa.id, b.id)}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color : "var(--line)"}`, minWidth: 72, textAlign: "center", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)" }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: has ? "#fff" : "transparent", display: "grid", placeItems: "center", color: has ? b.color : "var(--ink-3)" }}><I n={b.icon} s={20} /></div>
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color : "var(--line)"}`, minWidth: 76, textAlign: "center", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)", opacity: has ? 1 : 0.55 }}>
+                  <BadgeIcon type={b.icon} size={40} />
                   <span style={{ fontSize: 9, fontWeight: 700, color: has ? b.color : "var(--ink-3)", lineHeight: 1.3 }}>{b.name}</span>
                   <span style={{ fontSize: 9, color: has ? b.color : "var(--ink-4)", fontWeight: has ? 600 : 400 }}>{has ? "✓ Cabut" : "+ Beri"}</span>
                 </button>
