@@ -2949,12 +2949,57 @@ function QuestionBuilder({ soal, setSoal }) {
 }
 
 // ─── BUAT / EDIT TUGAS (2-column layout) ───
+// ─── MATERI SELECT (dropdown + tambah baru) ───
+function MateriSelect({ store, value, mapel, jenjang, onChange }) {
+  const [adding, setAdding] = useState(false);
+  const [newMateri, setNewMateri] = useState("");
+
+  // Kumpulkan materi unik dari semua tugas (filter by mapel & jenjang biar relevan)
+  const allMateri = [...new Set(
+    store.getTugas()
+      .filter(t => t.materi && t.materi.trim())
+      .filter(t => !mapel || t.mapel === mapel)
+      .map(t => t.materi.trim())
+  )].sort();
+
+  function confirmAdd() {
+    const m = newMateri.trim();
+    if (!m) return;
+    onChange(m);
+    setNewMateri("");
+    setAdding(false);
+  }
+
+  if (adding) {
+    return (
+      <div style={{ display: "flex", gap: 6 }}>
+        <input className="inp" value={newMateri} onChange={e => setNewMateri(e.target.value)} placeholder="Nama materi baru..." autoFocus
+          onKeyDown={e => e.key === "Enter" && (e.preventDefault(), confirmAdd())} />
+        <button type="button" className="btn btn-primary btn-sm" onClick={confirmAdd}>Simpan</button>
+        <button type="button" className="btn btn-outline btn-sm" onClick={() => { setAdding(false); setNewMateri(""); }}>Batal</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      <select className="inp" value={value || ""} onChange={e => onChange(e.target.value)} style={{ flex: 1 }}>
+        <option value="">— Tanpa Materi —</option>
+        {allMateri.map(m => <option key={m} value={m}>{m}</option>)}
+        {value && !allMateri.includes(value) && <option value={value}>{value}</option>}
+      </select>
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => setAdding(true)} title="Tambah materi baru"><I n="plus" s={14} /></button>
+    </div>
+  );
+}
+
 function BuatTugas({ store, navigate, editId = null }) {
   const existing = editId ? store.getTugas().find(t => t.id === editId) : null;
   const [form, setForm] = useState({
     judul: existing?.judul || "", mapel: existing?.mapel || "IPA",
     jenjang: existing?.jenjang || "VII", deadline: existing?.deadline || "",
     poinMax: existing?.poinMax || 100, deskripsi: existing?.deskripsi || "",
+    materi: existing?.materi || "",
   });
   const [soal, setSoal] = useState(existing?.soal || []);
   const [saved, setSaved] = useState(false);
@@ -3055,6 +3100,11 @@ function BuatTugas({ store, navigate, editId = null }) {
               <div className="fg">
                 <label className="lbl">Judul tugas</label>
                 <input className="inp" value={form.judul} onChange={e => set("judul", e.target.value)} placeholder="Misal: Sistem Tata Surya" />
+              </div>
+              <div className="fg">
+                <label className="lbl">Materi / Bab</label>
+                <MateriSelect store={store} value={form.materi} mapel={form.mapel} jenjang={form.jenjang} onChange={v => set("materi", v)} />
+                <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>Tugas dengan materi sama akan dirata-rata di laporan</div>
               </div>
               <div className="g2">
                 <div className="fg">
@@ -4131,11 +4181,118 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
 }
 
 // ─── TUGAS GURU (halaman daftar tugas) ───
+// ─── MATERI MANAGER MODAL (bulk-assign materi ke tugas) ───
+function MateriManagerModal({ store, jenjang, onClose, onSuccess }) {
+  const tugasList = store.getTugas().filter(t => t.jenjang === jenjang);
+  const [edits, setEdits] = useState({}); // {tugasId: materi}
+  const [saving, setSaving] = useState(false);
+  const [bulkMateri, setBulkMateri] = useState("");
+  const [selected, setSelected] = useState(new Set());
+
+  const allMateri = [...new Set(
+    tugasList.filter(t => t.materi && t.materi.trim()).map(t => t.materi.trim())
+  )].sort();
+
+  function getMateri(t) {
+    return edits[t.id] !== undefined ? edits[t.id] : (t.materi || "");
+  }
+  function setMateri(tid, val) {
+    setEdits(e => ({ ...e, [tid]: val }));
+  }
+  function toggleSelect(tid) {
+    const next = new Set(selected);
+    if (next.has(tid)) next.delete(tid); else next.add(tid);
+    setSelected(next);
+  }
+  function applyBulk() {
+    if (!bulkMateri.trim() || selected.size === 0) return;
+    const next = { ...edits };
+    selected.forEach(tid => { next[tid] = bulkMateri.trim(); });
+    setEdits(next);
+    setSelected(new Set());
+    setBulkMateri("");
+  }
+
+  async function saveAll() {
+    setSaving(true);
+    try {
+      const changes = Object.entries(edits).filter(([tid, m]) => {
+        const t = tugasList.find(x => x.id === tid);
+        return t && (t.materi || "") !== m;
+      });
+      for (const [tid, materi] of changes) {
+        await store.updateTugas(tid, { materi });
+      }
+      onSuccess(`${changes.length} tugas diperbarui materinya.`);
+    } catch (e) {
+      alert("Gagal menyimpan: " + e.message);
+      setSaving(false);
+    }
+  }
+
+  const changeCount = Object.entries(edits).filter(([tid, m]) => {
+    const t = tugasList.find(x => x.id === tid);
+    return t && (t.materi || "") !== m;
+  }).length;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 620, maxHeight: "92vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <h3 style={{ margin: 0 }}>Atur Materi Tugas · Kelas {jenjang}</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--ink-3)" }}>×</button>
+        </div>
+        <p style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 12 }}>Kelompokkan tugas ke dalam materi. Tugas dalam materi sama akan dirata-rata di laporan.</p>
+
+        {/* Bulk assign */}
+        {selected.size > 0 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, padding: 10, background: "var(--accent-tint)", borderRadius: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-2)", whiteSpace: "nowrap" }}>{selected.size} dipilih →</span>
+            <input className="inp" value={bulkMateri} onChange={e => setBulkMateri(e.target.value)} placeholder="Materi untuk yang dipilih..." style={{ flex: 1 }} list="materi-list" />
+            <button className="btn btn-primary btn-sm" onClick={applyBulk} disabled={!bulkMateri.trim()}>Terapkan</button>
+          </div>
+        )}
+        <datalist id="materi-list">
+          {allMateri.map(m => <option key={m} value={m} />)}
+        </datalist>
+
+        <div style={{ flex: 1, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+          {tugasList.length === 0
+            ? <div style={{ padding: 20, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>Belum ada tugas di Kelas {jenjang}.</div>
+            : tugasList.map(t => {
+              const mat = getMateri(t);
+              const changed = (t.materi || "") !== mat;
+              return (
+                <div key={t.id} style={{ padding: "10px 12px", borderBottom: "1px solid var(--line-soft)", display: "flex", gap: 10, alignItems: "center", background: changed ? "var(--accent-tint)" : "transparent" }}>
+                  <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.judul}</div>
+                    <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{t.mapel}</div>
+                  </div>
+                  <input className="inp" style={{ width: 180, fontSize: 12, padding: "6px 10px" }} value={mat} onChange={e => setMateri(t.id, e.target.value)} placeholder="— Tanpa Materi —" list="materi-list" />
+                </div>
+              );
+            })
+          }
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 14 }}>
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={saving}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={saveAll} disabled={saving || changeCount === 0}>
+            {saving ? "Menyimpan..." : `Simpan ${changeCount > 0 ? `(${changeCount})` : ""}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TugasGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const [confirm, setConfirm] = useState(null);
   const [filter, setFilter] = useState("aktif");
   const [toast, setToast] = useState("");
+  const [showMateriManager, setShowMateriManager] = useState(false);
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
   const tugasAll = store.getTugas().filter(t => t.jenjang === jenjang);
   const siswa = store.getAllSiswa(jenjang);
@@ -4152,8 +4309,13 @@ function TugasGuru({ store, navigate }) {
     <div className="page">
       <div className="dt">
         <div><h1>Tugas</h1><p>Semua tugas yang pernah dibuat</p></div>
-        <button className="btn btn-primary" onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Tugas baru</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-outline" onClick={() => setShowMateriManager(true)}><I n="book" s={14} /> Atur Materi</button>
+          <button className="btn btn-primary" onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Tugas baru</button>
+        </div>
       </div>
+
+      {showMateriManager && <MateriManagerModal store={store} jenjang={jenjang} onClose={() => setShowMateriManager(false)} onSuccess={(msg) => { setShowMateriManager(false); showToast(msg); }} />}
 
       <div className="tabs" style={{ marginBottom: 12 }}>
         <button className={`tab ${jenjang === "VII" ? "active" : ""}`} onClick={() => setJenjang("VII")}>Kelas VII</button>
@@ -5178,23 +5340,37 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
   const now = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
   const nilaiRata = stats.nilaiRata || (subs.length ? Math.round(subs.reduce((a,b) => a+b.nilai,0)/subs.length) : 0);
 
-  const tugasRows = allTugas.map(t => {
+  // Kelompokkan tugas per materi → hitung rata-rata, jumlah, range nilai
+  const materiMap = {};
+  allTugas.forEach(t => {
+    const key = (t.materi && t.materi.trim()) || "Tanpa Materi";
+    if (!materiMap[key]) materiMap[key] = [];
     const sub = subs.find(x => x.tugasId === t.id);
-    const nilai = sub ? sub.nilai : null;
-    const color = nilai !== null ? getNilaiColor(nilai) : "#94a3b8";
-    const label = nilai !== null ? getNilaiLabel(nilai) : "Belum";
+    materiMap[key].push({ tugas: t, nilai: sub ? sub.nilai : null });
+  });
+
+  const materiRows = Object.entries(materiMap).map(([materi, items]) => {
+    const dikerjakan = items.filter(x => x.nilai !== null);
+    const totalTugas = items.length;
+    const sudah = dikerjakan.length;
+    const nilaiList = dikerjakan.map(x => x.nilai);
+    const rata = nilaiList.length ? Math.round(nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length) : null;
+    const min = nilaiList.length ? Math.min(...nilaiList) : null;
+    const max = nilaiList.length ? Math.max(...nilaiList) : null;
+    const color = rata !== null ? getNilaiColor(rata) : "#94a3b8";
+    const label = rata !== null ? getNilaiLabel(rata) : "Belum";
+    const range = nilaiList.length > 1 ? `${min}–${max}` : nilaiList.length === 1 ? `${nilaiList[0]}` : "—";
     return `<tr>
-      <td>${t.judul}</td>
-      <td style="color:#64748b">${t.mapel}</td>
+      <td style="font-weight:600">${materi}</td>
+      <td style="text-align:center;color:#64748b">${sudah}/${totalTugas}</td>
       <td style="text-align:center">
-        ${nilai !== null
-          ? `<span style="font-weight:700;color:${color}">${nilai}</span>`
-          : `<span style="color:#94a3b8">—</span>`}
+        ${rata !== null ? `<span style="font-weight:700;color:${color}">${rata}</span>` : `<span style="color:#94a3b8">—</span>`}
       </td>
+      <td style="text-align:center;color:#64748b;font-family:monospace;font-size:11px">${range}</td>
       <td style="text-align:center">
-        <span class="badge-pill ${nilai >= 85 ? 'chip-green' : nilai >= 70 ? 'chip-teal' : nilai >= 55 ? 'chip-yellow' : nilai !== null ? 'chip-red' : 'chip-gray'}">${label}</span>
+        <span class="badge-pill ${rata >= 85 ? 'chip-green' : rata >= 70 ? 'chip-teal' : rata >= 55 ? 'chip-yellow' : rata !== null ? 'chip-red' : 'chip-gray'}">${label}</span>
       </td>
-      <td>${generateBarSVG(nilai || 0, 100, color)}</td>
+      <td>${generateBarSVG(rata || 0, 100, color)}</td>
     </tr>`;
   }).join("");
 
@@ -5254,19 +5430,21 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
       <div style="padding:8px 0">${badgeHtml}</div>
     </div>
 
-    <!-- Detail Nilai per Tugas -->
+    <!-- Detail Nilai per Materi -->
     <div class="section">
-      <div class="section-title">Detail Nilai per Tugas</div>
+      <div class="section-title">Detail Nilai per Materi</div>
       ${allTugas.length === 0
         ? '<p style="color:#94a3b8">Belum ada tugas.</p>'
         : `<table>
           <thead><tr>
-            <th>Nama Tugas</th><th>Mata Pelajaran</th>
-            <th style="text-align:center">Nilai</th>
+            <th>Materi</th>
+            <th style="text-align:center">Tugas</th>
+            <th style="text-align:center">Rata-rata</th>
+            <th style="text-align:center">Rentang</th>
             <th style="text-align:center">Keterangan</th>
             <th>Grafik</th>
           </tr></thead>
-          <tbody>${tugasRows}</tbody>
+          <tbody>${materiRows}</tbody>
         </table>`}
     </div>
 
