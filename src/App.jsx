@@ -253,7 +253,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 /* GRID */
 .g2{display:grid;grid-template-columns:1fr;gap:12px;}
 @media(min-width:600px){.g2{grid-template-columns:1fr 1fr;}}
-.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 
 /* QUIZ */
 .quiz-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-sm);border:1.5px solid var(--line);background:var(--surface);cursor:pointer;transition:all .15s;text-align:left;font-family:var(--font);font-size:14px;width:100%;margin-bottom:8px;color:var(--ink-2);}
@@ -1733,7 +1733,12 @@ function LoginScreen({ onLogin }) {
 function DashboardSiswa({ user, store, navigate }) {
   const stats = store.getStats(user.id);
   const allTugas = store.getTugas().filter(t => t.jenjang === user.jenjang && t.status === "aktif");
-  const tugas = allTugas.filter(t => fmtDl(t.deadline).tone !== "bad"); // belum lewat deadline
+  const byNewest = (a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  };
+  const tugas = allTugas.filter(t => fmtDl(t.deadline).tone !== "bad").sort(byNewest); // belum lewat deadline
   const tugasLewat = allTugas.filter(t => fmtDl(t.deadline).tone === "bad" && !store.hasSub(user.id, t.id));
   const lb = store.getLeaderboard(user.jenjang);
   const myRank = lb.find(s => s.id === user.id);
@@ -1773,7 +1778,7 @@ function DashboardSiswa({ user, store, navigate }) {
           <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.15)", color: "#fff", backdropFilter: "blur(4px)" }} onClick={() => navigate("tugas")}><I n="book" s={13} /> Tugas</button>
         </div>
       </Card>
-      <div className="g3" style={{ marginBottom: 16 }}>
+      <div className="g3" style={{ marginBottom: 12 }}>
         {[
           { label: "Tugas selesai", val: stats.tugasSelesai, icon: "checkCircle", cls: "mini-icon-1" },
           { label: "Nilai rata-rata", val: stats.nilaiRata || "—", icon: "chartBar", cls: "mini-icon-2" },
@@ -1786,6 +1791,38 @@ function DashboardSiswa({ user, store, navigate }) {
           </Card>
         ))}
       </div>
+
+      {/* Progress menuju level berikutnya — isi ruang kosong */}
+      {(() => {
+        const prog = getLevelProgress(stats.poin || 0);
+        const lv = getLevel(stats.poin || 0);
+        return (
+          <Card style={{ marginBottom: 16, padding: "12px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <TierIcon tierId={lv.tierId} size={32} color={lv.color} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: lv.color }}>{lv.name}</span>
+                  {prog.next
+                    ? <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{prog.needed} poin lagi → {prog.next.name}</span>
+                    : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>LEVEL MAKS</span>}
+                </div>
+                <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${prog.pct}%`, background: lv.color, borderRadius: 99, transition: "width .5s" }} />
+                </div>
+              </div>
+              {(stats.streak || 0) > 0 && (
+                <div style={{ textAlign: "center", flexShrink: 0, paddingLeft: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 3, color: "#dc2626", fontWeight: 800, fontSize: 16 }}>
+                    <I n="flame" s={16} />{stats.streak}
+                  </div>
+                  <div style={{ fontSize: 9, color: "var(--ink-3)" }}>streak</div>
+                </div>
+              )}
+            </div>
+          </Card>
+        );
+      })()}
       <div className="sh"><h2>Tugas aktif</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("tugas")}>Semua <I n="chevR" s={12} /></button></div>
       {tugas.length === 0 ? <div className="empty">Belum ada tugas aktif dari guru.</div> :
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
@@ -1861,10 +1898,66 @@ function LeaderboardScreen({ user, store }) {
   const myRow = lb.find(s => s.id === user.id);
   const myInTop = myRow && myRow.rank <= 10;
 
-  // Prestasi minggu ini
-  const naik = [...lb].sort((a,b) => (b.poinHistory?.slice(-1)[0]?.poin || 0) - (a.poinHistory?.slice(-1)[0]?.poin || 0))[0];
-  const konsisten = [...lb].sort((a,b) => (b.streak||0) - (a.streak||0))[0];
-  const aktif = [...lb].sort((a,b) => (b.tugasSelesai||0) - (a.tugasSelesai||0))[0];
+  // Prestasi minggu ini — 5 nominasi dengan metrik BERBEDA
+  const subsAll = store.getSubs();
+  const oneWeekAgo = Date.now() - 7 * 24 * 3600000;
+
+  // Helper: subs minggu ini per siswa
+  function weekSubs(siswaId) {
+    return subsAll.filter(s => s.siswaId === siswaId && s.submittedAt && new Date(s.submittedAt).getTime() >= oneWeekAgo);
+  }
+
+  // 1. Top Performer — poin tertinggi
+  const topPerformer = [...lb].sort((a, b) => (b.poin || 0) - (a.poin || 0))[0];
+
+  // 2. Comeback King — peningkatan nilai paling drastis (nilai terakhir vs sebelumnya)
+  let comebackKing = null, maxJump = 0;
+  lb.forEach(s => {
+    const sSubs = subsAll.filter(x => x.siswaId === s.id && x.submittedAt).sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
+    if (sSubs.length >= 2) {
+      const jump = sSubs[sSubs.length - 1].nilai - sSubs[sSubs.length - 2].nilai;
+      if (jump > maxJump) { maxJump = jump; comebackKing = { ...s, jump }; }
+    }
+  });
+
+  // 3. Perfectionist — paling banyak nilai 100
+  let perfectionist = null, maxPerfect = 0;
+  lb.forEach(s => {
+    const perfectCount = subsAll.filter(x => x.siswaId === s.id && x.nilai === 100).length;
+    if (perfectCount > maxPerfect) { maxPerfect = perfectCount; perfectionist = { ...s, perfectCount }; }
+  });
+
+  // 4. Speed Runner — rata-rata submit tercepat (relatif terhadap deadline)
+  let speedRunner = null, bestSpeed = Infinity;
+  lb.forEach(s => {
+    const sSubs = subsAll.filter(x => x.siswaId === s.id && x.submittedAt && x.ontime);
+    if (sSubs.length >= 2) {
+      // Pakai jumlah ontime sebagai proxy speed (lebih banyak ontime = lebih cepat)
+      const ontimeRate = sSubs.length;
+      if (-ontimeRate < bestSpeed) { bestSpeed = -ontimeRate; speedRunner = { ...s, ontimeCount: sSubs.length }; }
+    }
+  });
+
+  // 5. Most Improved — peningkatan rata-rata nilai (paruh kedua vs paruh pertama subs)
+  let mostImproved = null, maxImprove = 0;
+  lb.forEach(s => {
+    const sSubs = subsAll.filter(x => x.siswaId === s.id && x.submittedAt).sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
+    if (sSubs.length >= 4) {
+      const half = Math.floor(sSubs.length / 2);
+      const firstAvg = sSubs.slice(0, half).reduce((a, b) => a + b.nilai, 0) / half;
+      const secondAvg = sSubs.slice(half).reduce((a, b) => a + b.nilai, 0) / (sSubs.length - half);
+      const improve = Math.round(secondAvg - firstAvg);
+      if (improve > maxImprove) { maxImprove = improve; mostImproved = { ...s, improve }; }
+    }
+  });
+
+  const nominasi = [
+    topPerformer && { label: "TOP PERFORMER", icon: "trophy", color: "#b45309", bg: "#fef3c7", siswa: topPerformer, sub: `${topPerformer.poin?.toLocaleString("id-ID") || 0} poin` },
+    comebackKing && { label: "COMEBACK KING", icon: "flame", color: "#dc2626", bg: "#fef2f2", siswa: comebackKing, sub: `Naik +${comebackKing.jump} poin nilai` },
+    perfectionist && maxPerfect > 0 && { label: "PERFECTIONIST", icon: "target", color: "#d97706", bg: "#fffbeb", siswa: perfectionist, sub: `${perfectionist.perfectCount}x nilai 100` },
+    speedRunner && { label: "SPEED RUNNER", icon: "zap", color: "#7c3aed", bg: "#f5f3ff", siswa: speedRunner, sub: `${speedRunner.ontimeCount}x submit tepat waktu` },
+    mostImproved && maxImprove > 0 && { label: "MOST IMPROVED", icon: "trending", color: "#16a34a", bg: "#f0fdf4", siswa: mostImproved, sub: `Rata-rata naik +${mostImproved.improve}` },
+  ].filter(Boolean);
 
   return <>
     <div className="page">
@@ -1953,17 +2046,15 @@ function LeaderboardScreen({ user, store }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <Card>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Prestasi minggu ini</div>
-              {[
-                { label: "NAIK TERTINGGI", icon: "trending", color: "var(--accent)", bg: "var(--accent-soft)", siswa: naik, sub: `${naik?.poin?.toLocaleString("id-ID") || 0} poin total` },
-                { label: "PALING KONSISTEN", icon: "flame", color: "#c2410c", bg: "#fff7ed", siswa: konsisten, sub: konsisten?.streak > 0 ? `Streak ${konsisten.streak}x` : "Belum ada streak" },
-                { label: "PALING AKTIF", icon: "book", color: "var(--good)", bg: "var(--good-bg)", siswa: aktif, sub: `${aktif?.tugasSelesai || 0} tugas selesai` },
-              ].map((item, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < 2 ? "1px solid var(--line-soft)" : "none" }}>
+              {nominasi.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--ink-3)", padding: "8px 0" }}>Nominasi muncul setelah siswa mengerjakan beberapa tugas.</div>
+              ) : nominasi.map((item, i) => (
+                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < nominasi.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
                   <div style={{ width: 34, height: 34, borderRadius: 9, background: item.bg, color: item.color, display: "grid", placeItems: "center", flexShrink: 0 }}>
                     <I n={item.icon} s={15} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".08em", textTransform: "uppercase" }}>{item.label}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: item.color, letterSpacing: ".08em", textTransform: "uppercase" }}>{item.label}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.siswa?.nama ? getFirstName(item.siswa.nama) : "—"}</div>
                     <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{item.sub}</div>
                   </div>
@@ -2000,18 +2091,24 @@ function DaftarTugas({ user, store, navigate }) {
   const [showArsip, setShowArsip] = useState(false);
 
   const semua = store.getTugas().filter(t => t.jenjang === user.jenjang && t.mapel === mapel);
+  // Sort by newest first (createdAt desc)
+  const byNewest = (a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  };
 
   // Split: aktif = deadline belum lewat ATAU sudah dikerjakan, arsip = lewat deadline & belum dikerjakan
   const aktif = semua.filter(t => {
     const dl = fmtDl(t.deadline);
     const done = store.hasSub(user.id, t.id);
     return done || dl.tone !== "bad";
-  });
+  }).sort(byNewest);
   const arsip = semua.filter(t => {
     const dl = fmtDl(t.deadline);
     const done = store.hasSub(user.id, t.id);
     return !done && dl.tone === "bad";
-  });
+  }).sort(byNewest);
 
   function TugasCard({ t }) {
     const dl = fmtDl(t.deadline);
@@ -2128,12 +2225,21 @@ function DetailTugas({ user, store, tugasId, navigate }) {
         <Card pad="lg" style={{ marginBottom: 12, background: "var(--good-bg)", border: "1px solid #86efac" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: "var(--good)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={24} /></div>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, color: "var(--good)" }}>Sudah dikerjakan!</div>
               <div style={{ fontSize: 13, marginTop: 2 }}>Nilai: <strong>{sub.nilai}</strong> · Poin: <strong>+{sub.poinDapat}</strong></div>
               <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</div>
             </div>
           </div>
+          {/* Review jawaban hanya setelah deadline lewat */}
+          {lewat && (
+            <button className="btn btn-outline btn-full btn-sm" style={{ marginTop: 12 }} onClick={() => navigate("review-tugas", { tugasId: t.id })}>
+              <I n="book" s={14} /> Lihat Jawaban & Pembahasan
+            </button>
+          )}
+          {!lewat && (
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 10, textAlign: "center", fontStyle: "italic" }}>Review jawaban tersedia setelah deadline berakhir</div>
+          )}
         </Card>
       )}
 
@@ -2162,6 +2268,112 @@ function DetailTugas({ user, store, tugasId, navigate }) {
           {t.soal?.length === 0 ? "Soal belum tersedia" : "Tugas tidak aktif"}
         </div>
       )}
+    </div>
+  </>;
+}
+
+// ─── REVIEW TUGAS (siswa lihat jawaban setelah expired) ───
+function ReviewTugas({ user, store, tugasId, navigate }) {
+  const t = store.getTugas().find(x => x.id === tugasId);
+  if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
+  const sub = store.getSubBy(user.id, t.id);
+  if (!sub) return <div className="empty">Kamu belum mengerjakan tugas ini.</div>;
+
+  // Bangun map jawaban siswa per origIdx
+  const resultByIdx = {};
+  (sub.soalResults || []).forEach(r => { resultByIdx[r.origIdx] = r; });
+
+  return <>
+    <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas-detail", { tugasId: t.id })}><I n="chevL" s={18} /></button><div className="topbar-title">Review Jawaban</div><div style={{ width: 36 }} /></div>
+    <div className="page">
+      <div className="dt"><div><h1>{t.judul}</h1><p>{t.mapel} · Review jawaban</p></div></div>
+
+      {/* Skor ringkas */}
+      <Card pad="lg" style={{ marginBottom: 14, textAlign: "center" }}>
+        <div style={{ fontSize: 36, fontWeight: 900, color: sub.nilai >= 80 ? "var(--good)" : sub.nilai >= 60 ? "var(--warn)" : "var(--bad)", fontFamily: "var(--mono)" }}>{sub.nilai}</div>
+        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{sub.correctCount} dari {sub.total} benar · +{sub.poinDapat} poin</div>
+      </Card>
+
+      {/* Per soal */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {(t.soal || []).map((soal, idx) => {
+          const r = resultByIdx[idx];
+          const isEssay = soal.type === "essay";
+          const isCorrect = isEssay ? (r?.statusNilai === "dinilai" && (r?.nilaiEssay || 0) >= 60) : r?.correct === true;
+          const studentAns = isEssay ? r?.jawabanEssay : (r ? undefined : undefined);
+
+          return (
+            <Card key={idx} pad="md" style={{ borderLeft: `4px solid ${isEssay && r?.statusNilai !== "dinilai" ? "var(--warn)" : isCorrect ? "var(--good)" : "var(--bad)"}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>SOAL {idx + 1}</span>
+                {isEssay
+                  ? (r?.statusNilai === "dinilai"
+                      ? <span className="chip" style={{ fontSize: 10, background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", color: isCorrect ? "var(--good)" : "var(--bad)" }}>Essay · {r.nilaiEssay}/100</span>
+                      : <span className="chip" style={{ fontSize: 10, background: "#fef3c7", color: "#92400e" }}>Belum dinilai</span>)
+                  : <span className="chip" style={{ fontSize: 10, background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", color: isCorrect ? "var(--good)" : "var(--bad)" }}>{isCorrect ? "✓ Benar" : "✗ Salah"}</span>
+                }
+              </div>
+
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, lineHeight: 1.5 }}>{soal.pertanyaan}</div>
+              {soal.gambar && <img src={soal.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, marginBottom: 10, border: "1px solid var(--line)" }} />}
+
+              {/* PG / TF / Excel: tampilkan opsi dengan tanda benar/salah + pilihan siswa */}
+              {(soal.type === "pg" || soal.type === "tf" || soal.type === "excel") && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {(soal.type === "tf" ? ["Benar", "Salah"] : soal.opsi || []).map((opt, i) => {
+                    const isKey = soal.jawaban === i;
+                    const isPicked = r?.pickedAnswer === i;
+                    return (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8,
+                        background: isKey ? "var(--good-bg)" : isPicked ? "var(--bad-bg)" : "var(--surface-alt)",
+                        border: `1px solid ${isKey ? "#86efac" : isPicked ? "#fca5a5" : "var(--line)"}`,
+                      }}>
+                        <div style={{ width: 22, height: 22, borderRadius: 5, background: isKey ? "var(--good)" : isPicked ? "var(--bad)" : "var(--surface)", color: (isKey || isPicked) ? "#fff" : "var(--ink-3)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{String.fromCharCode(65 + i)}</div>
+                        <span style={{ flex: 1, fontSize: 13 }}>{opt}</span>
+                        {isKey && <span style={{ fontSize: 10, color: "var(--good)", fontWeight: 700 }}>KUNCI</span>}
+                        {isPicked && !isKey && <span style={{ fontSize: 10, color: "var(--bad)", fontWeight: 700 }}>PILIHANMU</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Essay: tampilkan jawaban siswa + komentar guru */}
+              {isEssay && (
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginBottom: 4 }}>Jawaban kamu:</div>
+                  <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                    {r?.jawabanEssay || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(tidak menjawab)</span>}
+                  </div>
+                  {r?.komentarGuru && (
+                    <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--accent-tint)", borderRadius: 8, fontSize: 12 }}>
+                      <b style={{ color: "var(--accent-2)" }}>Komentar guru:</b> {r.komentarGuru}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Kompleks & Pasang: tampilkan kunci */}
+              {soal.type === "komplex" && (
+                <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
+                  <b>Kunci jawaban:</b> {(soal.jawaban || []).map(i => String.fromCharCode(65 + i)).join(", ")}
+                </div>
+              )}
+              {soal.type === "pasang" && (
+                <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
+                  <b>Pasangan benar:</b>
+                  <div style={{ marginTop: 4 }}>
+                    {(soal.kiri || []).map((k, ki) => (
+                      <div key={ki} style={{ fontSize: 12 }}>{k} → {soal.kanan?.[(soal.jawaban || [])[ki]] ?? "—"}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   </>;
 }
@@ -2361,6 +2573,14 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       else if (s.type === "essay") { correct = null; /* perlu penilaian manual */ }
       if (correct === true) { totalPoin += poinSoal; correctCount++; }
       const resultItem = { origIdx: s._origIdx ?? i, correct, poinSoal };
+      // Simpan jawaban siswa untuk review (kecuali essay yang pakai jawabanEssay)
+      if (s.type === "pg" || s.type === "tf" || s.type === "excel") {
+        resultItem.pickedAnswer = ans ?? null;
+      } else if (s.type === "komplex") {
+        resultItem.pickedMulti = ans || [];
+      } else if (s.type === "pasang") {
+        resultItem.pickedPasang = ans || {};
+      }
       if (s.type === "essay") {
         resultItem.jawabanEssay = ans || "";
         resultItem.statusNilai = "perlu_dinilai";
@@ -2733,7 +2953,7 @@ function ProfilSiswa({ user, store }) {
         <LevelCard poin={stats.poin} />
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, paddingTop: 14, marginTop: 14, borderTop: "1px solid var(--line-soft)" }}>
-          {[{ v: stats.poin.toLocaleString("id-ID"), l: "total poin" }, { v: String(stats.tugasSelesai), l: "tugas selesai" }, { v: stats.nilaiRata || "—", l: "nilai rata" }].map(s => <div key={s.l}><div className="stat-num" style={{ fontSize: 22, fontWeight: 700 }}>{s.v}</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>{s.l}</div></div>)}
+          {[{ v: stats.poin.toLocaleString("id-ID"), l: "total poin" }, { v: String(stats.tugasSelesai), l: "tugas selesai" }, { v: stats.nilaiRata || "—", l: "nilai rata" }].map(s => <div key={s.l} style={{ textAlign: "center" }}><div className="stat-num" style={{ fontSize: 22, fontWeight: 700 }}>{s.v}</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>{s.l}</div></div>)}
         </div>
       </Card>
 
@@ -3661,9 +3881,89 @@ function backupFromStore(store) {
 }
 
 // ─── DASHBOARD GURU ───
+// ─── DASHBOARD TUGAS ANALISIS (inline expand) ───
+function DashboardTugasAnalisis({ tugas, subs, siswaCount, navigate }) {
+  const nilaiList = subs.map(s => s.nilai);
+  const avg = Math.round(nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length);
+  const max = Math.max(...nilaiList);
+  const min = Math.min(...nilaiList);
+
+  // Distribusi nilai (buckets)
+  const buckets = [
+    { label: "90-100", min: 90, max: 100, color: "#059669" },
+    { label: "80-89", min: 80, max: 89, color: "#10b981" },
+    { label: "70-79", min: 70, max: 79, color: "#0d9488" },
+    { label: "60-69", min: 60, max: 69, color: "#f59e0b" },
+    { label: "<60", min: 0, max: 59, color: "#dc2626" },
+  ].map(b => ({ ...b, count: nilaiList.filter(n => n >= b.min && n <= b.max).length }));
+  const maxBucket = Math.max(...buckets.map(b => b.count), 1);
+
+  // Analisis per soal (ringkas)
+  const soalStats = (tugas.soal || []).map((s, i) => {
+    const correctCount = subs.filter(sub => {
+      const r = sub.soalResults?.find(x => x.origIdx === i);
+      if (!r) return false;
+      if (s.type === "essay") return r.statusNilai === "dinilai" && (r.nilaiEssay || 0) >= 60;
+      return r.correct === true;
+    }).length;
+    const pct = subs.length ? Math.round((correctCount / subs.length) * 100) : 0;
+    return { i, pct, type: s.type, pertanyaan: s.pertanyaan };
+  });
+  const tersulit = [...soalStats].sort((a, b) => a.pct - b.pct)[0];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Quick stats */}
+      <div style={{ display: "flex", gap: 8 }}>
+        {[
+          { l: "Rata-rata", v: avg, c: avg >= 80 ? "var(--good)" : avg >= 60 ? "var(--warn)" : "var(--bad)" },
+          { l: "Tertinggi", v: max, c: "var(--good)" },
+          { l: "Terendah", v: min, c: min < 60 ? "var(--bad)" : "var(--ink)" },
+          { l: "Dikerjakan", v: `${subs.length}/${siswaCount}`, c: "var(--ink)" },
+        ].map(s => (
+          <div key={s.l} style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: "var(--surface)", borderRadius: 8 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: s.c, fontFamily: "var(--mono)" }}>{s.v}</div>
+            <div style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 2 }}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Distribusi nilai */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Distribusi Nilai</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {buckets.map(b => (
+            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, color: "var(--ink-3)", width: 48, fontFamily: "var(--mono)", textAlign: "right" }}>{b.label}</span>
+              <div style={{ flex: 1, height: 16, background: "var(--surface)", borderRadius: 4, overflow: "hidden", position: "relative" }}>
+                <div style={{ height: "100%", width: `${(b.count / maxBucket) * 100}%`, background: b.color, borderRadius: 4, transition: "width .4s", minWidth: b.count > 0 ? 4 : 0 }} />
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-2)", width: 20, textAlign: "right" }}>{b.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Soal tersulit highlight */}
+      {tersulit && tersulit.pct < 70 && (
+        <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#991b1b", marginBottom: 2 }}>SOAL PALING SULIT</div>
+          <div style={{ fontSize: 11, color: "var(--ink-2)", lineHeight: 1.4 }}>Soal {tersulit.i + 1}: {tersulit.pertanyaan?.slice(0, 60)}{tersulit.pertanyaan?.length > 60 ? "..." : ""} <b style={{ color: "#dc2626" }}>({tersulit.pct}% benar)</b></div>
+        </div>
+      )}
+
+      {/* Tombol full analisis */}
+      <button className="btn btn-outline btn-sm" onClick={() => navigate("analisis-tugas", { tugasId: tugas.id })} style={{ alignSelf: "flex-start" }}>
+        Analisis lengkap per soal <I n="chevR" s={12} />
+      </button>
+    </div>
+  );
+}
+
 function DashboardGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const [showLaporan, setShowLaporan] = useState(false);
+  const [expandedTugas, setExpandedTugas] = useState(null);
   const tugasAll = store.getTugas().filter(t => t.jenjang === jenjang);
   const lb = store.getLeaderboard(jenjang);
   const siswa = store.getAllSiswa(jenjang);
@@ -3673,6 +3973,13 @@ function DashboardGuru({ store, navigate }) {
   const tugasLewat = tugasAll.filter(t => fmtDl(t.deadline).tone === "bad");
   const pctNgerjain = tugasAll.length === 0 ? "—"
     : `${Math.min(100, Math.round((totalSubs / (tugasAll.length * (siswa.length || 1))) * 100))}%`;
+
+  // 5 tugas terbaru (newest first) — sort by createdAt desc
+  const tugasTerbaru = [...tugasAll].sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  }).slice(0, 5);
 
   // Rata poin kelas
   const rataPoin = lb.length ? Math.round(lb.reduce((a,s) => a + (s.poin||0), 0) / lb.length) : 0;
@@ -3726,38 +4033,63 @@ function DashboardGuru({ store, navigate }) {
         ))}
       </div>
 
-      {/* Tugas berjalan */}
-      <div className="sh"><h2>Tugas berjalan</h2></div>
-      {tugasAktif.length === 0 ? (
+      {/* Tugas Terbaru (merged dengan analisis inline) */}
+      <div className="sh" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2>Tugas Terbaru</h2>
+        {tugasAll.length > 5 && <button className="btn btn-ghost btn-sm" onClick={() => navigate("tugas-guru")}>Semua Tugas <I n="chevR" s={12} /></button>}
+      </div>
+      {tugasTerbaru.length === 0 ? (
         <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada tugas</h3><p>Buat tugas pertama untuk Kelas {jenjang}!</p><button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Buat Tugas</button></div></Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-          {tugasAktif.slice(0, 3).map(t => {
+          {tugasTerbaru.map(t => {
             const dl = fmtDl(t.deadline);
-            const subCount = subs.filter(s => s.tugasId === t.id).length;
-            const pct = siswa.length ? Math.round((subCount / siswa.length) * 100) : 0;
+            const tugasSubs = subs.filter(s => s.tugasId === t.id);
+            const subCount = tugasSubs.length;
+            const isExpanded = expandedTugas === t.id;
+            const avgNilai = subCount > 0 ? Math.round(tugasSubs.reduce((a, s) => a + s.nilai, 0) / subCount) : null;
+            const color = avgNilai === null ? "var(--ink-3)" : avgNilai >= 80 ? "var(--good)" : avgNilai >= 60 ? "var(--warn)" : "var(--bad)";
+            const label = avgNilai === null ? "Belum ada" : avgNilai >= 80 ? "Mudah" : avgNilai >= 60 ? "Sedang" : "Sulit";
             return (
-              <Card key={t.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".05em" }}>{t.mapel}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{t.judul}</div>
-                    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                      <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
-                      <span className="chip">{t.soal?.length || 0} soal</span>
+              <Card key={t.id} pad="none" style={{ overflow: "hidden" }}>
+                {/* Header — clickable */}
+                <button onClick={() => setExpandedTugas(isExpanded ? null : t.id)}
+                  style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "14px 16px", fontFamily: "var(--font)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".05em" }}>{t.mapel}{t.materi ? ` · ${t.materi}` : ""}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{t.judul}</div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                        <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
+                        <span className="chip">{t.soal?.length || 0} soal</span>
+                        <span className="chip">{subCount} dikerjakan</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                      {avgNilai !== null && (
+                        <div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color }}>{avgNilai}</div>
+                          <div style={{ fontSize: 10, color, fontWeight: 600 }}>{label}</div>
+                        </div>
+                      )}
+                      <I n={isExpanded ? "chevD" : "chevR"} s={16} style={{ color: "var(--ink-3)" }} />
                     </div>
                   </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div className="stat-num" style={{ fontSize: 18, fontWeight: 800 }}>{subCount}<span style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 400 }}>/{siswa.length}</span></div>
-                    <div style={{ fontSize: 10, color: "var(--ink-3)" }}>pengumpulan</div>
+                </button>
+
+                {/* Expanded analysis inline */}
+                {isExpanded && (
+                  <div style={{ borderTop: "1px solid var(--line)", padding: "14px 16px", background: "var(--surface-alt)" }}>
+                    {subCount === 0 ? (
+                      <div style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "center", padding: "12px 0" }}>Belum ada siswa yang mengerjakan tugas ini.</div>
+                    ) : (
+                      <DashboardTugasAnalisis tugas={t} subs={tugasSubs} siswaCount={siswa.length} navigate={navigate} />
+                    )}
                   </div>
-                </div>
-                <div className="progress"><div style={{ width: `${pct}%`, background: pct < 30 ? "var(--bad)" : pct < 70 ? "var(--warn)" : "var(--good)" }} /></div>
-                <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>{siswa.length - subCount} siswa belum mengerjakan</div>
+                )}
               </Card>
             );
           })}
-          {tugasAktif.length > 3 && <button className="btn btn-ghost btn-sm" onClick={() => navigate("tugas-guru")} style={{ alignSelf: "center" }}>Lihat semua {tugasAktif.length} tugas <I n="chevR" s={12} /></button>}
         </div>
       )}
 
@@ -3797,51 +4129,6 @@ function DashboardGuru({ store, navigate }) {
         </Card>
       </div>
 
-      {/* Export mobile */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
-        <button className="btn btn-outline btn-full" onClick={() => setShowLaporan(true)}><I n="chartBar" s={14} /> Cetak Laporan</button>
-        <button className="btn btn-outline btn-full" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={14} /> Export Nilai Kelas {jenjang}</button>
-      </div>
-
-      {/* Analisis Soal per Tugas */}
-      {(() => {
-        const allSubs = store.getSubs().filter(s => { const t = store.getTugas().find(x => x.id === s.tugasId); return t && t.jenjang === jenjang; });
-        const tugasWithSoal = store.getTugas().filter(t => t.jenjang === jenjang && t.soal?.length > 0 && allSubs.some(s => s.tugasId === t.id));
-        if (tugasWithSoal.length === 0) return null;
-        return <>
-          <div className="sh analisis-section"><h2>Analisis Soal</h2></div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
-            {tugasWithSoal.slice(0, 5).map(t => {
-              const subs = allSubs.filter(s => s.tugasId === t.id);
-              const avgNilai = Math.round(subs.reduce((a, s) => a + s.nilai, 0) / subs.length);
-              const susah = avgNilai < 60; const medium = avgNilai >= 60 && avgNilai < 80;
-              const color = avgNilai >= 80 ? "var(--good)" : avgNilai >= 60 ? "var(--warn)" : "var(--bad)";
-              const label = avgNilai >= 80 ? "Mudah" : avgNilai >= 60 ? "Sedang" : "Sulit";
-              return (
-                <button key={t.id} onClick={() => navigate("analisis-tugas", { tugasId: t.id })}
-                  style={{ textAlign: "left", background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: "var(--r)", padding: "12px 14px", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)", width: "100%" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{t.judul}</div>
-                      <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{t.mapel} · {subs.length} siswa · {t.soal.length} soal</div>
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color }}>{avgNilai}</div>
-                      <div style={{ fontSize: 10, color, fontWeight: 600 }}>{label}</div>
-                    </div>
-                  </div>
-                  <div style={{ height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${avgNilai}%`, background: color, borderRadius: 99 }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                    Lihat analisis per soal <I n="chevR" s={11} />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </>;
-      })()}
     </div>
   </>;
 }
@@ -5696,43 +5983,68 @@ function LaporanModal({ store, onClose }) {
   );
 }
 
-// ─── ACTIVITY HEATMAP ───
-function ActivityHeatmap({ subs }) {
-  const days = 28;
-  const today = new Date(); today.setHours(0,0,0,0);
-  const cells = Array.from({ length: days }, (_, i) => {
-    const d = new Date(today); d.setDate(d.getDate() - (days - 1 - i));
-    const dateStr = d.toISOString().slice(0,10);
-    const count = subs.filter(s => s.submittedAt?.slice(0,10) === dateStr).length;
-    return { dateStr, count };
+// ─── ACTIVITY BAR CHART (7 hari terakhir) ───
+function ActivityBarChart({ subs }) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - (6 - i));
+    const dateStr = d.toISOString().slice(0, 10);
+    // Unique siswa aktif hari itu
+    const activeSiswa = new Set(subs.filter(s => s.submittedAt?.slice(0, 10) === dateStr).map(s => s.siswaId));
+    return {
+      dateStr,
+      dayLabel: dayNames[d.getDay()],
+      dateLabel: d.getDate(),
+      count: activeSiswa.size,
+      isToday: i === 6,
+    };
   });
-  const maxCount = Math.max(...cells.map(c => c.count), 1);
-  const getColor = (count) => {
-    if (count === 0) return "var(--surface-alt)";
-    const pct = count / maxCount;
-    if (pct < 0.25) return "#b2dfdb";
-    if (pct < 0.5) return "#4db6ac";
-    if (pct < 0.75) return "#0d9488";
-    return "var(--accent)";
-  };
+  const maxCount = Math.max(...days.map(d => d.count), 1);
+  const totalToday = days[6].count;
+  const avgWeek = Math.round(days.reduce((a, d) => a + d.count, 0) / 7);
+
   return (
     <div>
-      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-        {cells.map((c, i) => (
-          <div key={i} title={`${c.dateStr}: ${c.count} pengerjaan`}
-            style={{ width: 14, height: 14, borderRadius: 3, background: getColor(c.count), cursor: "default" }} />
-        ))}
+      {/* Summary */}
+      <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--accent-2)", fontFamily: "var(--mono)" }}>{totalToday}</div>
+          <div style={{ fontSize: 10, color: "var(--ink-3)" }}>siswa aktif hari ini</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink-2)", fontFamily: "var(--mono)" }}>{avgWeek}</div>
+          <div style={{ fontSize: 10, color: "var(--ink-3)" }}>rata-rata mingguan</div>
+        </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>4 minggu lalu</span>
-        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Hari ini</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
-        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Kurang</span>
-        {["var(--surface-alt)", "#b2dfdb", "#4db6ac", "#0d9488", "var(--accent)"].map((c, i) => (
-          <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
-        ))}
-        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Banyak</span>
+
+      {/* Bars */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
+        {days.map((d, i) => {
+          const heightPct = (d.count / maxCount) * 100;
+          return (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%" }}>
+              <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                <div title={`${d.dateStr}: ${d.count} siswa aktif`}
+                  style={{
+                    width: "100%", maxWidth: 36,
+                    height: `${Math.max(heightPct, d.count > 0 ? 8 : 2)}%`,
+                    background: d.isToday ? "var(--accent)" : d.count > 0 ? "#7AB2B2" : "var(--surface-alt)",
+                    borderRadius: "6px 6px 0 0",
+                    transition: "height .4s ease",
+                    position: "relative",
+                    minHeight: 4,
+                  }}>
+                  {d.count > 0 && <div style={{ position: "absolute", top: -18, left: 0, right: 0, textAlign: "center", fontSize: 11, fontWeight: 700, color: d.isToday ? "var(--accent)" : "var(--ink-2)" }}>{d.count}</div>}
+                </div>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: d.isToday ? 700 : 500, color: d.isToday ? "var(--accent-2)" : "var(--ink-3)" }}>{d.dayLabel}</div>
+                <div style={{ fontSize: 9, color: "var(--ink-4)" }}>{d.dateLabel}</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -5768,10 +6080,10 @@ function KelasView({ store, navigate }) {
         <button className={`tab ${jenjang === "VIII" ? "active" : ""}`} onClick={() => setJenjang("VIII")}>Kelas VIII ({store.getAllSiswa("VIII").length})</button>
       </div>
 
-      {/* Heatmap aktivitas */}
-      <div className="sh"><h2>Aktivitas 4 Minggu Terakhir</h2></div>
+      {/* Aktivitas bar chart 7 hari */}
+      <div className="sh"><h2>Aktivitas 7 Hari Terakhir</h2></div>
       <Card style={{ marginBottom: 16 }}>
-        <ActivityHeatmap subs={jenjangSubs} />
+        <ActivityBarChart subs={jenjangSubs} />
         <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 10 }}>
           Total {jenjangSubs.length} pengerjaan · {store.getAllSiswa(jenjang).length} siswa
         </div>
@@ -6898,6 +7210,7 @@ function AppInner() {
       else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
       else if (route === "tugas") screen = <DaftarTugas user={user} store={store} navigate={navigate} />;
       else if (route === "tugas-detail") screen = <DetailTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
+      else if (route === "review-tugas") screen = <ReviewTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "profil") screen = <ProfilSiswa user={user} store={store} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
