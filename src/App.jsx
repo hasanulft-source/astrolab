@@ -513,7 +513,7 @@ function hn(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.c
 function inits(n) { const p = n.trim().split(/\s+/); return p.length === 1 ? p[0].slice(0, 2).toUpperCase() : (p[0][0] + p[p.length - 1][0]).toUpperCase(); }
 function Avatar({ name, size = "md", photo = null }) {
   const [bg, fg] = AVC[hn(name || "?") % AVC.length];
-  const px = { sm: 28, md: 36, lg: 48, xl: 64 }[size] || 36;
+  const px = { xs: 22, sm: 28, md: 36, lg: 48, xl: 64 }[size] || 36;
   const fs = Math.round(px * 0.35);
   if (photo) return <img src={photo} alt={name} className="av-photo" style={{ width: px, height: px }} />;
   return <span className="av" style={{ width: px, height: px }}><svg width={px} height={px} viewBox="0 0 100 100"><rect width="100" height="100" rx="50" fill={bg} /><text x="50" y="63" textAnchor="middle" fontFamily="Plus Jakarta Sans,sans-serif" fontWeight="700" fontSize={fs * (100 / px)} fill={fg}>{inits(name || "?")}</text></svg></span>;
@@ -541,6 +541,23 @@ function fmtDl(dl) {
   return { label: `${diff} hari lagi`, tone: "" };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
+
+// Format last seen timestamp jadi teks relatif
+function fmtLastSeen(ts) {
+  if (!ts) return null;
+  const now = Date.now();
+  const diff = now - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "baru saja";
+  if (mins < 60) return `${mins} menit lalu`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} jam lalu`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "kemarin";
+  if (days < 7) return `${days} hari lalu`;
+  const d = new Date(ts);
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
 
 // ─── XP / LEVEL / BADGE SYSTEM ───
 // ─── LEVEL SYSTEM: 5 Tier × 4 Sub-level = 20 Levels ───
@@ -734,201 +751,133 @@ function getLevelProgress(poin) {
 }
 
 // ─── BADGE ICONS (Style C — Playful Dimensional) ───
-function BadgeIcon({ type, size = 32 }) {
-  const uid = `${type}-${size}`;
-  const props = { width: size, height: size, viewBox: "0 0 58 58", style: { display: "inline-block" } };
+// ─── BADGE ICON (Style C — Shield Crest, frame seragam + glyph unik) ───
+// Setiap badge = perisai dengan rim gradient + glyph unik di tengah.
+// 'type' menentukan glyph; 'rim' menentukan warna frame.
+const BADGE_RIMS = {
+  amber:  { a: "#f0b429", b: "#b45309", inA: "#fff8e6", inB: "#fde9b8", glyph: "#b45309" },
+  teal:   { a: "#0c7a91", b: "#063f4d", inA: "#eafafb", inB: "#c9eef0", glyph: "#0c7a91" },
+  red:    { a: "#ef5350", b: "#b91c1c", inA: "#fff0ef", inB: "#fbd5d3", glyph: "#c0392b" },
+  violet: { a: "#a78bfa", b: "#6d28d9", inA: "#f4f0ff", inB: "#e0d4fb", glyph: "#6d28d9" },
+  blue:   { a: "#60a5fa", b: "#1d4ed8", inA: "#eef5ff", inB: "#d3e4fb", glyph: "#1d4ed8" },
+  green:  { a: "#4ade80", b: "#15803d", inA: "#effdf4", inB: "#c8f2d6", glyph: "#15803d" },
+  rose:   { a: "#fb7185", b: "#be123c", inA: "#fff1f3", inB: "#fbd0d8", glyph: "#be123c" },
+};
 
+// Glyph unik per badge — digambar dalam koordinat lokal (-18..18), center (0,0)
+function BadgeGlyph({ type, color }) {
+  const s = { stroke: color, strokeWidth: 2.2, fill: "none", strokeLinecap: "round", strokeLinejoin: "round" };
+  const f = { fill: color };
   switch (type) {
-    case "target": // Perfect Score / Perfectionist / Master Mind
-      return (
-        <svg {...props}>
-          <circle cx="29" cy="29" r="22" fill="#fef3c7" stroke="#fbbf24" strokeWidth="1.5" />
-          <circle cx="29" cy="29" r="17" fill="#fff" stroke="#fbbf24" strokeWidth="1.2" />
-          <circle cx="29" cy="29" r="12" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1" />
-          <circle cx="29" cy="29" r="6" fill="#fff" />
-          <circle cx="29" cy="29" r="2.5" fill="#dc2626" />
-          <circle cx="36" cy="22" r="3" fill="#fef08a" stroke="#d97706" strokeWidth="0.8" />
-        </svg>
-      );
-    case "flame": // On Fire / Blazing / Inferno
-      return (
-        <svg {...props}>
-          <path d="M29 6 Q17 18 17 32 Q17 40 21 44 Q18 38 24 32 Q26 42 31 38 Q36 48 28 54 Q42 54 46 44 Q50 32 42 22 Q34 12 29 6 Z" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1.2" />
-          <path d="M29 18 Q22 28 24 38 Q28 42 33 40 Q37 32 29 18 Z" fill="#fbbf24" />
-          <path d="M29 30 Q25 36 27 42 Q29 44 31 42 Q34 36 29 30 Z" fill="#fef3c7" />
-        </svg>
-      );
-    case "trophy": // Top of Class / Master Mind / Podium
-      return (
-        <svg {...props}>
-          <path d="M16 10 L42 10 L40 28 Q40 35 29 37 Q18 35 18 28 Z" fill="#fbbf24" stroke="#92400e" strokeWidth="1.2" />
-          <path d="M16 10 L42 10 L41 14 L17 14 Z" fill="#fef3c7" opacity="0.7" />
-          <path d="M14 14 Q4 14 4 22 Q4 30 14 30" fill="none" stroke="#fbbf24" strokeWidth="3" />
-          <path d="M44 14 Q54 14 54 22 Q54 30 44 30" fill="none" stroke="#fbbf24" strokeWidth="3" />
-          <rect x="25" y="37" width="8" height="9" fill="#92400e" />
-          <rect x="18" y="46" width="22" height="6" rx="1.5" fill="#b45309" />
-          <text x="29" y="26" textAnchor="middle" style={{ fontSize: "9px", fontWeight: 700, fill: "#92400e" }}>1</text>
-        </svg>
-      );
-    case "zap": // Fast Finisher / Lightning
-      return (
-        <svg {...props}>
-          <polygon points="34,4 14,30 25,30 22,54 46,24 34,24" fill="#a855f7" stroke="#581c87" strokeWidth="1.5" strokeLinejoin="round" />
-          <polygon points="34,10 21,28 28,28 25,46 40,26 34,26" fill="#fef3c7" opacity="0.85" />
-          <circle cx="30" cy="20" r="2" fill="#fff" />
-        </svg>
-      );
-    case "book": // Rajin / Scholar / Veteran
-      return (
-        <svg {...props}>
-          <path d="M8 14 Q29 9 50 14 L50 44 Q29 39 8 44 Z" fill="#0d6b7a" stroke="#064e3b" strokeWidth="1.2" />
-          <path d="M8 14 Q29 9 50 14 L50 20 Q29 15 8 20 Z" fill="#5eead4" opacity="0.65" />
-          <path d="M29 14 L29 43" stroke="#fef3c7" strokeWidth="1.8" />
-          <path d="M14 22 Q21 21 25 22 M14 27 Q21 26 25 27 M33 22 Q40 21 44 22 M33 27 Q40 26 44 27" stroke="#fef3c7" strokeWidth="1.2" strokeLinecap="round" />
-          <circle cx="29" cy="34" r="3.5" fill="#fef3c7" />
-        </svg>
-      );
-    case "check": // First Step
-      return (
-        <svg {...props}>
-          <circle cx="29" cy="29" r="22" fill="#16a34a" stroke="#15803d" strokeWidth="1.5" />
-          <circle cx="29" cy="29" r="17" fill="#22c55e" opacity="0.4" />
-          <path d="M19 30 L26 37 L40 22" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        </svg>
-      );
-    case "star": // Level milestones
-      return (
-        <svg {...props}>
-          <defs>
-            <radialGradient id={`bstar-${uid}`} cx="40%" cy="30%" r="70%">
-              <stop offset="0%" stopColor="#fef3c7" />
-              <stop offset="50%" stopColor="#fbbf24" />
-              <stop offset="100%" stopColor="#d97706" />
-            </radialGradient>
-          </defs>
-          <polygon points="29,5 35,22 53,22 39,33 45,52 29,40 13,52 19,33 5,22 23,22" fill={`url(#bstar-${uid})`} stroke="#92400e" strokeWidth="1.5" strokeLinejoin="round" />
-          <polygon points="29,14 32,22 40,22 34,28 36,38 29,32 22,38 24,28 18,22 26,22" fill="#fef3c7" opacity="0.5" />
-          <circle cx="24" cy="20" r="2" fill="#fff" opacity="0.9" />
-        </svg>
-      );
-    case "trending": // Improver / XP milestones
-      return (
-        <svg {...props}>
-          <rect x="6" y="48" width="46" height="4" rx="1" fill="#16a34a" />
-          <rect x="8" y="38" width="8" height="10" fill="#86efac" stroke="#15803d" strokeWidth="1" />
-          <rect x="20" y="28" width="8" height="20" fill="#4ade80" stroke="#15803d" strokeWidth="1" />
-          <rect x="32" y="18" width="8" height="30" fill="#22c55e" stroke="#15803d" strokeWidth="1" />
-          <rect x="44" y="10" width="8" height="38" fill="#16a34a" stroke="#15803d" strokeWidth="1" />
-          <path d="M10 36 L24 26 L36 16 L48 8" stroke="#dc2626" strokeWidth="2" fill="none" strokeLinecap="round" />
-          <polygon points="48,8 44,12 50,14" fill="#dc2626" />
-        </svg>
-      );
-    case "lightbulb": // Creative
-      return (
-        <svg {...props}>
-          <path d="M19 38 Q14 32 14 24 Q14 12 29 12 Q44 12 44 24 Q44 32 39 38 L39 44 L19 44 Z" fill="#fbbf24" stroke="#92400e" strokeWidth="1.5" />
-          <path d="M19 38 Q14 32 14 24 Q14 16 22 14" fill="#fef3c7" opacity="0.6" />
-          <rect x="21" y="44" width="16" height="3" rx="1" fill="#374151" />
-          <rect x="22" y="48" width="14" height="2" rx="1" fill="#6b7280" />
-          <path d="M29 20 L29 35 M24 25 L29 30 L34 25" stroke="#92400e" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-        </svg>
-      );
-    case "users": // Team Player
-      return (
-        <svg {...props}>
-          <circle cx="18" cy="22" r="8" fill="#3b82f6" stroke="#1e3a8a" strokeWidth="1.5" />
-          <circle cx="40" cy="22" r="8" fill="#60a5fa" stroke="#1e3a8a" strokeWidth="1.5" />
-          <path d="M6 48 Q6 36 18 36 Q30 36 30 48" fill="#3b82f6" stroke="#1e3a8a" strokeWidth="1.5" strokeLinejoin="round" />
-          <path d="M28 48 Q28 36 40 36 Q52 36 52 48" fill="#60a5fa" stroke="#1e3a8a" strokeWidth="1.5" strokeLinejoin="round" />
-          <circle cx="16" cy="20" r="2.5" fill="#fff" opacity="0.8" />
-          <circle cx="38" cy="20" r="2.5" fill="#fff" opacity="0.8" />
-        </svg>
-      );
-    case "flag": // Class Leader
-      return (
-        <svg {...props}>
-          <rect x="10" y="6" width="2.5" height="48" fill="#78350f" />
-          <path d="M12 8 L46 8 L40 18 L46 28 L12 28 Z" fill="#d97706" stroke="#92400e" strokeWidth="1.5" strokeLinejoin="round" />
-          <path d="M12 8 L46 8 L42 14 L12 14 Z" fill="#fbbf24" opacity="0.6" />
-          <circle cx="26" cy="18" r="4" fill="#fef3c7" stroke="#92400e" strokeWidth="1" />
-        </svg>
-      );
-    case "heart": // Helper
-      return (
-        <svg {...props}>
-          <path d="M29 50 Q8 36 8 22 Q8 12 18 12 Q24 12 29 18 Q34 12 40 12 Q50 12 50 22 Q50 36 29 50 Z" fill="#ef4444" stroke="#7f1d1d" strokeWidth="1.5" strokeLinejoin="round" />
-          <path d="M16 18 Q14 20 14 24 Q14 28 18 30" fill="#fef3c7" opacity="0.5" />
-          <ellipse cx="22" cy="22" rx="4" ry="3" fill="#fff" opacity="0.5" />
-        </svg>
-      );
-    case "award": // Guru's Pick
-      return (
-        <svg {...props}>
-          <circle cx="29" cy="22" r="14" fill="#fbbf24" stroke="#92400e" strokeWidth="1.5" />
-          <circle cx="29" cy="22" r="9" fill="#fef3c7" stroke="#92400e" strokeWidth="1" />
-          <path d="M22 34 L18 52 L29 46 L40 52 L36 34" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1.2" strokeLinejoin="round" />
-          <text x="29" y="26" textAnchor="middle" style={{ fontSize: "10px", fontWeight: 700, fill: "#92400e" }}>★</text>
-        </svg>
-      );
-    case "medal":
-    default:
-      return (
-        <svg {...props}>
-          <circle cx="29" cy="32" r="16" fill="#fbbf24" stroke="#92400e" strokeWidth="1.5" />
-          <circle cx="29" cy="32" r="11" fill="#fef3c7" />
-          <path d="M22 10 L29 25 L36 10 Z M19 8 L29 27 L39 8" fill="#dc2626" stroke="#7f1d1d" strokeWidth="1" />
-          <text x="29" y="36" textAnchor="middle" style={{ fontSize: "11px", fontWeight: 700, fill: "#92400e" }}>★</text>
-        </svg>
-      );
+    // Prestasi
+    case "bullseye": return <g {...s}><circle r="14" /><circle r="8.5" /><circle r="3" {...f} stroke="none" /></g>;
+    case "rosette": return <g><circle r="9" {...s} /><circle r="4" {...f} stroke="none" /><g {...f} stroke="none">{[0,1,2,3,4,5,6,7].map(i => <ellipse key={i} cx="0" cy="-12" rx="2.6" ry="4.5" transform={`rotate(${i*45})`} opacity="0.85" />)}</g><circle r="5" fill="#fff" /><circle r="2.5" {...f} stroke="none" /></g>;
+    case "crown": return <g {...f} stroke={color} strokeWidth="1"><path d="M-14 7 L-14 -7 L-7 0 L0 -10 L7 0 L14 -7 L14 7 Z" /><rect x="-14" y="7" width="28" height="4" rx="1" /><circle cx="0" cy="-10" r="2" fill="#fff" /></g>;
+    // Streak
+    case "flame1": return <g><path d="M0 -16 Q-10 -4 -10 6 Q-10 14 0 16 Q10 14 10 4 Q10 -6 0 -16 Z" {...f} stroke="none" /><path d="M0 -3 Q-5 3 -4 9 Q-1 13 2 10 Q5 5 0 -3 Z" fill="#fff" opacity="0.55" /></g>;
+    case "flame2": return <g><path d="M-2 -16 Q-12 -4 -12 6 Q-12 14 -2 16 Q6 14 6 5 Q6 -5 -2 -16 Z" {...f} stroke="none" /><path d="M7 -8 Q1 0 1 8 Q1 14 8 15 Q14 13 14 6 Q14 -2 7 -8 Z" {...f} stroke="none" opacity="0.7" /><path d="M-2 -3 Q-6 3 -5 9 Q-2 12 0 10 Q3 5 -2 -3 Z" fill="#fff" opacity="0.55" /></g>;
+    case "sun": return <g {...s}><circle r="8" {...f} stroke="none" />{[0,1,2,3,4,5,6,7].map(i => <line key={i} x1="0" y1="-12" x2="0" y2="-16" transform={`rotate(${i*45})`} />)}</g>;
+    // Tugas
+    case "footprint": return <g {...f} stroke="none"><ellipse cx="0" cy="2" rx="7" ry="11" /><circle cx="-6" cy="-12" r="2.5" /><circle cx="-1" cy="-14" r="2.5" /><circle cx="4" cy="-13" r="2.3" /><circle cx="8" cy="-9" r="2" /></g>;
+    case "book": return <g><path d="M-14 -10 Q0 -14 14 -10 L14 12 Q0 8 -14 12 Z" {...f} stroke={color} strokeWidth="1" /><path d="M0 -11 L0 10" stroke="#fff" strokeWidth="1.6" /><path d="M-10 -6 Q-5 -7 -3 -6 M-10 -1 Q-5 -2 -3 -1 M3 -6 Q8 -7 10 -6 M3 -1 Q8 -2 10 -1" stroke="#fff" strokeWidth="1.2" fill="none" /></g>;
+    case "gradcap": return <g><polygon points="0,-12 16,-5 0,2 -16,-5" {...f} stroke="none" /><path d="M-9 -2 L-9 7 Q0 13 9 7 L9 -2" {...s} /><line x1="16" y1="-5" x2="16" y2="7" {...s} /><circle cx="16" cy="9" r="2" {...f} stroke="none" /></g>;
+    case "shield": return <g><path d="M0 -15 L13 -10 L13 4 Q13 13 0 16 Q-13 13 -13 4 L-13 -10 Z" {...f} stroke={color} strokeWidth="1" /><path d="M-6 0 L-2 5 L7 -6" stroke="#fff" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" /></g>;
+    // Speed
+    case "stopwatch": return <g {...s}><circle cx="0" cy="2" r="12" /><line x1="0" y1="-10" x2="0" y2="-14" /><line x1="-4" y1="-14" x2="4" y2="-14" /><line x1="0" y1="2" x2="0" y2="-4" /><line x1="0" y1="2" x2="5" y2="4" /></g>;
+    case "bolt": return <g><polygon points="4,-16 -10,4 -1,4 -4,16 11,-4 2,-4" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /></g>;
+    // Ranking
+    case "trophy": return <g><path d="M-9 -12 L9 -12 L8 1 Q8 7 0 8 Q-8 7 -8 1 Z" {...f} stroke={color} strokeWidth="1" /><path d="M-9 -10 Q-15 -10 -15 -4 Q-15 2 -9 2" {...s} /><path d="M9 -10 Q15 -10 15 -4 Q15 2 9 2" {...s} /><rect x="-2" y="8" width="4" height="5" {...f} stroke="none" /><rect x="-7" y="13" width="14" height="3" rx="1" {...f} stroke="none" /></g>;
+    case "podium": return <g {...f} stroke="none"><rect x="-15" y="0" width="9" height="12" rx="1" opacity="0.7" /><rect x="-4.5" y="-8" width="9" height="20" rx="1" /><rect x="6" y="4" width="9" height="8" rx="1" opacity="0.5" /></g>;
+    // Level — bintang bertingkat
+    case "star1": return <g><polygon points="0,-15 4,-4 16,-4 6,3 10,14 0,7 -10,14 -6,3 -16,-4 -4,-4" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /></g>;
+    case "star2": return <g><polygon points="0,-15 3,-5 14,-5 5,2 8,13 0,6 -8,13 -5,2 -14,-5 -3,-5" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /><polygon points="0,-7 1.5,-2 6,-2 2.5,1 4,6 0,3 -4,6 -2.5,1 -6,-2 -1.5,-2" fill="#fff" opacity="0.6" /></g>;
+    case "constellation": return <g><g {...f} stroke="none"><circle cx="-11" cy="-8" r="2.5" /><circle cx="2" cy="-12" r="2" /><circle cx="10" cy="-2" r="2.8" /><circle cx="-3" cy="6" r="2" /><circle cx="6" cy="12" r="2.3" /></g><path d="M-11 -8 L2 -12 L10 -2 L-3 6 L6 12" {...s} strokeWidth="1.3" opacity="0.7" /></g>;
+    case "starcrown": return <g><polygon points="0,-15 3.5,-5 14,-5 5.5,2 9,13 0,6 -9,13 -5.5,2 -14,-5 -3.5,-5" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /><path d="M-9 -9 L-4 -6 L0 -11 L4 -6 L9 -9 L8 -3 L-8 -3 Z" fill="#fff" opacity="0.5" /></g>;
+    // XP — gem progression
+    case "gem1": return <g><polygon points="0,14 -10,-2 -5,-10 5,-10 10,-2" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /><polygon points="0,14 -10,-2 10,-2" fill="#fff" opacity="0.25" /><line x1="-5" y1="-10" x2="0" y2="-2" stroke="#fff" strokeWidth="1" opacity="0.5" /><line x1="5" y1="-10" x2="0" y2="-2" stroke="#fff" strokeWidth="1" opacity="0.5" /></g>;
+    case "gem2": return <g><polygon points="0,15 -12,-1 -6,-11 6,-11 12,-1" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /><polygon points="-6,-11 6,-11 6,-1 -6,-1" fill="#fff" opacity="0.3" /><line x1="-6" y1="-1" x2="0" y2="15" stroke="#fff" strokeWidth="1" opacity="0.4" /><line x1="6" y1="-1" x2="0" y2="15" stroke="#fff" strokeWidth="1" opacity="0.4" /></g>;
+    case "diamond": return <g><polygon points="0,16 -13,-2 -7,-12 7,-12 13,-2" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /><polygon points="-7,-12 7,-12 13,-2 -13,-2" fill="#fff" opacity="0.35" /><polygon points="-13,-2 0,16 13,-2" fill="none" stroke="#fff" strokeWidth="1" opacity="0.5" /><line x1="0" y1="-12" x2="0" y2="16" stroke="#fff" strokeWidth="0.8" opacity="0.4" /></g>;
+    // Special
+    case "ribbon": return <g><circle cx="0" cy="-4" r="11" {...f} stroke={color} strokeWidth="1" /><circle cx="0" cy="-4" r="6" fill="#fff" opacity="0.5" /><path d="M-7 5 L-10 17 L0 12 L10 17 L7 5" {...f} stroke="none" /><text y="-1" textAnchor="middle" fontSize="9" fontWeight="700" fill="#fff">★</text></g>;
+    case "bulb": return <g><path d="M-9 4 Q-13 -1 -13 -6 Q-13 -15 0 -15 Q13 -15 13 -6 Q13 -1 9 4 L9 9 L-9 9 Z" {...f} stroke={color} strokeWidth="1" /><path d="M-9 4 Q-13 -1 -13 -6 Q-13 -12 -6 -14" fill="#fff" opacity="0.45" /><rect x="-7" y="9" width="14" height="3" rx="1" fill={color} /><rect x="-5" y="13" width="10" height="2" rx="1" fill={color} opacity="0.7" /></g>;
+    case "handshake": return <g {...s}><path d="M-14 -2 L-6 -2 L0 2 L8 -4 L14 0" /><path d="M-6 -2 L-2 6 M2 0 L6 7 M0 2 L4 9" /></g>;
+    case "arrowup": return <g><polygon points="0,-15 11,-2 4,-2 4,14 -4,14 -4,-2 -11,-2" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /></g>;
+    case "flag": return <g><line x1="-11" y1="-15" x2="-11" y2="16" {...s} /><path d="M-11 -14 L13 -14 L8 -7 L13 0 L-11 0 Z" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /></g>;
+    case "heart": return <g><path d="M0 14 Q-14 4 -14 -5 Q-14 -13 -7 -13 Q-2 -13 0 -7 Q2 -13 7 -13 Q14 -13 14 -5 Q14 4 0 14 Z" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /><ellipse cx="-5" cy="-6" rx="3" ry="2" fill="#fff" opacity="0.5" /></g>;
+    default: return <circle r="10" {...f} stroke="none" />;
   }
+}
+
+function BadgeIcon({ type, rim = "teal", size = 32, locked = false }) {
+  const c = locked
+    ? { a: "#c2cdd0", b: "#9aa8ab", inA: "#eef2f3", inB: "#dfe6e7", glyph: "#9aa8ab" }
+    : (BADGE_RIMS[rim] || BADGE_RIMS.teal);
+  const gid = `bdg-${type}-${rim}-${size}-${locked ? "L" : "E"}`;
+  return (
+    <svg width={size} height={size} viewBox="0 0 72 80" style={{ display: "inline-block", filter: locked ? "none" : "drop-shadow(0 2px 2.5px rgba(11,58,68,0.18))" }}>
+      <defs>
+        <linearGradient id={`${gid}-rim`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={c.a} /><stop offset="100%" stopColor={c.b} />
+        </linearGradient>
+        <radialGradient id={`${gid}-in`} cx="50%" cy="36%" r="65%">
+          <stop offset="0%" stopColor={c.inA} /><stop offset="100%" stopColor={c.inB} />
+        </radialGradient>
+      </defs>
+      {/* Shield frame */}
+      <path d="M36 3 L67 13 L67 42 Q67 67 36 78 Q5 67 5 42 L5 13 Z" fill={`url(#${gid}-rim)`} />
+      <path d="M36 12 L59 20 L59 42 Q59 60 36 70 Q13 60 13 42 L13 20 Z" fill={`url(#${gid}-in)`} />
+      {/* Glyph */}
+      <g transform="translate(36,40)"><BadgeGlyph type={type} color={c.glyph} /></g>
+    </svg>
+  );
 }
 
 // ─── BADGES (SVG-based dimensional, no emoji) ───
 // 'iconType' = type yang dipakai oleh BadgeIcon component.
 const AUTO_BADGES = [
   // === Prestasi (nilai/akurasi) ===
-  { id: "perfect",     icon: "target",     name: "Perfect Score",     desc: "Nilai 100 di satu tugas",                color: "#b45309", bg: "#fef3c7", category: "Prestasi" },
-  { id: "perfect5",    icon: "target",     name: "Perfectionist",     desc: "5x nilai 100",                            color: "#92400e", bg: "#fef3c7", category: "Prestasi" },
-  { id: "perfect10",   icon: "trophy",     name: "Master Mind",       desc: "10x nilai 100",                           color: "#78350f", bg: "#fde68a", category: "Prestasi" },
+  { id: "perfect",     icon: "bullseye",     rim: "amber",  name: "Perfect Score",  desc: "Nilai 100 di satu tugas",          color: "#b45309", bg: "#fef3c7", category: "Prestasi" },
+  { id: "perfect5",    icon: "rosette",      rim: "amber",  name: "Perfectionist",  desc: "5x nilai 100",                     color: "#92400e", bg: "#fef3c7", category: "Prestasi" },
+  { id: "perfect10",   icon: "crown",        rim: "amber",  name: "Master Mind",    desc: "10x nilai 100",                    color: "#78350f", bg: "#fde68a", category: "Prestasi" },
 
   // === Streak ===
-  { id: "onfire",      icon: "flame",      name: "On Fire",           desc: "Streak 5 hari berturut-turut",            color: "#dc2626", bg: "#fef2f2", category: "Streak" },
-  { id: "blazing",     icon: "flame",      name: "Blazing Hot",       desc: "Streak 10 hari berturut-turut",           color: "#b91c1c", bg: "#fee2e2", category: "Streak" },
-  { id: "inferno",     icon: "flame",      name: "Inferno",           desc: "Streak 20 hari berturut-turut",           color: "#7f1d1d", bg: "#fecaca", category: "Streak" },
+  { id: "onfire",      icon: "flame1",       rim: "red",    name: "On Fire",        desc: "Streak 5 hari berturut-turut",     color: "#dc2626", bg: "#fef2f2", category: "Streak" },
+  { id: "blazing",     icon: "flame2",       rim: "red",    name: "Blazing Hot",    desc: "Streak 10 hari berturut-turut",    color: "#b91c1c", bg: "#fee2e2", category: "Streak" },
+  { id: "inferno",     icon: "sun",          rim: "red",    name: "Inferno",        desc: "Streak 20 hari berturut-turut",    color: "#7f1d1d", bg: "#fecaca", category: "Streak" },
 
   // === Tugas ===
-  { id: "firstblood",  icon: "check",      name: "First Step",        desc: "Selesaikan tugas pertama",                color: "#16a34a", bg: "#f0fdf4", category: "Tugas" },
-  { id: "rajin",       icon: "book",       name: "Rajin Belajar",     desc: "Selesaikan 10 tugas",                     color: "#0d6b7a", bg: "#eaf4f3", category: "Tugas" },
-  { id: "scholar",     icon: "book",       name: "Scholar",           desc: "Selesaikan 25 tugas",                     color: "#0e7490", bg: "#cffafe", category: "Tugas" },
-  { id: "veteran",     icon: "book",       name: "Veteran",           desc: "Selesaikan 50 tugas",                     color: "#155e75", bg: "#a5f3fc", category: "Tugas" },
+  { id: "firstblood",  icon: "footprint",    rim: "green",  name: "First Step",     desc: "Selesaikan tugas pertama",         color: "#16a34a", bg: "#f0fdf4", category: "Tugas" },
+  { id: "rajin",       icon: "book",         rim: "teal",   name: "Rajin Belajar",  desc: "Selesaikan 10 tugas",              color: "#0d6b7a", bg: "#eaf4f3", category: "Tugas" },
+  { id: "scholar",     icon: "gradcap",      rim: "teal",   name: "Scholar",        desc: "Selesaikan 25 tugas",              color: "#0e7490", bg: "#cffafe", category: "Tugas" },
+  { id: "veteran",     icon: "shield",       rim: "teal",   name: "Veteran",        desc: "Selesaikan 50 tugas",              color: "#155e75", bg: "#a5f3fc", category: "Tugas" },
 
   // === Speed ===
-  { id: "fast",        icon: "zap",        name: "Fast Finisher",     desc: "Submit < 3 jam setelah publish",          color: "#7c3aed", bg: "#f5f3ff", category: "Speed" },
-  { id: "lightning",   icon: "zap",        name: "Lightning",         desc: "5x submit di hari yang sama",             color: "#6d28d9", bg: "#ede9fe", category: "Speed" },
+  { id: "fast",        icon: "stopwatch",    rim: "violet", name: "Fast Finisher",  desc: "Submit < 3 jam setelah publish",   color: "#7c3aed", bg: "#f5f3ff", category: "Speed" },
+  { id: "lightning",   icon: "bolt",         rim: "violet", name: "Lightning",      desc: "5x submit di hari yang sama",      color: "#6d28d9", bg: "#ede9fe", category: "Speed" },
 
   // === Ranking ===
-  { id: "topclass",    icon: "trophy",     name: "Top of Class",      desc: "Rank #1 di leaderboard",                  color: "#d97706", bg: "#fffbeb", category: "Ranking" },
-  { id: "podium",      icon: "trophy",     name: "Podium",            desc: "Masuk Top 3 leaderboard",                 color: "#ea580c", bg: "#fff7ed", category: "Ranking" },
+  { id: "topclass",    icon: "trophy",       rim: "amber",  name: "Top of Class",   desc: "Rank #1 di leaderboard",           color: "#d97706", bg: "#fffbeb", category: "Ranking" },
+  { id: "podium",      icon: "podium",       rim: "amber",  name: "Podium",         desc: "Masuk Top 3 leaderboard",          color: "#ea580c", bg: "#fff7ed", category: "Ranking" },
 
   // === Level ===
-  { id: "lv5",         icon: "star",       name: "Rising Star",       desc: "Capai Level 5 (Bintang I)",               color: "#d97706", bg: "#fffbeb", category: "Level" },
-  { id: "lv10",        icon: "star",       name: "Stellar",           desc: "Capai Level 10 (Planet II)",              color: "#0d6b7a", bg: "#eaf4f3", category: "Level" },
-  { id: "lv15",        icon: "star",       name: "Celestial",         desc: "Capai Level 15 (Astronot III)",           color: "#1d4ed8", bg: "#eff6ff", category: "Level" },
-  { id: "lv20",        icon: "star",       name: "Galactic",          desc: "Capai Level 20 (Commander IV)",           color: "#b45309", bg: "#fef3c7", category: "Level" },
+  { id: "lv5",         icon: "star1",        rim: "amber",  name: "Rising Star",    desc: "Capai Level 5 (Bintang I)",        color: "#d97706", bg: "#fffbeb", category: "Level" },
+  { id: "lv10",        icon: "star2",        rim: "teal",   name: "Stellar",        desc: "Capai Level 10 (Planet II)",       color: "#0d6b7a", bg: "#eaf4f3", category: "Level" },
+  { id: "lv15",        icon: "constellation",rim: "blue",   name: "Celestial",      desc: "Capai Level 15 (Astronot III)",    color: "#1d4ed8", bg: "#eff6ff", category: "Level" },
+  { id: "lv20",        icon: "starcrown",    rim: "amber",  name: "Galactic",       desc: "Capai Level 20 (Commander IV)",    color: "#b45309", bg: "#fef3c7", category: "Level" },
 
   // === XP ===
-  { id: "xp1k",        icon: "trending",   name: "1K Club",           desc: "Total 1.000 XP",                          color: "#0d6b7a", bg: "#eaf4f3", category: "XP" },
-  { id: "xp5k",        icon: "trending",   name: "5K Club",           desc: "Total 5.000 XP",                          color: "#7c3aed", bg: "#f5f3ff", category: "XP" },
-  { id: "xp10k",       icon: "trending",   name: "10K Elite",         desc: "Total 10.000 XP",                         color: "#b45309", bg: "#fef3c7", category: "XP" },
+  { id: "xp1k",        icon: "gem1",         rim: "teal",   name: "1K Club",        desc: "Total 1.000 XP",                   color: "#0d6b7a", bg: "#eaf4f3", category: "XP" },
+  { id: "xp5k",        icon: "gem2",         rim: "violet", name: "5K Club",        desc: "Total 5.000 XP",                   color: "#7c3aed", bg: "#f5f3ff", category: "XP" },
+  { id: "xp10k",       icon: "diamond",      rim: "amber",  name: "10K Elite",      desc: "Total 10.000 XP",                  color: "#b45309", bg: "#fef3c7", category: "XP" },
 ];
 
 const MANUAL_BADGES = [
-  { id: "guruspick",   icon: "award",      name: "Guru's Pick",       desc: "Pilihan khusus dari guru",                color: "#0d6b7a", bg: "#eaf4f3", category: "Special" },
-  { id: "creative",   icon: "lightbulb",   name: "Most Creative",     desc: "Kreativitas luar biasa",                  color: "#7c3aed", bg: "#f5f3ff", category: "Special" },
-  { id: "teamplayer", icon: "users",       name: "Team Player",       desc: "Kontribusi luar biasa di kelas",          color: "#1d4ed8", bg: "#eff6ff", category: "Special" },
-  { id: "improver",   icon: "trending",    name: "Most Improved",     desc: "Peningkatan nilai terbaik",               color: "#16a34a", bg: "#f0fdf4", category: "Special" },
-  { id: "leader",     icon: "flag",        name: "Class Leader",      desc: "Memimpin diskusi & inspirasi",            color: "#d97706", bg: "#fffbeb", category: "Special" },
-  { id: "helper",     icon: "heart",       name: "Helper",            desc: "Selalu membantu teman sekelas",           color: "#dc2626", bg: "#fef2f2", category: "Special" },
+  { id: "guruspick",   icon: "ribbon",       rim: "teal",   name: "Guru's Pick",    desc: "Pilihan khusus dari guru",         color: "#0d6b7a", bg: "#eaf4f3", category: "Special" },
+  { id: "creative",    icon: "bulb",         rim: "violet", name: "Most Creative",  desc: "Kreativitas luar biasa",           color: "#7c3aed", bg: "#f5f3ff", category: "Special" },
+  { id: "teamplayer",  icon: "handshake",    rim: "blue",   name: "Team Player",    desc: "Kontribusi luar biasa di kelas",   color: "#1d4ed8", bg: "#eff6ff", category: "Special" },
+  { id: "improver",    icon: "arrowup",      rim: "green",  name: "Most Improved",  desc: "Peningkatan nilai terbaik",        color: "#16a34a", bg: "#f0fdf4", category: "Special" },
+  { id: "leader",      icon: "flag",         rim: "amber",  name: "Class Leader",   desc: "Memimpin diskusi & inspirasi",     color: "#d97706", bg: "#fffbeb", category: "Special" },
+  { id: "helper",      icon: "heart",        rim: "rose",   name: "Helper",         desc: "Selalu membantu teman sekelas",    color: "#dc2626", bg: "#fef2f2", category: "Special" },
 ];
 const ALL_BADGES = [...AUTO_BADGES, ...MANUAL_BADGES];
 
@@ -1037,13 +986,13 @@ function BadgeChip({ badgeId, size = "md" }) {
   const b = ALL_BADGES.find(x => x.id === badgeId);
   if (!b) return null;
   if (size === "sm") return (
-    <div title={`${b.name}: ${b.desc}`} style={{ width: 36, height: 36, borderRadius: 10, background: b.bg, border: `1.5px solid ${b.color}33`, display: "grid", placeItems: "center", cursor: "default" }}>
-      <BadgeIcon type={b.icon} size={26} />
+    <div title={`${b.name}: ${b.desc}`} style={{ display: "inline-grid", placeItems: "center", cursor: "default" }}>
+      <BadgeIcon type={b.icon} rim={b.rim} size={38} />
     </div>
   );
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 8px", borderRadius: 12, background: b.bg, border: `1.5px solid ${b.color}33`, minWidth: 76, textAlign: "center" }}>
-      <BadgeIcon type={b.icon} size={42} />
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 76, textAlign: "center" }}>
+      <BadgeIcon type={b.icon} rim={b.rim} size={52} />
       <span style={{ fontSize: 10, fontWeight: 700, color: b.color, lineHeight: 1.3 }}>{b.name}</span>
     </div>
   );
@@ -1583,7 +1532,14 @@ function useStore() {
     if (fbGuru?.id === userId && presenceData[GURU_UID]?.online) return true;
     return false;
   };
-  const getLastSeen = (userId) => presenceData[userId]?.lastSeen || null;
+  const getLastSeen = (userId) => {
+    // Coba id langsung, lalu uid mapping (sama seperti isOnline)
+    if (presenceData[userId]?.lastSeen) return presenceData[userId].lastSeen;
+    const acc = fbAccounts.find(a => a.id === userId);
+    if (acc?.uid && presenceData[acc.uid]?.lastSeen) return presenceData[acc.uid].lastSeen;
+    if (fbGuru?.id === userId && presenceData[GURU_UID]?.lastSeen) return presenceData[GURU_UID].lastSeen;
+    return null;
+  };
   const getOnlineUsers = () => Object.entries(presenceData).filter(([, v]) => v?.online).map(([id]) => id);
   const [badgesData, setBadgesData] = useState({});
   useEffect(() => {
@@ -3882,19 +3838,20 @@ function backupFromStore(store) {
 
 // ─── DASHBOARD GURU ───
 // ─── DASHBOARD TUGAS ANALISIS (inline expand) ───
-function DashboardTugasAnalisis({ tugas, subs, siswaCount, navigate }) {
+function DashboardTugasAnalisis({ tugas, subs, siswaList, navigate }) {
+  const siswaCount = siswaList.length;
   const nilaiList = subs.map(s => s.nilai);
   const avg = Math.round(nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length);
   const max = Math.max(...nilaiList);
   const min = Math.min(...nilaiList);
 
-  // Distribusi nilai (buckets)
+  // Distribusi nilai (buckets) — palet teal kalem
   const buckets = [
-    { label: "90-100", min: 90, max: 100, color: "#059669" },
-    { label: "80-89", min: 80, max: 89, color: "#10b981" },
-    { label: "70-79", min: 70, max: 79, color: "#0d9488" },
-    { label: "60-69", min: 60, max: 69, color: "#f59e0b" },
-    { label: "<60", min: 0, max: 59, color: "#dc2626" },
+    { label: "90-100", min: 90, max: 100, color: "#09637E" },
+    { label: "80-89", min: 80, max: 89, color: "#088395" },
+    { label: "70-79", min: 70, max: 79, color: "#7AB2B2" },
+    { label: "60-69", min: 60, max: 69, color: "#cbb26a" },
+    { label: "<60", min: 0, max: 59, color: "#c98a8a" },
   ].map(b => ({ ...b, count: nilaiList.filter(n => n >= b.min && n <= b.max).length }));
   const maxBucket = Math.max(...buckets.map(b => b.count), 1);
 
@@ -3911,34 +3868,38 @@ function DashboardTugasAnalisis({ tugas, subs, siswaCount, navigate }) {
   });
   const tersulit = [...soalStats].sort((a, b) => a.pct - b.pct)[0];
 
+  // Siswa yang belum mengerjakan
+  const submittedIds = new Set(subs.map(s => s.siswaId));
+  const belumNgerjain = siswaList.filter(s => !submittedIds.has(s.id));
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Quick stats */}
       <div style={{ display: "flex", gap: 8 }}>
         {[
-          { l: "Rata-rata", v: avg, c: avg >= 80 ? "var(--good)" : avg >= 60 ? "var(--warn)" : "var(--bad)" },
-          { l: "Tertinggi", v: max, c: "var(--good)" },
-          { l: "Terendah", v: min, c: min < 60 ? "var(--bad)" : "var(--ink)" },
+          { l: "Rata-rata", v: avg, c: avg >= 80 ? "var(--accent-2)" : avg >= 60 ? "#9a7d2e" : "#a85f5f" },
+          { l: "Tertinggi", v: max, c: "var(--accent-2)" },
+          { l: "Terendah", v: min, c: min < 60 ? "#a85f5f" : "var(--ink)" },
           { l: "Dikerjakan", v: `${subs.length}/${siswaCount}`, c: "var(--ink)" },
         ].map(s => (
-          <div key={s.l} style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: "var(--surface)", borderRadius: 8 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: s.c, fontFamily: "var(--mono)" }}>{s.v}</div>
-            <div style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 2 }}>{s.l}</div>
+          <div key={s.l} style={{ flex: 1, textAlign: "center", padding: "10px 4px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--line-soft)" }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: s.c, fontFamily: "var(--mono)" }}>{s.v}</div>
+            <div style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 3 }}>{s.l}</div>
           </div>
         ))}
       </div>
 
       {/* Distribusi nilai */}
       <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Distribusi Nilai</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 10 }}>Distribusi Nilai</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
           {buckets.map(b => (
-            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 10, color: "var(--ink-3)", width: 48, fontFamily: "var(--mono)", textAlign: "right" }}>{b.label}</span>
-              <div style={{ flex: 1, height: 16, background: "var(--surface)", borderRadius: 4, overflow: "hidden", position: "relative" }}>
-                <div style={{ height: "100%", width: `${(b.count / maxBucket) * 100}%`, background: b.color, borderRadius: 4, transition: "width .4s", minWidth: b.count > 0 ? 4 : 0 }} />
+            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 10, color: "var(--ink-3)", width: 46, fontFamily: "var(--mono)", textAlign: "right" }}>{b.label}</span>
+              <div style={{ flex: 1, height: 8, background: "var(--surface)", borderRadius: 99, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${(b.count / maxBucket) * 100}%`, background: b.color, borderRadius: 99, transition: "width .4s", minWidth: b.count > 0 ? 6 : 0 }} />
               </div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-2)", width: 20, textAlign: "right" }}>{b.count}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: b.count > 0 ? "var(--ink-2)" : "var(--ink-4)", width: 16, textAlign: "right" }}>{b.count}</span>
             </div>
           ))}
         </div>
@@ -3946,9 +3907,9 @@ function DashboardTugasAnalisis({ tugas, subs, siswaCount, navigate }) {
 
       {/* Soal tersulit highlight */}
       {tersulit && tersulit.pct < 70 && (
-        <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#991b1b", marginBottom: 2 }}>SOAL PALING SULIT</div>
-          <div style={{ fontSize: 11, color: "var(--ink-2)", lineHeight: 1.4 }}>Soal {tersulit.i + 1}: {tersulit.pertanyaan?.slice(0, 60)}{tersulit.pertanyaan?.length > 60 ? "..." : ""} <b style={{ color: "#dc2626" }}>({tersulit.pct}% benar)</b></div>
+        <div style={{ padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderLeft: "3px solid #c98a8a", borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#a85f5f", marginBottom: 3, letterSpacing: ".04em" }}>SOAL PALING SULIT</div>
+          <div style={{ fontSize: 11, color: "var(--ink-2)", lineHeight: 1.45 }}>Soal {tersulit.i + 1}: {tersulit.pertanyaan?.slice(0, 60)}{tersulit.pertanyaan?.length > 60 ? "..." : ""} <b style={{ color: "#a85f5f" }}>({tersulit.pct}% benar)</b></div>
         </div>
       )}
 
@@ -3956,6 +3917,29 @@ function DashboardTugasAnalisis({ tugas, subs, siswaCount, navigate }) {
       <button className="btn btn-outline btn-sm" onClick={() => navigate("analisis-tugas", { tugasId: tugas.id })} style={{ alignSelf: "flex-start" }}>
         Analisis lengkap per soal <I n="chevR" s={12} />
       </button>
+
+      {/* Belum mengerjakan */}
+      <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 12 }}>
+        {belumNgerjain.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--accent-2)", fontWeight: 600 }}>
+            <I n="check" s={14} /> Semua siswa sudah mengerjakan tugas ini
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Belum mengerjakan ({belumNgerjain.length})</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {belumNgerjain.map(s => (
+                <button key={s.id} onClick={() => navigate("chat", { openChat: s.id })}
+                  title={`Chat ${s.nama}`}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 5px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 99, cursor: "pointer", fontFamily: "var(--font)" }}>
+                  <UserAvatar userId={s.id} name={s.nama} size="xs" store={null} />
+                  <span style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 500 }}>{getFirstName(s.nama)}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -4083,7 +4067,7 @@ function DashboardGuru({ store, navigate }) {
                     {subCount === 0 ? (
                       <div style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "center", padding: "12px 0" }}>Belum ada siswa yang mengerjakan tugas ini.</div>
                     ) : (
-                      <DashboardTugasAnalisis tugas={t} subs={tugasSubs} siswaCount={siswa.length} navigate={navigate} />
+                      <DashboardTugasAnalisis tugas={t} subs={tugasSubs} siswaList={siswa} navigate={navigate} />
                     )}
                   </div>
                 )}
@@ -4712,13 +4696,18 @@ function ChatThread({ user, contact, store, onBack }) {
       {/* Header */}
       <div className="chat-thread-hdr">
         <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
-        <UserAvatar userId={contact.id} name={contact.nama} size="md" store={store} />
+        <UserAvatar userId={contact.id} name={contact.nama} size="md" store={store} showOnline />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contact.nama}</span>
             {contact.role !== "guru" && <LevelBadge poin={(store.getStats(contact.id).poin) || 0} size="xs" />}
           </div>
-          <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{contact.role === "guru" ? "Guru · IPA & Informatika" : `Kelas ${contact.jenjang}`}</div>
+          {(() => {
+            const online = store.isOnline(contact.id);
+            if (online) return <div style={{ fontSize: 11, color: "var(--good)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><OnlineDot size={7} /> Online</div>;
+            const ls = fmtLastSeen(store.getLastSeen(contact.id));
+            return <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{ls ? `Terakhir online ${ls}` : (contact.role === "guru" ? "Guru · IPA & Informatika" : `Kelas ${contact.jenjang}`)}</div>;
+          })()}
         </div>
       </div>
 
@@ -4836,7 +4825,8 @@ function ChatScreen({ user, store, params = {} }) {
           <div style={{ fontSize: 12, color: unread > 0 ? "var(--ink-2)" : "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, fontWeight: unread > 0 ? 600 : 400 }}>
             {store.isOnline(c.id)
               ? <span style={{ color: "#0d9488", fontWeight: 500, fontSize: 11 }}>Online</span>
-              : last ? (last.fromId === user.id ? `Kamu: ${last.text}` : last.text) : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`)
+              : last ? (last.fromId === user.id ? `Kamu: ${last.text}` : last.text)
+                : (() => { const ls = fmtLastSeen(store.getLastSeen(c.id)); return ls ? <span style={{ fontSize: 11 }}>Terakhir online {ls}</span> : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`); })()
             }
           </div>
         </div>
@@ -5545,25 +5535,59 @@ function tierIconSvg(tierId, color = "#0d6b7a", size = 12) {
 }
 
 // Badge inline SVG untuk laporan HTML print (simplified dimensional)
-function badgeIconSvg(iconType, color = "#0d6b7a", size = 14) {
-  const gid = `gbdg-${iconType}-${Math.floor(Math.random() * 9999)}`;
-  const paths = {
-    target: `<circle cx="29" cy="29" r="22" fill="#fef3c7" stroke="#fbbf24" stroke-width="1.5"/><circle cx="29" cy="29" r="17" fill="#fff" stroke="#fbbf24" stroke-width="1.2"/><circle cx="29" cy="29" r="12" fill="#dc2626" stroke="#7f1d1d" stroke-width="1"/><circle cx="29" cy="29" r="6" fill="#fff"/><circle cx="29" cy="29" r="2.5" fill="#dc2626"/>`,
-    flame: `<path d="M29 6 Q17 18 17 32 Q17 40 21 44 Q18 38 24 32 Q26 42 31 38 Q36 48 28 54 Q42 54 46 44 Q50 32 42 22 Q34 12 29 6 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="1.2"/><path d="M29 18 Q22 28 24 38 Q28 42 33 40 Q37 32 29 18 Z" fill="#fbbf24"/>`,
-    trophy: `<path d="M16 10 L42 10 L40 28 Q40 35 29 37 Q18 35 18 28 Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.2"/><path d="M14 14 Q4 14 4 22 Q4 30 14 30" fill="none" stroke="#fbbf24" stroke-width="3"/><path d="M44 14 Q54 14 54 22 Q54 30 44 30" fill="none" stroke="#fbbf24" stroke-width="3"/><rect x="25" y="37" width="8" height="9" fill="#92400e"/><rect x="18" y="46" width="22" height="6" rx="1.5" fill="#b45309"/>`,
-    zap: `<polygon points="34,4 14,30 25,30 22,54 46,24 34,24" fill="#a855f7" stroke="#581c87" stroke-width="1.5" stroke-linejoin="round"/><polygon points="34,10 21,28 28,28 25,46 40,26 34,26" fill="#fef3c7" opacity="0.85"/>`,
-    book: `<path d="M8 14 Q29 9 50 14 L50 44 Q29 39 8 44 Z" fill="#0d6b7a" stroke="#064e3b" stroke-width="1.2"/><path d="M29 14 L29 43" stroke="#fef3c7" stroke-width="1.8"/><circle cx="29" cy="34" r="3.5" fill="#fef3c7"/>`,
-    check: `<circle cx="29" cy="29" r="22" fill="#16a34a" stroke="#15803d" stroke-width="1.5"/><path d="M19 30 L26 37 L40 22" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`,
-    star: `<defs><radialGradient id="${gid}" cx="40%" cy="30%" r="70%"><stop offset="0%" stop-color="#fef3c7"/><stop offset="50%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#d97706"/></radialGradient></defs><polygon points="29,5 35,22 53,22 39,33 45,52 29,40 13,52 19,33 5,22 23,22" fill="url(#${gid})" stroke="#92400e" stroke-width="1.5" stroke-linejoin="round"/>`,
-    trending: `<rect x="6" y="48" width="46" height="4" rx="1" fill="#16a34a"/><rect x="8" y="38" width="8" height="10" fill="#86efac" stroke="#15803d" stroke-width="1"/><rect x="20" y="28" width="8" height="20" fill="#4ade80" stroke="#15803d" stroke-width="1"/><rect x="32" y="18" width="8" height="30" fill="#22c55e" stroke="#15803d" stroke-width="1"/><rect x="44" y="10" width="8" height="38" fill="#16a34a" stroke="#15803d" stroke-width="1"/>`,
-    lightbulb: `<path d="M19 38 Q14 32 14 24 Q14 12 29 12 Q44 12 44 24 Q44 32 39 38 L39 44 L19 44 Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/><rect x="21" y="44" width="16" height="3" rx="1" fill="#374151"/>`,
-    users: `<circle cx="18" cy="22" r="8" fill="#3b82f6" stroke="#1e3a8a" stroke-width="1.5"/><circle cx="40" cy="22" r="8" fill="#60a5fa" stroke="#1e3a8a" stroke-width="1.5"/><path d="M6 48 Q6 36 18 36 Q30 36 30 48" fill="#3b82f6" stroke="#1e3a8a" stroke-width="1.5"/><path d="M28 48 Q28 36 40 36 Q52 36 52 48" fill="#60a5fa" stroke="#1e3a8a" stroke-width="1.5"/>`,
-    flag: `<rect x="10" y="6" width="2.5" height="48" fill="#78350f"/><path d="M12 8 L46 8 L40 18 L46 28 L12 28 Z" fill="#d97706" stroke="#92400e" stroke-width="1.5"/>`,
-    heart: `<path d="M29 50 Q8 36 8 22 Q8 12 18 12 Q24 12 29 18 Q34 12 40 12 Q50 12 50 22 Q50 36 29 50 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5"/>`,
-    award: `<circle cx="29" cy="22" r="14" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/><circle cx="29" cy="22" r="9" fill="#fef3c7" stroke="#92400e" stroke-width="1"/><path d="M22 34 L18 52 L29 46 L40 52 L36 34" fill="#dc2626" stroke="#7f1d1d" stroke-width="1.2"/>`,
+function badgeIconSvg(iconType, rim = "teal", size = 16) {
+  const gid = `gbdg-${iconType}-${Math.floor(Math.random() * 99999)}`;
+  const rims = {
+    amber:  { a: "#f0b429", b: "#b45309", inA: "#fff8e6", inB: "#fde9b8", g: "#b45309" },
+    teal:   { a: "#0c7a91", b: "#063f4d", inA: "#eafafb", inB: "#c9eef0", g: "#0c7a91" },
+    red:    { a: "#ef5350", b: "#b91c1c", inA: "#fff0ef", inB: "#fbd5d3", g: "#c0392b" },
+    violet: { a: "#a78bfa", b: "#6d28d9", inA: "#f4f0ff", inB: "#e0d4fb", g: "#6d28d9" },
+    blue:   { a: "#60a5fa", b: "#1d4ed8", inA: "#eef5ff", inB: "#d3e4fb", g: "#1d4ed8" },
+    green:  { a: "#4ade80", b: "#15803d", inA: "#effdf4", inB: "#c8f2d6", g: "#15803d" },
+    rose:   { a: "#fb7185", b: "#be123c", inA: "#fff1f3", inB: "#fbd0d8", g: "#be123c" },
   };
-  const body = paths[iconType] || `<circle cx="29" cy="29" r="22" fill="${color}" opacity="0.3"/>`;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 58 58" style="vertical-align:-3px;display:inline-block">${body}</svg>`;
+  const c = rims[rim] || rims.teal;
+  const C = c.g;
+  // glyph dalam koordinat lokal center (0,0), -18..18
+  const glyphs = {
+    bullseye: `<g stroke="${C}" stroke-width="2.2" fill="none"><circle r="14"/><circle r="8.5"/><circle r="3" fill="${C}" stroke="none"/></g>`,
+    rosette: `<g><circle r="9" stroke="${C}" stroke-width="2.2" fill="none"/><circle r="5" fill="#fff"/><circle r="2.5" fill="${C}"/></g>`,
+    crown: `<g fill="${C}"><path d="M-14 7 L-14 -7 L-7 0 L0 -10 L7 0 L14 -7 L14 7 Z"/><rect x="-14" y="7" width="28" height="4" rx="1"/></g>`,
+    flame1: `<g><path d="M0 -16 Q-10 -4 -10 6 Q-10 14 0 16 Q10 14 10 4 Q10 -6 0 -16 Z" fill="${C}"/><path d="M0 -3 Q-5 3 -4 9 Q-1 13 2 10 Q5 5 0 -3 Z" fill="#fff" opacity="0.55"/></g>`,
+    flame2: `<g><path d="M-2 -16 Q-12 -4 -12 6 Q-12 14 -2 16 Q6 14 6 5 Q6 -5 -2 -16 Z" fill="${C}"/><path d="M7 -8 Q1 0 1 8 Q1 14 8 15 Q14 13 14 6 Q14 -2 7 -8 Z" fill="${C}" opacity="0.7"/></g>`,
+    sun: `<g stroke="${C}" stroke-width="2.2"><circle r="8" fill="${C}"/><line x1="0" y1="-12" x2="0" y2="-16"/><line x1="0" y1="12" x2="0" y2="16"/><line x1="-12" y1="0" x2="-16" y2="0"/><line x1="12" y1="0" x2="16" y2="0"/><line x1="-9" y1="-9" x2="-12" y2="-12"/><line x1="9" y1="9" x2="12" y2="12"/><line x1="-9" y1="9" x2="-12" y2="12"/><line x1="9" y1="-9" x2="12" y2="-12"/></g>`,
+    footprint: `<g fill="${C}"><ellipse cx="0" cy="2" rx="7" ry="11"/><circle cx="-6" cy="-12" r="2.5"/><circle cx="-1" cy="-14" r="2.5"/><circle cx="4" cy="-13" r="2.3"/><circle cx="8" cy="-9" r="2"/></g>`,
+    book: `<g><path d="M-14 -10 Q0 -14 14 -10 L14 12 Q0 8 -14 12 Z" fill="${C}"/><path d="M0 -11 L0 10" stroke="#fff" stroke-width="1.6"/></g>`,
+    gradcap: `<g><polygon points="0,-12 16,-5 0,2 -16,-5" fill="${C}"/><path d="M-9 -2 L-9 7 Q0 13 9 7 L9 -2" stroke="${C}" stroke-width="2.2" fill="none"/><line x1="16" y1="-5" x2="16" y2="7" stroke="${C}" stroke-width="2.2"/></g>`,
+    shield: `<g><path d="M0 -15 L13 -10 L13 4 Q13 13 0 16 Q-13 13 -13 4 L-13 -10 Z" fill="${C}"/><path d="M-6 0 L-2 5 L7 -6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`,
+    stopwatch: `<g stroke="${C}" stroke-width="2.2" fill="none"><circle cx="0" cy="2" r="12"/><line x1="0" y1="-10" x2="0" y2="-14"/><line x1="-4" y1="-14" x2="4" y2="-14"/><line x1="0" y1="2" x2="0" y2="-4"/><line x1="0" y1="2" x2="5" y2="4"/></g>`,
+    bolt: `<polygon points="4,-16 -10,4 -1,4 -4,16 11,-4 2,-4" fill="${C}" stroke="${C}" stroke-width="1" stroke-linejoin="round"/>`,
+    trophy: `<g><path d="M-9 -12 L9 -12 L8 1 Q8 7 0 8 Q-8 7 -8 1 Z" fill="${C}"/><path d="M-9 -10 Q-15 -10 -15 -4 Q-15 2 -9 2" stroke="${C}" stroke-width="2.2" fill="none"/><path d="M9 -10 Q15 -10 15 -4 Q15 2 9 2" stroke="${C}" stroke-width="2.2" fill="none"/><rect x="-2" y="8" width="4" height="5" fill="${C}"/><rect x="-7" y="13" width="14" height="3" rx="1" fill="${C}"/></g>`,
+    podium: `<g fill="${C}"><rect x="-15" y="0" width="9" height="12" rx="1" opacity="0.7"/><rect x="-4.5" y="-8" width="9" height="20" rx="1"/><rect x="6" y="4" width="9" height="8" rx="1" opacity="0.5"/></g>`,
+    star1: `<polygon points="0,-15 4,-4 16,-4 6,3 10,14 0,7 -10,14 -6,3 -16,-4 -4,-4" fill="${C}"/>`,
+    star2: `<g><polygon points="0,-15 3,-5 14,-5 5,2 8,13 0,6 -8,13 -5,2 -14,-5 -3,-5" fill="${C}"/><polygon points="0,-7 1.5,-2 6,-2 2.5,1 4,6 0,3 -4,6 -2.5,1 -6,-2 -1.5,-2" fill="#fff" opacity="0.6"/></g>`,
+    constellation: `<g><g fill="${C}"><circle cx="-11" cy="-8" r="2.5"/><circle cx="2" cy="-12" r="2"/><circle cx="10" cy="-2" r="2.8"/><circle cx="-3" cy="6" r="2"/><circle cx="6" cy="12" r="2.3"/></g><path d="M-11 -8 L2 -12 L10 -2 L-3 6 L6 12" stroke="${C}" stroke-width="1.3" fill="none" opacity="0.7"/></g>`,
+    starcrown: `<g><polygon points="0,-15 3.5,-5 14,-5 5.5,2 9,13 0,6 -9,13 -5.5,2 -14,-5 -3.5,-5" fill="${C}"/><path d="M-9 -9 L-4 -6 L0 -11 L4 -6 L9 -9 L8 -3 L-8 -3 Z" fill="#fff" opacity="0.5"/></g>`,
+    gem1: `<g><polygon points="0,14 -10,-2 -5,-10 5,-10 10,-2" fill="${C}"/><polygon points="0,14 -10,-2 10,-2" fill="#fff" opacity="0.25"/></g>`,
+    gem2: `<g><polygon points="0,15 -12,-1 -6,-11 6,-11 12,-1" fill="${C}"/><polygon points="-6,-11 6,-11 6,-1 -6,-1" fill="#fff" opacity="0.3"/></g>`,
+    diamond: `<g><polygon points="0,16 -13,-2 -7,-12 7,-12 13,-2" fill="${C}"/><polygon points="-7,-12 7,-12 13,-2 -13,-2" fill="#fff" opacity="0.35"/></g>`,
+    ribbon: `<g><circle cx="0" cy="-4" r="11" fill="${C}"/><circle cx="0" cy="-4" r="6" fill="#fff" opacity="0.5"/><path d="M-7 5 L-10 17 L0 12 L10 17 L7 5" fill="${C}"/></g>`,
+    bulb: `<g><path d="M-9 4 Q-13 -1 -13 -6 Q-13 -15 0 -15 Q13 -15 13 -6 Q13 -1 9 4 L9 9 L-9 9 Z" fill="${C}"/><rect x="-7" y="9" width="14" height="3" rx="1" fill="${C}"/></g>`,
+    handshake: `<g stroke="${C}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M-14 -2 L-6 -2 L0 2 L8 -4 L14 0"/><path d="M-6 -2 L-2 6 M2 0 L6 7"/></g>`,
+    arrowup: `<polygon points="0,-15 11,-2 4,-2 4,14 -4,14 -4,-2 -11,-2" fill="${C}"/>`,
+    flag: `<g><line x1="-11" y1="-15" x2="-11" y2="16" stroke="${C}" stroke-width="2.2"/><path d="M-11 -14 L13 -14 L8 -7 L13 0 L-11 0 Z" fill="${C}"/></g>`,
+    heart: `<path d="M0 14 Q-14 4 -14 -5 Q-14 -13 -7 -13 Q-2 -13 0 -7 Q2 -13 7 -13 Q14 -13 14 -5 Q14 4 0 14 Z" fill="${C}"/>`,
+  };
+  const glyph = glyphs[iconType] || `<circle r="10" fill="${C}"/>`;
+  return `<svg width="${size}" height="${Math.round(size * 80 / 72)}" viewBox="0 0 72 80" style="vertical-align:-3px;display:inline-block">
+    <defs>
+      <linearGradient id="${gid}-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c.a}"/><stop offset="100%" stop-color="${c.b}"/></linearGradient>
+      <radialGradient id="${gid}-i" cx="50%" cy="36%" r="65%"><stop offset="0%" stop-color="${c.inA}"/><stop offset="100%" stop-color="${c.inB}"/></radialGradient>
+    </defs>
+    <path d="M36 3 L67 13 L67 42 Q67 67 36 78 Q5 67 5 42 L5 13 Z" fill="url(#${gid}-r)"/>
+    <path d="M36 12 L59 20 L59 42 Q59 60 36 70 Q13 60 13 42 L13 20 Z" fill="url(#${gid}-i)"/>
+    <g transform="translate(36,40)">${glyph}</g>
+  </svg>`;
 }
 
 function generateBarSVG(nilai, max = 100, color = "#0d9488") {
@@ -5664,7 +5688,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
   const badgeHtml = badges.length
     ? badges.map(bid => {
         const b = ALL_BADGES?.find(x => x.id === bid) || { name: bid, icon: "medal", color: "#0d6b7a" };
-        return `<span class="badge-pill chip-teal">${badgeIconSvg(b.icon, b.color || "#0d6b7a", 16)} ${b.name}</span>`;
+        return `<span class="badge-pill chip-teal">${badgeIconSvg(b.icon, b.rim || "teal", 18)} ${b.name}</span>`;
       }).join("")
     : '<span style="color:#94a3b8;font-size:11px">Belum ada badge</span>';
 
@@ -6103,7 +6127,7 @@ function KelasView({ store, navigate }) {
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nama}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: lv.color, display: "inline-flex", alignItems: "center", gap: 3 }}><TierIcon tierId={lv.tierId} size={11} color={lv.color} /> {lv.name}</span>
-                  {bdgs.slice(0,3).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex" }}><BadgeIcon type={b.icon} size={16} /></span> : null; })}
+                  {bdgs.slice(0,3).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex" }}><BadgeIcon type={b.icon} rim={b.rim} size={20} /></span> : null; })}
                   {bdgs.length > 3 && <span style={{ fontSize: 10, color: "var(--ink-4)" }}>+{bdgs.length-3}</span>}
                 </div>
               </div>
@@ -6802,7 +6826,7 @@ function BadgeManager({ store }) {
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {bdgs.length === 0
                   ? <span style={{ fontSize: 10, color: "var(--ink-4)" }}>Belum ada badge</span>
-                  : bdgs.slice(0,4).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex" }}><BadgeIcon type={b.icon} size={18} /></span> : null; })}
+                  : bdgs.slice(0,4).map(id => { const b = ALL_BADGES.find(x => x.id === id); return b ? <span key={id} title={b.name} style={{ display: "inline-flex" }}><BadgeIcon type={b.icon} rim={b.rim} size={22} /></span> : null; })}
                 {bdgs.length > 4 && <span style={{ fontSize: 10, color: "var(--ink-3)" }}>+{bdgs.length - 4}</span>}
               </div>
             </button>
@@ -6820,8 +6844,8 @@ function BadgeManager({ store }) {
             {AUTO_BADGES.map(b => {
               const has = badges.includes(b.id);
               return (
-                <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color + "44" : "var(--line)"}`, minWidth: 72, textAlign: "center", opacity: has ? 1 : 0.45 }}>
-                  <BadgeIcon type={b.icon} size={36} />
+                <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color + "44" : "var(--line)"}`, minWidth: 72, textAlign: "center" }}>
+                  <BadgeIcon type={b.icon} rim={b.rim} size={40} locked={!has} />
                   <span style={{ fontSize: 9, fontWeight: 700, color: has ? b.color : "var(--ink-3)", lineHeight: 1.3 }}>{b.name}</span>
                   <span style={{ fontSize: 9, color: "var(--ink-4)" }}>{has ? "✓ Earned" : "Auto"}</span>
                 </div>
@@ -6835,8 +6859,8 @@ function BadgeManager({ store }) {
               const has = badges.includes(b.id);
               return (
                 <button key={b.id} onClick={() => has ? store.removeBadge(activeSiswa.id, b.id) : store.awardBadge(activeSiswa.id, b.id)}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color : "var(--line)"}`, minWidth: 76, textAlign: "center", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)", opacity: has ? 1 : 0.55 }}>
-                  <BadgeIcon type={b.icon} size={40} />
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 10px", borderRadius: 12, background: has ? b.bg : "var(--surface-alt)", border: `1.5px solid ${has ? b.color : "var(--line)"}`, minWidth: 76, textAlign: "center", cursor: "pointer", transition: "all .15s", fontFamily: "var(--font)" }}>
+                  <BadgeIcon type={b.icon} rim={b.rim} size={44} locked={!has} />
                   <span style={{ fontSize: 9, fontWeight: 700, color: has ? b.color : "var(--ink-3)", lineHeight: 1.3 }}>{b.name}</span>
                   <span style={{ fontSize: 9, color: has ? b.color : "var(--ink-4)", fontWeight: has ? 600 : 400 }}>{has ? "✓ Cabut" : "+ Beri"}</span>
                 </button>
