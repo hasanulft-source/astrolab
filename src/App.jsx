@@ -599,6 +599,17 @@ function fmtLastSeen(ts) {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
 
+// ─── TIMEOUT HELPER ───
+// Firebase Realtime DB tidak fail-fast saat offline — promise menggantung sampai network balik.
+// Helper ini membungkus promise dengan timeout 10 detik supaya user dapat feedback jelas
+// kalau koneksi lambat/terputus, bukannya nunggu UI freeze tanpa kepastian.
+function withTimeout(promise, ms = 10000, errMsg = "Koneksi lambat atau terputus. Cek internet kamu lalu coba lagi.") {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(errMsg)), ms)),
+  ]);
+}
+
 // ─── XP / LEVEL / BADGE SYSTEM ───
 // ─── LEVEL SYSTEM: 5 Tier × 4 Sub-level = 20 Levels ───
 // Setiap tier punya icon SVG sendiri, sub-level dibedakan dengan jumlah pip / accent
@@ -2603,20 +2614,23 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const subForBadge = { nilai, ontime, poinDapat: totalPoin, publishedAt: t.createdAt ? new Date(t.createdAt).getTime() : 0 };
     const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass, isTopThree);
 
-    // CRITICAL: tunggu Firebase write selesai. Kalau gagal, siswa tidak akan lihat hasil
-    // dan bisa coba lagi. Lebih baik delay 200ms daripada silent data loss.
+    // CRITICAL: tunggu Firebase write selesai dengan timeout 10 detik. Firebase RTDB tidak
+    // fail-fast saat offline (queue silent + retry), jadi tanpa timeout tombol bisa stuck
+    // selamanya. Dengan timeout, siswa dapat feedback jelas untuk retry.
     try {
-      await Promise.all([
+      await withTimeout(Promise.all([
         store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults, hasEssay }),
         store.updateStats(user.id, nilai, totalPoin, ontime),
-      ]);
+      ]));
       // Update perfectCount setelah updateStats selesai (urutan penting biar gak overwrite)
       if (nilai === 100) {
         const cur = store.getStats(user.id);
-        await update(ref(db, `stats/${user.id}`), { perfectCount: (cur.perfectCount || 0) + 1 });
+        await withTimeout(update(ref(db, `stats/${user.id}`), { perfectCount: (cur.perfectCount || 0) + 1 }));
       }
-      // Award badges (best-effort, gak fatal kalau gagal)
-      await Promise.all(newBadges.map(bid => store.awardBadge(user.id, bid).catch(() => {})));
+      // Award badges (best-effort, gak fatal kalau gagal/timeout — siswa udah submit sukses)
+      await Promise.all(newBadges.map(bid =>
+        withTimeout(store.awardBadge(user.id, bid), 5000).catch(() => {})
+      ));
       try { localStorage.removeItem(SAVE_KEY); } catch {}
       setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
       setSubmitted(true);
@@ -2624,7 +2638,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       // Rollback: izinkan siswa coba submit ulang
       submitLockRef.current = false;
       setIsSubmitting(false);
-      alert("Gagal mengumpulkan tugas. Cek koneksi internet kamu, lalu coba lagi.\n\nKalau masih gagal, hubungi guru.\n\nDetail: " + (e?.message || "Unknown error"));
+      alert("Gagal mengumpulkan tugas.\n\n" + (e?.message || "Coba lagi nanti."));
     }
   }
 
@@ -2898,7 +2912,7 @@ function ProfilSiswa({ user, store }) {
     reader.onload = async ev => {
       const b64 = ev.target.result;
       try {
-        await store.savePhoto(user.uid || user.id, b64);
+        await withTimeout(store.savePhoto(user.uid || user.id, b64));
         setShowPhotoPicker(false);
       } catch (e) {
         alert("Gagal menyimpan foto: " + (e?.message || "coba lagi"));
@@ -2911,7 +2925,7 @@ function ProfilSiswa({ user, store }) {
     const initials = user.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${color}"/><text x="100" y="130" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-weight="700" font-size="80" fill="white">${initials}</text></svg>`;
     const b64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-    store.savePhoto(user.uid || user.id, b64).catch(e => alert("Gagal menyimpan avatar: " + (e?.message || "coba lagi")));
+    withTimeout(store.savePhoto(user.uid || user.id, b64)).catch(e => alert("Gagal menyimpan avatar: " + (e?.message || "coba lagi")));
     setShowPhotoPicker(false);
   }
 
@@ -2938,7 +2952,7 @@ function ProfilSiswa({ user, store }) {
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
           {photo && (
-            <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>
+            <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { withTimeout(store.savePhoto(user.uid || user.id, null)).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>
               Hapus foto profil
             </button>
           )}
@@ -4755,10 +4769,10 @@ function ChatThread({ user, contact, store, onBack }) {
     setText("");
     setIsSending(true);
     try {
-      await store.sendMessage(user.id, contact.id, t);
+      await withTimeout(store.sendMessage(user.id, contact.id, t));
     } catch (e) {
       setText(t); // restore text agar bisa coba kirim ulang
-      alert("Pesan gagal terkirim. Cek koneksi internet, lalu coba lagi.");
+      alert("Pesan gagal terkirim.\n\n" + (e?.message || "Coba lagi."));
     } finally {
       setIsSending(false);
     }
@@ -6248,7 +6262,7 @@ function ProfilGuru({ user, store, navigate }) {
     const reader = new FileReader();
     reader.onload = async ev => {
       try {
-        await store.savePhoto(user.uid || user.id, ev.target.result);
+        await withTimeout(store.savePhoto(user.uid || user.id, ev.target.result));
         setShowPhotoPicker(false);
       } catch (err) {
         alert("Gagal menyimpan foto: " + (err?.message || "coba lagi"));
@@ -6261,7 +6275,7 @@ function ProfilGuru({ user, store, navigate }) {
     const initials = profil.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${color}"/><text x="100" y="130" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-weight="700" font-size="80" fill="white">${initials}</text></svg>`;
     const b64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-    store.savePhoto(user.uid || user.id, b64).catch(e => alert("Gagal menyimpan avatar: " + (e?.message || "coba lagi")));
+    withTimeout(store.savePhoto(user.uid || user.id, b64)).catch(e => alert("Gagal menyimpan avatar: " + (e?.message || "coba lagi")));
     setShowPhotoPicker(false);
   }
 
@@ -6283,7 +6297,7 @@ function ProfilGuru({ user, store, navigate }) {
             <I n="user" s={18} /> Pilih foto dari device (maks 2MB)
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
-          {photo && <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>Hapus foto profil</button>}
+          {photo && <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { withTimeout(store.savePhoto(user.uid || user.id, null)).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>Hapus foto profil</button>}
         </div>
       </div>
     )}
@@ -6542,7 +6556,7 @@ function ManajemenSiswa({ store }) {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
     try {
-      await store.deleteSiswa(deleteTarget.id);
+      await withTimeout(store.deleteSiswa(deleteTarget.id));
       const nama = deleteTarget.nama;
       setDeleteTarget(null);
       showToast(`${nama} dihapus.`);
@@ -6557,7 +6571,7 @@ function ManajemenSiswa({ store }) {
     if (!resetTarget || !newPw.trim()) return;
     setSaving(true);
     try {
-      await store.resetPassword(resetTarget.id, newPw.trim());
+      await withTimeout(store.resetPassword(resetTarget.id, newPw.trim()));
       setResetTarget(null); setNewPw("");
       showToast("Password berhasil direset!");
     } catch (e) {
