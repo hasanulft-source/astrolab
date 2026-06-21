@@ -2556,7 +2556,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     try { const s = localStorage.getItem(SAVE_KEY); const d = s ? JSON.parse(s) : {}; localStorage.setItem(SAVE_KEY, JSON.stringify({ ...d, idx: i })); } catch {}
   }
 
-  function doSubmit() {
+  async function doSubmit() {
     // Guard: cegah double-submit dari double-tap atau klik berulang saat lag
     if (submitLockRef.current || submitted) return;
     submitLockRef.current = true;
@@ -2602,19 +2602,30 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const isTopThree = lb.length > 0 && lb.slice(0, 3).some(s => s.id === user.id);
     const subForBadge = { nilai, ontime, poinDapat: totalPoin, publishedAt: t.createdAt ? new Date(t.createdAt).getTime() : 0 };
     const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass, isTopThree);
-    setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
-    store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults, hasEssay });
-    store.updateStats(user.id, nilai, totalPoin, ontime);
-    // Update perfectCount in stats for next badge check
-    if (nilai === 100) {
-      try {
+
+    // CRITICAL: tunggu Firebase write selesai. Kalau gagal, siswa tidak akan lihat hasil
+    // dan bisa coba lagi. Lebih baik delay 200ms daripada silent data loss.
+    try {
+      await Promise.all([
+        store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults, hasEssay }),
+        store.updateStats(user.id, nilai, totalPoin, ontime),
+      ]);
+      // Update perfectCount setelah updateStats selesai (urutan penting biar gak overwrite)
+      if (nilai === 100) {
         const cur = store.getStats(user.id);
-        update(ref(db, `stats/${user.id}`), { perfectCount: (cur.perfectCount || 0) + 1 });
-      } catch {}
+        await update(ref(db, `stats/${user.id}`), { perfectCount: (cur.perfectCount || 0) + 1 });
+      }
+      // Award badges (best-effort, gak fatal kalau gagal)
+      await Promise.all(newBadges.map(bid => store.awardBadge(user.id, bid).catch(() => {})));
+      try { localStorage.removeItem(SAVE_KEY); } catch {}
+      setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
+      setSubmitted(true);
+    } catch (e) {
+      // Rollback: izinkan siswa coba submit ulang
+      submitLockRef.current = false;
+      setIsSubmitting(false);
+      alert("Gagal mengumpulkan tugas. Cek koneksi internet kamu, lalu coba lagi.\n\nKalau masih gagal, hubungi guru.\n\nDetail: " + (e?.message || "Unknown error"));
     }
-    newBadges.forEach(bid => store.awardBadge(user.id, bid));
-    try { localStorage.removeItem(SAVE_KEY); } catch {}
-    setSubmitted(true);
   }
 
   // Result screen
@@ -2886,8 +2897,12 @@ function ProfilSiswa({ user, store }) {
     const reader = new FileReader();
     reader.onload = async ev => {
       const b64 = ev.target.result;
-      await store.savePhoto(user.uid || user.id, b64);
-      setShowPhotoPicker(false);
+      try {
+        await store.savePhoto(user.uid || user.id, b64);
+        setShowPhotoPicker(false);
+      } catch (e) {
+        alert("Gagal menyimpan foto: " + (e?.message || "coba lagi"));
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -2896,7 +2911,7 @@ function ProfilSiswa({ user, store }) {
     const initials = user.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${color}"/><text x="100" y="130" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-weight="700" font-size="80" fill="white">${initials}</text></svg>`;
     const b64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-    store.savePhoto(user.uid || user.id, b64);
+    store.savePhoto(user.uid || user.id, b64).catch(e => alert("Gagal menyimpan avatar: " + (e?.message || "coba lagi")));
     setShowPhotoPicker(false);
   }
 
@@ -2923,7 +2938,7 @@ function ProfilSiswa({ user, store }) {
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
           {photo && (
-            <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null); setShowPhotoPicker(false); }}>
+            <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>
               Hapus foto profil
             </button>
           )}
@@ -4722,6 +4737,7 @@ function fmtTime(ts) {
 
 function ChatThread({ user, contact, store, onBack }) {
   const [text, setText] = useState("");
+  const [isSending, setIsSending] = useState(false);
   const msgs = store.getThread(user.id, contact.id);
 
   useEffect(() => {
@@ -4734,9 +4750,18 @@ function ChatThread({ user, contact, store, onBack }) {
   }, [msgs.length]);
 
   async function send() {
-    if (!text.trim()) return;
-    const t = text; setText("");
-    await store.sendMessage(user.id, contact.id, t);
+    if (!text.trim() || isSending) return;
+    const t = text;
+    setText("");
+    setIsSending(true);
+    try {
+      await store.sendMessage(user.id, contact.id, t);
+    } catch (e) {
+      setText(t); // restore text agar bisa coba kirim ulang
+      alert("Pesan gagal terkirim. Cek koneksi internet, lalu coba lagi.");
+    } finally {
+      setIsSending(false);
+    }
   }
 
   return (
@@ -4793,7 +4818,7 @@ function ChatThread({ user, contact, store, onBack }) {
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
           style={{ boxShadow: "var(--shadow-sm)" }}
         />
-        <button onClick={send} disabled={!text.trim()} style={{ width: 40, height: 40, borderRadius: "50%", background: text.trim() ? "var(--accent)" : "var(--surface-alt)", color: text.trim() ? "#fff" : "var(--ink-4)", border: "none", cursor: text.trim() ? "pointer" : "default", display: "grid", placeItems: "center", flexShrink: 0, transition: "all .15s" }}>
+        <button onClick={send} disabled={!text.trim() || isSending} style={{ width: 40, height: 40, borderRadius: "50%", background: (text.trim() && !isSending) ? "var(--accent)" : "var(--surface-alt)", color: (text.trim() && !isSending) ? "#fff" : "var(--ink-4)", border: "none", cursor: (text.trim() && !isSending) ? "pointer" : "default", display: "grid", placeItems: "center", flexShrink: 0, transition: "all .15s" }}>
           <I n="send" s={16} />
         </button>
       </div>
@@ -4972,9 +4997,13 @@ function BankSoal({ store, navigate }) {
 
   async function handleDelete() {
     if (!deleteTarget) return;
-    await store.deleteBankSoal(deleteTarget.id);
-    setDeleteTarget(null);
-    showToast("Soal dihapus.");
+    try {
+      await store.deleteBankSoal(deleteTarget.id);
+      setDeleteTarget(null);
+      showToast("Soal dihapus.");
+    } catch (e) {
+      showToast("Gagal menghapus soal: " + (e?.message || "coba lagi"));
+    }
   }
 
   return (
@@ -6217,7 +6246,14 @@ function ProfilGuru({ user, store, navigate }) {
     const file = e.target.files[0]; if (!file) return;
     if (file.size > 5 * 1024 * 1024) { alert("Foto maksimal 5MB"); return; }
     const reader = new FileReader();
-    reader.onload = async ev => { await store.savePhoto(user.uid || user.id, ev.target.result); setShowPhotoPicker(false); };
+    reader.onload = async ev => {
+      try {
+        await store.savePhoto(user.uid || user.id, ev.target.result);
+        setShowPhotoPicker(false);
+      } catch (err) {
+        alert("Gagal menyimpan foto: " + (err?.message || "coba lagi"));
+      }
+    };
     reader.readAsDataURL(file);
   }
 
@@ -6225,7 +6261,8 @@ function ProfilGuru({ user, store, navigate }) {
     const initials = profil.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${color}"/><text x="100" y="130" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-weight="700" font-size="80" fill="white">${initials}</text></svg>`;
     const b64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-    store.savePhoto(user.uid || user.id, b64); setShowPhotoPicker(false);
+    store.savePhoto(user.uid || user.id, b64).catch(e => alert("Gagal menyimpan avatar: " + (e?.message || "coba lagi")));
+    setShowPhotoPicker(false);
   }
 
   return <>
@@ -6246,7 +6283,7 @@ function ProfilGuru({ user, store, navigate }) {
             <I n="user" s={18} /> Pilih foto dari device (maks 2MB)
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
-          {photo && <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null); setShowPhotoPicker(false); }}>Hapus foto profil</button>}
+          {photo && <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { store.savePhoto(user.uid || user.id, null).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>Hapus foto profil</button>}
         </div>
       </div>
     )}
@@ -6499,19 +6536,35 @@ function ManajemenSiswa({ store }) {
   const siswa = store.getAllSiswa(jenjang);
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 3000); }
 
+  const [deleting, setDeleting] = useState(false);
+
   async function handleDelete() {
-    if (!deleteTarget) return;
-    await store.deleteSiswa(deleteTarget.id);
-    setDeleteTarget(null);
-    showToast(`${deleteTarget.nama} dihapus.`);
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await store.deleteSiswa(deleteTarget.id);
+      const nama = deleteTarget.nama;
+      setDeleteTarget(null);
+      showToast(`${nama} dihapus.`);
+    } catch (e) {
+      showToast("Gagal menghapus siswa: " + (e?.message || "coba lagi"));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleReset() {
     if (!resetTarget || !newPw.trim()) return;
     setSaving(true);
-    await store.resetPassword(resetTarget.id, newPw.trim());
-    setSaving(false); setResetTarget(null); setNewPw("");
-    showToast("Password berhasil direset!");
+    try {
+      await store.resetPassword(resetTarget.id, newPw.trim());
+      setResetTarget(null); setNewPw("");
+      showToast("Password berhasil direset!");
+    } catch (e) {
+      showToast("Gagal reset password: " + (e?.message || "coba lagi"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
