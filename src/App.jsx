@@ -4274,7 +4274,10 @@ function NilaiEssayModal({ tugas, store, onClose }) {
           if (r.nilaiEssay >= 60) correctCountBaru++;
         }
       });
-      const totalSoal = (tugas.soal || []).length || 1;
+      // Pakai total soal SAAT SISWA SUBMIT (snapshot di currentSub.total), bukan jumlah soal sekarang.
+      // Kalau guru edit tugas (tambah/hapus soal) setelah siswa submit, nilai siswa tidak boleh berubah
+      // gara-gara denominator berubah. Fallback ke tugas.soal.length kalau snapshot tidak ada (data lama).
+      const totalSoal = currentSub.total || (tugas.soal || []).length || 1;
       const nilaiBaru = Math.round((correctCountBaru / totalSoal) * 100);
 
       await update(ref(db, `submissions/${currentSub.id}`), {
