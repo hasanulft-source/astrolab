@@ -1306,8 +1306,17 @@ function useStore() {
   // SUBMISSIONS
   const getSubs = () => subs;
   const addSub = async (s) => {
-    const newRef = push(ref(db, "submissions"));
-    await set(newRef, { ...s, submittedAt: new Date().toISOString() });
+    // Deterministic key: {siswaId}_{tugasId} mencegah duplicate submission dari multi-device.
+    // Kalau 2 device submit untuk tugas yang sama (offline lalu replay), Firebase last-write-wins
+    // → cuma 1 entry yang persist. Combined dengan hasSub guard di doSubmit, ini cover edge case
+    // konkuren tanpa butuh migration data lama (yang masih pakai push-key).
+    if (s.siswaId && s.tugasId) {
+      await set(ref(db, `submissions/${s.siswaId}_${s.tugasId}`), { ...s, submittedAt: new Date().toISOString() });
+    } else {
+      // Fallback ke push-key kalau siswaId/tugasId hilang (shouldn't happen, but safe)
+      const newRef = push(ref(db, "submissions"));
+      await set(newRef, { ...s, submittedAt: new Date().toISOString() });
+    }
   };
   const hasSub = (sid, tid) => subs.some(s => s.siswaId === sid && s.tugasId === tid);
   const getSubBy = (sid, tid) => subs.find(s => s.siswaId === sid && s.tugasId === tid);
@@ -2570,6 +2579,14 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   async function doSubmit() {
     // Guard: cegah double-submit dari double-tap atau klik berulang saat lag
     if (submitLockRef.current || submitted) return;
+    // Guard: cegah double-submit dari multi-device (Device B liat state lama, klik submit).
+    // hasSub cek local state — kalau Device B udah sync, di-block di sini.
+    // Kalau Device B masih offline-state-lama, deterministic key di addSub yang nge-catch.
+    if (store.hasSub(user.id, t.id)) {
+      alert("Tugas ini sudah pernah kamu kumpulkan dari perangkat lain. Buka detail tugas untuk lihat hasilnya.");
+      navigate("tugas-detail", { tugasId });
+      return;
+    }
     submitLockRef.current = true;
     setIsSubmitting(true);
     setShowConfirm(false);
