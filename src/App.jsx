@@ -542,6 +542,46 @@ function fmtDl(dl) {
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
+// ─── TAHUN AJARAN HELPERS ───
+// Tahun ajaran di Indonesia dimulai Juli, berakhir Juni tahun depan.
+// Semester Ganjil: Juli–Desember. Semester Genap: Januari–Juni.
+function getTahunAjaran(date = new Date()) {
+  const month = date.getMonth(); // 0 = Januari
+  const year = date.getFullYear();
+  // Juli (6) ke depan = mulai tahun ajaran baru
+  if (month >= 6) return `${year}/${year + 1}`;
+  return `${year - 1}/${year}`;
+}
+function getSemesterAktif(date = new Date()) {
+  const month = date.getMonth();
+  // Juli–Desember = Ganjil; Januari–Juni = Genap
+  return (month >= 6 && month <= 11) ? "Ganjil" : "Genap";
+}
+function getPeriodeAktif(date = new Date()) {
+  return `Semester ${getSemesterAktif(date)} ${getTahunAjaran(date)}`;
+}
+// Generate opsi dropdown periode: 4 jenis × 3 tahun (lalu, sekarang, depan)
+function getPeriodeOptions(date = new Date()) {
+  const ta = getTahunAjaran(date);
+  const [yStart] = ta.split("/").map(Number);
+  const tahunList = [
+    `${yStart - 1}/${yStart}`,
+    `${yStart}/${yStart + 1}`,
+    `${yStart + 1}/${yStart + 2}`,
+  ];
+  const jenis = ["Semester Ganjil", "Semester Genap", "Tengah Semester Ganjil", "Tengah Semester Genap"];
+  // Default tahun aktif duluan, lalu jenis lain di tahun aktif, lalu tahun lain
+  const tahunAktif = ta;
+  const result = [];
+  // Tahun aktif: semua 4 jenis
+  jenis.forEach(j => result.push(`${j} ${tahunAktif}`));
+  // Tahun lain: semua 4 jenis
+  tahunList.filter(y => y !== tahunAktif).forEach(y => {
+    jenis.forEach(j => result.push(`${j} ${y}`));
+  });
+  return result;
+}
+
 // Format last seen timestamp jadi teks relatif
 function fmtLastSeen(ts) {
   if (!ts) return null;
@@ -3661,7 +3701,7 @@ async function exportNilai(store, jenjang) {
     ws.getRow(1).height = 36;
 
     ws.mergeCells(`A2:${lastColLetter}2`);
-    sc(ws.getCell("A2"), `SMP Negeri 15 Banda Aceh  ·  Tahun Ajaran 2025/2026  ·  Dicetak: ${new Date().toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}`, { fill:"EAF4F3", font:"6B7280", size:9, italic:true });
+    sc(ws.getCell("A2"), `SMP Negeri 15 Banda Aceh  ·  Tahun Ajaran ${getTahunAjaran()}  ·  Dicetak: ${new Date().toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}`, { fill:"EAF4F3", font:"6B7280", size:9, italic:true });
     ws.getRow(2).height = 18;
     ws.getRow(3).height = 8;
 
@@ -5797,7 +5837,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
 }
 
 // ─── LAPORAN PER KELAS ───
-function exportLaporan(store, jenjang, mode = "kelas", periode = "Semester Ganjil 2025/2026") {
+function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif()) {
   const siswa = store.getAllSiswa(jenjang);
   const tugas = store.getTugas().filter(t => t.jenjang === jenjang);
   const subs = store.getSubs();
@@ -5939,14 +5979,9 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = "Semester Ganji
 function LaporanModal({ store, onClose }) {
   const [jenjang, setJenjang] = useState("VII");
   const [mode, setMode] = useState("kelas");
-  const [periode, setPeriode] = useState("Semester Ganjil 2025/2026");
+  const [periode, setPeriode] = useState(getPeriodeAktif());
 
-  const periodeOptions = [
-    "Semester Ganjil 2025/2026",
-    "Semester Genap 2025/2026",
-    "Tengah Semester Ganjil 2025/2026",
-    "Tengah Semester Genap 2025/2026",
-  ];
+  const periodeOptions = getPeriodeOptions();
 
   function handleExport() {
     exportLaporan(store, jenjang, mode, periode);
