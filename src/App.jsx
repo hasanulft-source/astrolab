@@ -3,7 +3,7 @@
 // UI: Original (Plus Jakarta Sans + teal #0d6b7a)
 // Engine: Firebase Realtime Database + Firebase Authentication
 
-import { useState, useEffect, Component } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
@@ -1312,7 +1312,7 @@ function useStore() {
     const nilaiRata = Math.round(newNilai.reduce((a, b) => a + b, 0) / newNilai.length);
     // STREAK: naik kalau ontime, reset kalau telat
     const newStreak = ontime ? (s.streak || 0) + 1 : 0;
-    await set(ref(db, `stats/${sid}`), {
+    await update(ref(db, `stats/${sid}`), {
       poin: newPoin,
       poinHistory: newHistory,
       tugasSelesai: (s.tugasSelesai || 0) + 1,
@@ -2507,6 +2507,8 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false); // synchronous guard against double-tap race
   const [savedAt, setSavedAt] = useState(null); // timestamp untuk auto-save indicator
   const [savedTick, setSavedTick] = useState(0); // force re-render setelah save
 
@@ -2555,6 +2557,10 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   }
 
   function doSubmit() {
+    // Guard: cegah double-submit dari double-tap atau klik berulang saat lag
+    if (submitLockRef.current || submitted) return;
+    submitLockRef.current = true;
+    setIsSubmitting(true);
     setShowConfirm(false);
     let totalPoin = 0, correctCount = 0;
     const soalResults = []; // simpan hasil per soal untuk analisis
@@ -2681,8 +2687,10 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
           <p>Semua {total} soal sudah dijawab. Yakin ingin mengumpulkan?</p>
         )}
         <div className="modal-actions">
-          <button className="btn btn-outline btn-sm" onClick={() => setShowConfirm(false)}>Cek Lagi</button>
-          <button className="btn btn-primary btn-sm" onClick={doSubmit}><I n="check" s={13} /> Kumpulkan Sekarang</button>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowConfirm(false)} disabled={isSubmitting}>Cek Lagi</button>
+          <button className="btn btn-primary btn-sm" onClick={doSubmit} disabled={isSubmitting}>
+            {isSubmitting ? "Mengirim..." : <><I n="check" s={13} /> Kumpulkan Sekarang</>}
+          </button>
         </div>
       </div>
     </div>
