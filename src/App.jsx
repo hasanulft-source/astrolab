@@ -1759,6 +1759,18 @@ function DashboardSiswa({ user, store, navigate }) {
   const lb = store.getLeaderboard(user.jenjang);
   const myRank = lb.find(s => s.id === user.id);
 
+  // Reset streak kalau siswa lewatin deadline tanpa submit. Trigger sekali per session pas data ready.
+  const hasCheckedStreak = useRef(false);
+  useEffect(() => {
+    if (hasCheckedStreak.current) return;
+    // Tunggu sampai data loaded (allTugas terisi atau confirmed empty)
+    if (store.loading) return;
+    if (tugasLewat.length > 0 && (stats.streak || 0) > 0) {
+      hasCheckedStreak.current = true;
+      store.resetStreakIfMissed(user.id);
+    }
+  }, [tugasLewat.length, stats.streak, store.loading]);
+
   // Dynamic greeting by waktu
   const hour = new Date().getHours();
   const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
