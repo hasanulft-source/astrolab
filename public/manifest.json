@@ -2,12 +2,13 @@
   "name": "Astrolab · Our Classroom",
   "short_name": "Astrolab",
   "description": "Platform belajar digital · Our Classroom",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0d6b7a",
-  "theme_color": "#0d6b7a",
+  "background_color": "#09637E",
+  "theme_color": "#09637E",
   "lang": "id",
   "icons": [
     {

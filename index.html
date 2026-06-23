@@ -6,14 +6,16 @@
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#0d6b7a" />
+    <meta name="theme-color" content="#09637E" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Astrolab" />
 
     <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
 
     <!-- SEO & Meta -->
@@ -21,8 +23,8 @@
     <meta name="description" content="Platform belajar digital · Our Classroom" />
     <meta name="author" content="M. Hasanul Fatta" />
 
-    <!-- Splash screen color -->
-    <meta name="msapplication-TileColor" content="#0d6b7a" />
+    <!-- Microsoft tile -->
+    <meta name="msapplication-TileColor" content="#09637E" />
     <meta name="msapplication-TileImage" content="/icon-192.png" />
   </head>
   <body>
@@ -38,7 +40,6 @@
             .register('/sw.js')
             .then(reg => console.log('SW registered:', reg.scope))
             .catch(err => console.log('SW failed:', err));
-
           // Firebase Messaging SW
           navigator.serviceWorker
             .register('/firebase-messaging-sw.js')

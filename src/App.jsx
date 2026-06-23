@@ -1646,24 +1646,36 @@ function Confirm({ title, desc, onOk, onCancel }) {
 }
 
 // ─── LOGO SVG (Bold Orbit — putih, dipakai di semua konteks teal) ───
-function LogoBold({ size = 32 }) {
-  const s = size, c = s / 2, r1 = s * 0.38, r2 = s * 0.22, dot = s * 0.065, center = s * 0.115;
+// ─── ASTROLAB MARK (A-CLUSTER) ───
+// 4 elemen geometric tersusun membentuk huruf "A":
+// - Apex rhombus (Astro) — visi, anchor sistem
+// - Left + Right pillars (Lab) — eksekusi, daily work
+// - Cross bar (Bridge) — pendidikan: penghubung visi & eksekusi
+// Prop `onDark`: kalau true, render versi putih (untuk dark background).
+function LogoBold({ size = 32, onDark = false }) {
+  const apex = "0,-11 5.5,-3.5 0,1 -5.5,-3.5";
+  const left = "-5.5,-3.5 -2,3.5 -8,9 -11.5,2";
+  const right = "5.5,-3.5 11.5,2 8,9 2,3.5";
+  if (onDark) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32">
+        <g transform="translate(16, 17)">
+          <polygon points={apex} fill="#ffffff"/>
+          <polygon points={left} fill="#ffffff" opacity="0.82"/>
+          <polygon points={right} fill="#ffffff" opacity="0.82"/>
+          <rect x="-3.5" y="1" width="7" height="2.2" rx="0.5" fill="#ffffff" opacity="0.55"/>
+        </g>
+      </svg>
+    );
+  }
   return (
-    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} fill="none">
-      {/* Orbit ring utama — tebal */}
-      <ellipse cx={c} cy={c} rx={r1} ry={r1 * 0.36} stroke="white" strokeWidth={s * 0.055} fill="none" strokeLinecap="round"/>
-      {/* Orbit ring 2 — rotate 60° */}
-      <ellipse cx={c} cy={c} rx={r1} ry={r1 * 0.36} stroke="white" strokeWidth={s * 0.04} fill="none" strokeLinecap="round" transform={`rotate(60 ${c} ${c})`} opacity=".65"/>
-      {/* Orbit ring 3 — rotate -60° */}
-      <ellipse cx={c} cy={c} rx={r1} ry={r1 * 0.36} stroke="white" strokeWidth={s * 0.04} fill="none" strokeLinecap="round" transform={`rotate(-60 ${c} ${c})`} opacity=".65"/>
-      {/* Center planet */}
-      <circle cx={c} cy={c} r={center} fill="white"/>
-      <circle cx={c} cy={c} r={center * 0.55} fill="rgba(13,107,122,0.75)"/>
-      {/* Orbit dots — bold */}
-      <circle cx={c + r1} cy={c} r={dot} fill="white"/>
-      <circle cx={c - r1} cy={c} r={dot * 0.75} fill="white" opacity=".7"/>
-      <circle cx={c + r1 * 0.5} cy={c - r1 * 0.31} r={dot * 0.85} fill="white" opacity=".9"/>
-      <circle cx={c - r1 * 0.5} cy={c + r1 * 0.31} r={dot * 0.7} fill="white" opacity=".6"/>
+    <svg width={size} height={size} viewBox="0 0 32 32">
+      <g transform="translate(16, 17)">
+        <polygon points={apex} fill="#09637E"/>
+        <polygon points={left} fill="#088395"/>
+        <polygon points={right} fill="#088395"/>
+        <rect x="-3.5" y="1" width="7" height="2.2" rx="0.5" fill="#7AB2B2"/>
+      </g>
     </svg>
   );
 }
@@ -1708,7 +1720,7 @@ function LoginScreen({ onLogin }) {
             )}
           </svg>
           {/* Logo + Brand */}
-          <div className="login-logo-box"><LogoBold size={36} /></div>
+          <div className="login-logo-box"><LogoBold size={36} onDark /></div>
           <div className="login-brand">Astrolab</div>
           <div className="login-tagline">Our Classroom</div>
           {/* Wave divider */}
@@ -7352,7 +7364,7 @@ function AppInner() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [user]);
-  if (store.loading || authLoading) return <><style>{CSS}</style><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%)", gap: 14 }}><LogoBold size={72} /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
+  if (store.loading || authLoading) return <><style>{CSS}</style><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%)", gap: 14 }}><LogoBold size={72} onDark /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
   const hideNav = route === "kerjakan";
   let screen = null;
   if (user) {
@@ -7389,7 +7401,7 @@ function AppInner() {
       <div className="shell">
         <header className="hdr">
           <div className="hdr-brand">
-            <div className="hdr-mark"><LogoBold size={24} /></div>
+            <div className="hdr-mark"><LogoBold size={24} onDark /></div>
             <div className="hdr-name"><b>Astrolab</b><small style={{ fontSize: 10, opacity: .65 }}>Our Classroom</small></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
