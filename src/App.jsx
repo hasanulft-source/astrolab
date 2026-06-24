@@ -6483,16 +6483,40 @@ function ResetSemesterModal({ store, onClose }) {
         URL.revokeObjectURL(url);
       }
 
-      // 2. Hapus semua submissions
-      await remove(ref(db, "submissions"));
+      // 2. Hapus semua submissions per-child (rules baru tighten ke $subId level)
+      const subsSnap = await get(ref(db, "submissions"));
+      const subKeys = subsSnap.exists() ? Object.keys(subsSnap.val()) : [];
+      const subResults = await Promise.allSettled(
+        subKeys.map(key => remove(ref(db, `submissions/${key}`)))
+      );
+      const failedSubs = subResults.filter(r => r.status === "rejected").length;
+      if (failedSubs > 0) {
+        throw new Error(`${failedSubs} dari ${subKeys.length} submission gagal dihapus`);
+      }
 
-      // 3. Reset semua stats (kosongkan, tidak hapus node — tetap empty object per siswa)
-      await remove(ref(db, "stats"));
+      // 3. Reset semua stats per-child
+      const statsSnap = await get(ref(db, "stats"));
+      const statKeys = statsSnap.exists() ? Object.keys(statsSnap.val()) : [];
+      const statResults = await Promise.allSettled(
+        statKeys.map(key => remove(ref(db, `stats/${key}`)))
+      );
+      const failedStats = statResults.filter(r => r.status === "rejected").length;
+      if (failedStats > 0) {
+        throw new Error(`${failedStats} dari ${statKeys.length} stats gagal dihapus`);
+      }
 
-      // 4. Hapus semua badges
-      await remove(ref(db, "badges"));
+      // 4. Hapus semua badges per-child
+      const badgesSnap = await get(ref(db, "badges"));
+      const badgeKeys = badgesSnap.exists() ? Object.keys(badgesSnap.val()) : [];
+      const badgeResults = await Promise.allSettled(
+        badgeKeys.map(key => remove(ref(db, `badges/${key}`)))
+      );
+      const failedBadges = badgeResults.filter(r => r.status === "rejected").length;
+      if (failedBadges > 0) {
+        throw new Error(`${failedBadges} dari ${badgeKeys.length} badges gagal dihapus`);
+      }
 
-      // 5. Hapus semua broadcasts expired/lama (opsional, biar bersih)
+      // 5. Hapus semua broadcasts (parent-level rule guru sudah allow remove parent)
       await remove(ref(db, "broadcasts"));
 
       setResult({
