@@ -1544,6 +1544,20 @@ function useStore() {
   const deleteSiswa = async (id) => {
     const acc = fbAccounts.find(a => a.id === id);
     await callServer("delete", { uid: acc?.uid, id });
+    // Cleanup messages thread yang involve siswa ini (format threadId: "id1__id2" sorted).
+    // Non-fatal: kalau gagal, akun udah dihapus, thread orphan acceptable.
+    try {
+      const msgsSnap = await get(ref(db, "messages"));
+      if (msgsSnap.exists()) {
+        const threadKeys = Object.keys(msgsSnap.val());
+        const involved = threadKeys.filter(tid => tid.split("__").includes(id));
+        await Promise.allSettled(
+          involved.map(tid => remove(ref(db, `messages/${tid}`)))
+        );
+      }
+    } catch (e) {
+      console.warn("Cleanup thread chat gagal (non-fatal):", e?.message);
+    }
   };
 
   const resetPassword = async (id, newPassword) => {
@@ -6518,6 +6532,17 @@ function ResetSemesterModal({ store, onClose }) {
 
       // 5. Hapus semua broadcasts (parent-level rule guru sudah allow remove parent)
       await remove(ref(db, "broadcasts"));
+
+      // 6. Hapus semua messages per-thread (clean slate untuk chat)
+      const msgsSnap = await get(ref(db, "messages"));
+      const threadKeys = msgsSnap.exists() ? Object.keys(msgsSnap.val()) : [];
+      const msgResults = await Promise.allSettled(
+        threadKeys.map(tid => remove(ref(db, `messages/${tid}`)))
+      );
+      const failedMsgs = msgResults.filter(r => r.status === "rejected").length;
+      if (failedMsgs > 0) {
+        throw new Error(`${failedMsgs} dari ${threadKeys.length} thread chat gagal dihapus`);
+      }
 
       setResult({
         submissions: totalSubs,
