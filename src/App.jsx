@@ -3874,20 +3874,24 @@ async function importSoalFromExcel(file) {
             const pertanyaan = row["Pertanyaan"] || row["Pertanyaan / Instruksi"] || row["Pernyataan"] || "";
             if (!pertanyaan.toString().trim()) return;
             const poin = Number(row["Poin"]) || 10;
+            // Pembahasan & Tags (optional, common untuk semua tipe)
+            const pembahasan = (row["Pembahasan"] || "").toString().trim();
+            const tagsRaw = (row["Tags"] || "").toString().trim();
+            const tags = tagsRaw ? tagsRaw.split(",").map(t => t.trim()).filter(Boolean) : [];
 
             if (tipe === "pg") {
               const opsi = [row["Pilihan A"], row["Pilihan B"], row["Pilihan C"], row["Pilihan D"]].map(String);
               const jwb = (row["Jawaban (A/B/C/D)"] || row["Jawaban Benar\n(A/B/C/D)"] || "A").toString().trim().toUpperCase();
               const jwbIdx = ["A","B","C","D"].indexOf(jwb);
-              soal.push({ id: uid(), type: "pg", pertanyaan: pertanyaan.toString(), opsi, jawaban: jwbIdx >= 0 ? jwbIdx : 0, poin });
+              soal.push({ id: uid(), type: "pg", pertanyaan: pertanyaan.toString(), opsi, jawaban: jwbIdx >= 0 ? jwbIdx : 0, poin, pembahasan, tags });
             } else if (tipe === "tf") {
               const jwb = (row["Jawaban (Benar/Salah)"] || "Benar").toString().trim().toLowerCase();
-              soal.push({ id: uid(), type: "tf", pertanyaan: pertanyaan.toString(), jawaban: jwb === "benar" ? 0 : 1, poin });
+              soal.push({ id: uid(), type: "tf", pertanyaan: pertanyaan.toString(), jawaban: jwb === "benar" ? 0 : 1, poin, pembahasan, tags });
             } else if (tipe === "komplex") {
               const opsi = [row["Pilihan A"], row["Pilihan B"], row["Pilihan C"], row["Pilihan D"]].map(String);
               const jwbStr = (row["Jawaban Benar (A,B,C,D)"] || row["Jawaban Benar (misal: A,C)"] || row["Jawaban Benar\n(misal: A,C)"] || "A").toString();
               const jwb = jwbStr.split(",").map(s => ["A","B","C","D"].indexOf(s.trim().toUpperCase())).filter(i => i >= 0);
-              soal.push({ id: uid(), type: "komplex", pertanyaan: pertanyaan.toString(), opsi, jawaban: jwb, poin });
+              soal.push({ id: uid(), type: "komplex", pertanyaan: pertanyaan.toString(), opsi, jawaban: jwb, poin, pembahasan, tags });
             } else if (tipe === "pasang") {
               const kiri = [], kanan = [];
               for (let i = 1; i <= 4; i++) {
@@ -3898,7 +3902,7 @@ async function importSoalFromExcel(file) {
               }
               if (kiri.length === 0) return;
               const jwb = kiri.map((_, i) => i);
-              soal.push({ id: uid(), type: "pasang", pertanyaan: pertanyaan.toString(), kiri, kanan, jawaban: jwb, poin });
+              soal.push({ id: uid(), type: "pasang", pertanyaan: pertanyaan.toString(), kiri, kanan, jawaban: jwb, poin, pembahasan, tags });
             } else if (tipe === "excel") {
               const headersStr = (row["Header Kolom (pisah |)"] || "").toString();
               const dataStr = (row["Data Tabel (baris pisah ;, kolom pisah |)"] || "").toString();
@@ -3908,11 +3912,11 @@ async function importSoalFromExcel(file) {
               const opsi = [row["Pilihan A"], row["Pilihan B"], row["Pilihan C"], row["Pilihan D"]].map(String);
               const jwb = (row["Jawaban (A/B/C/D)"] || "A").toString().trim().toUpperCase();
               const jwbIdx = ["A","B","C","D"].indexOf(jwb);
-              soal.push({ id: uid(), type: "excel", pertanyaan: pertanyaan.toString(), headers, table, opsi, jawaban: jwbIdx >= 0 ? jwbIdx : 0, poin });
+              soal.push({ id: uid(), type: "excel", pertanyaan: pertanyaan.toString(), headers, table, opsi, jawaban: jwbIdx >= 0 ? jwbIdx : 0, poin, pembahasan, tags });
             } else if (tipe === "essay") {
               const kataKunci = (row["Kata Kunci (pisah koma)"] || "").toString();
               const panduanNilai = (row["Panduan Penilaian"] || "").toString();
-              soal.push({ id: uid(), type: "essay", pertanyaan: pertanyaan.toString(), kataKunci, panduanNilai, poin });
+              soal.push({ id: uid(), type: "essay", pertanyaan: pertanyaan.toString(), kataKunci, panduanNilai, poin, pembahasan, tags });
             }
           });
         });
@@ -5098,7 +5102,7 @@ function BankSoal({ store, navigate }) {
                 if (!imported.length) { showToast("Tidak ada soal yang valid di file."); e.target.value = ""; return; }
                 // Convert ke format bank soal
                 const bankSoalList = imported.map(s => {
-                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: ["import"], pembahasan: "" };
+                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: (s.tags && s.tags.length) ? s.tags : ["import"], pembahasan: s.pembahasan || "" };
                   if (s.type === "pg") return { ...base, opsi: s.opsi, jawaban: s.jawaban };
                   if (s.type === "tf") return { ...base, jawaban: s.jawaban };
                   if (s.type === "komplex") {
@@ -5140,7 +5144,7 @@ function BankSoal({ store, navigate }) {
                 const imported = await importSoalFromExcel(file);
                 if (!imported.length) { showToast("Tidak ada soal yang valid."); e.target.value = ""; return; }
                 const bankSoalList = imported.map(s => {
-                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: ["import"], pembahasan: "" };
+                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: (s.tags && s.tags.length) ? s.tags : ["import"], pembahasan: s.pembahasan || "" };
                   if (s.type === "pg") return { ...base, opsi: s.opsi, jawaban: s.jawaban };
                   if (s.type === "tf") return { ...base, jawaban: s.jawaban };
                   if (s.type === "komplex") {
