@@ -2424,6 +2424,14 @@ function ReviewTugas({ user, store, tugasId, navigate }) {
                   </div>
                 </div>
               )}
+
+              {/* Pembahasan (kalau guru isi) — muncul untuk semua tipe soal */}
+              {soal.pembahasan && soal.pembahasan.trim() && (
+                <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--accent-tint)", borderRadius: 8, borderLeft: "3px solid var(--accent-2)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-2)", letterSpacing: ".08em", marginBottom: 4, textTransform: "uppercase" }}>Pembahasan</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ink-1)", whiteSpace: "pre-wrap" }}>{soal.pembahasan}</div>
+                </div>
+              )}
             </Card>
           );
         })}
@@ -3577,10 +3585,12 @@ async function downloadTemplateSoal() {
     { header: "Pilihan D", width: 20 },
     { header: "Jawaban (A/B/C/D)", width: 18 },
     { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
   ];
   ws1.getRow(1).eachCell(c => Object.assign(c, headerStyle));
   ws1.getRow(1).height = 35;
-  ws1.addRow(["Apa ibukota Indonesia?", "Surabaya", "Jakarta", "Bandung", "Medan", "B", 10]).eachCell(c => Object.assign(c, exampleStyle));
+  ws1.addRow(["Apa ibukota Indonesia?", "Surabaya", "Jakarta", "Bandung", "Medan", "B", 10, "Jakarta adalah ibukota Indonesia sejak 1945.", "geografi, indonesia"]).eachCell(c => Object.assign(c, exampleStyle));
 
   // Sheet 2: Benar/Salah
   const ws2 = wb.addWorksheet("2. Benar Salah", { properties: { tabColor: { argb: "FF10B981" } } });
@@ -3588,10 +3598,12 @@ async function downloadTemplateSoal() {
     { header: "Pernyataan", width: 60 },
     { header: "Jawaban (Benar/Salah)", width: 22 },
     { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
   ];
   ws2.getRow(1).eachCell(c => Object.assign(c, headerStyle));
   ws2.getRow(1).height = 35;
-  ws2.addRow(["Matahari adalah bintang terdekat dengan bumi.", "Benar", 10]).eachCell(c => Object.assign(c, exampleStyle));
+  ws2.addRow(["Matahari adalah bintang terdekat dengan bumi.", "Benar", 10, "Matahari ±150 juta km dari Bumi (1 AU), bintang terdekat.", "astronomi, bintang"]).eachCell(c => Object.assign(c, exampleStyle));
 
   // Sheet 3: PG Kompleks
   const ws3 = wb.addWorksheet("3. PG Kompleks", { properties: { tabColor: { argb: "FFF97316" } } });
@@ -3603,10 +3615,12 @@ async function downloadTemplateSoal() {
     { header: "Pilihan D", width: 20 },
     { header: "Jawaban Benar (A,B,C,D)", width: 22 },
     { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
   ];
   ws3.getRow(1).eachCell(c => Object.assign(c, headerStyle));
   ws3.getRow(1).height = 35;
-  ws3.addRow(["Manakah yang termasuk planet di tata surya?", "Bumi", "Mars", "Bulan", "Venus", "A,B,D", 15]).eachCell(c => Object.assign(c, exampleStyle));
+  ws3.addRow(["Manakah yang termasuk planet di tata surya?", "Bumi", "Mars", "Bulan", "Venus", "A,B,D", 15, "Bumi, Mars, Venus = planet. Bulan = satelit alami Bumi.", "astronomi, tata-surya"]).eachCell(c => Object.assign(c, exampleStyle));
 
   // Sheet 4: Pasangkan
   const ws4 = wb.addWorksheet("4. Pasangkan", { properties: { tabColor: { argb: "FF8B5CF6" } } });
@@ -3617,10 +3631,12 @@ async function downloadTemplateSoal() {
     { header: "Item Kiri 3", width: 18 }, { header: "Pasangan Kanan 3", width: 22 },
     { header: "Item Kiri 4", width: 18 }, { header: "Pasangan Kanan 4", width: 22 },
     { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
   ];
   ws4.getRow(1).eachCell(c => Object.assign(c, headerStyle));
   ws4.getRow(1).height = 35;
-  ws4.addRow(["Pasangkan negara dengan ibukotanya", "Indonesia", "Jakarta", "Malaysia", "Kuala Lumpur", "Thailand", "Bangkok", "Singapura", "Singapura", 10]).eachCell(c => Object.assign(c, exampleStyle));
+  ws4.addRow(["Pasangkan negara dengan ibukotanya", "Indonesia", "Jakarta", "Malaysia", "Kuala Lumpur", "Thailand", "Bangkok", "Singapura", "Singapura", 10, "Ibukota negara ASEAN. Singapura adalah negara-kota.", "geografi, asean"]).eachCell(c => Object.assign(c, exampleStyle));
 
   // Sheet 5: Excel Sandbox
   const ws5 = wb.addWorksheet("5. Excel Sandbox", { properties: { tabColor: { argb: "FFEAB308" } } });
@@ -3634,6 +3650,8 @@ async function downloadTemplateSoal() {
     { header: "Pilihan D", width: 15 },
     { header: "Jawaban (A/B/C/D)", width: 18 },
     { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
   ];
   ws5.getRow(1).eachCell(c => Object.assign(c, headerStyle));
   ws5.getRow(1).height = 35;
@@ -3641,7 +3659,9 @@ async function downloadTemplateSoal() {
     "Hitung rata-rata nilai siswa di tabel berikut",
     "Nama|Nilai",
     "Budi|85;Sari|92;Andi|78",
-    "75", "85", "92", "78", "B", 15
+    "75", "85", "92", "78", "B", 15,
+    "Rata-rata = (85+92+78)/3 = 85. Pakai =AVERAGE(B2:B4).",
+    "informatika, excel"
   ]).eachCell(c => Object.assign(c, exampleStyle));
 
   // Sheet 6: Essay
@@ -3651,6 +3671,8 @@ async function downloadTemplateSoal() {
     { header: "Kata Kunci (pisah koma)", width: 35 },
     { header: "Panduan Penilaian", width: 40 },
     { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
   ];
   ws6.getRow(1).eachCell(c => Object.assign(c, headerStyle));
   ws6.getRow(1).height = 35;
@@ -3658,7 +3680,9 @@ async function downloadTemplateSoal() {
     "Jelaskan proses fotosintesis pada tumbuhan!",
     "klorofil, cahaya matahari, karbondioksida, glukosa, oksigen",
     "Nilai 100 jika menjelaskan 5 elemen lengkap, 70 jika 3 elemen, 40 jika hanya menyebut",
-    20
+    20,
+    "6CO2 + 6H2O + cahaya → C6H12O6 + 6O2. Terjadi di kloroplas dengan klorofil.",
+    "biologi, tumbuhan"
   ]).eachCell(c => Object.assign(c, exampleStyle));
 
   // Sheet PETUNJUK
@@ -3670,6 +3694,15 @@ async function downloadTemplateSoal() {
     "1. Isi soal di sheet sesuai TIPE soal yang diinginkan (tab di bawah).",
     "2. Setiap baris = 1 soal. Hapus contoh sebelum import (atau biarkan, akan ikut terimport).",
     "3. Kolom POIN: nilai per soal (default 10).",
+    "",
+    "=== KOLOM BARU ===",
+    "",
+    "Pembahasan (opsional): penjelasan jawaban yang ditampilkan ke siswa",
+    "   setelah deadline. Kosongkan kalau tidak perlu.",
+    "",
+    "Tags (opsional): label untuk filter di Bank Soal. Pisah dengan koma.",
+    "   Contoh: 'bab-3, UTS, energi' atau 'astronomi, tata-surya'.",
+    "   Tips: gunakan tag konsisten supaya gampang dicari.",
     "",
     "=== TIPE SOAL ===",
     "",
