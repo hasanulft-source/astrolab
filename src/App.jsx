@@ -2833,9 +2833,12 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
 
   const pct = Math.round(((idx + 1) / total) * 100);
   const answered = Object.keys(answers).length;
-  const belumDijawab = t.soal.map((_, i) => i).filter(i => {
+  // Pakai soalList (display order) supaya konsisten dengan answers[i].
+  // Kalau pakai t.soal[i] (original order), pas shuffled bisa mismatch: answers[i] adalah jawaban
+  // untuk soal display ke-i, tapi type-check dilakuin terhadap soal original ke-i (soal beda).
+  const belumDijawab = soalList.map((_, i) => i).filter(i => {
     const a = answers[i];
-    const s = t.soal[i];
+    const s = soalList[i];
     if (a === undefined || a === null) return true;
     if (Array.isArray(a) && a.length === 0) return true;
     // Type-aware validation untuk tipe baru
@@ -4622,13 +4625,14 @@ function NilaiEssayModal({ tugas, store, onClose }) {
             const isCurrent = i === activeSubIdx;
             const perluDinilai = (sub.soalResults || []).filter(r => r.statusNilai === "perlu_dinilai").length;
             return (
-              <button key={sub.id} onClick={() => setActiveSubIdx(i)} style={{
+              <button key={sub.id} onClick={() => setActiveSubIdx(i)} title={s?.nama || sub.siswaId} style={{
                 padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
                 border: `1.5px solid ${isCurrent ? "var(--accent)" : "var(--line)"}`,
                 background: isCurrent ? "var(--accent)" : "var(--surface)",
                 color: isCurrent ? "#fff" : "var(--ink-2)",
+                maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
               }}>
-                {s?.namaDisplay || s?.nama || sub.siswaId} {perluDinilai > 0 && <span style={{ marginLeft: 4, padding: "1px 5px", background: isCurrent ? "rgba(255,255,255,.3)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 9 }}>{perluDinilai}</span>}
+                {s?.nama || s?.namaDisplay || sub.siswaId} {perluDinilai > 0 && <span style={{ marginLeft: 4, padding: "1px 5px", background: isCurrent ? "rgba(255,255,255,.3)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 9 }}>{perluDinilai}</span>}
               </button>
             );
           })}
@@ -4636,7 +4640,7 @@ function NilaiEssayModal({ tugas, store, onClose }) {
 
         <div style={{ flex: 1, overflowY: "auto", padding: "0 4px" }}>
           <div style={{ marginBottom: 14, padding: "10px 12px", background: "var(--accent-tint)", borderRadius: 8, fontSize: 13 }}>
-            <div style={{ fontWeight: 700, color: "var(--accent-2)" }}>{siswa?.namaDisplay || siswa?.nama || currentSub.siswaId}</div>
+            <div style={{ fontWeight: 700, color: "var(--accent-2)" }}>{siswa?.nama || siswa?.namaDisplay || currentSub.siswaId}</div>
             <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{essaySoals.length} essay dalam tugas ini</div>
           </div>
 
