@@ -4619,7 +4619,7 @@ function NilaiEssayModal({ tugas, store, onClose }) {
         </div>
 
         {/* Siswa navigator */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap", maxHeight: 90, overflowY: "auto" }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap", paddingBottom: 2 }}>
           {subsWithEssay.map((sub, i) => {
             const s = siswaList.find(x => x.id === sub.siswaId);
             const isCurrent = i === activeSubIdx;
