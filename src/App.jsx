@@ -4626,16 +4626,17 @@ function NilaiEssayModal({ tugas, store, onClose }) {
             const perluDinilai = (sub.soalResults || []).filter(r => r.statusNilai === "perlu_dinilai").length;
             return (
               <button key={sub.id} onClick={() => setActiveSubIdx(i)} title={s?.nama || sub.siswaId} style={{
-                padding: "6px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                height: 28, padding: "0 12px",
+                borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer",
                 border: `1.5px solid ${isCurrent ? "var(--accent)" : "var(--line)"}`,
                 background: isCurrent ? "var(--accent)" : "var(--surface)",
                 color: isCurrent ? "#fff" : "var(--ink-2)",
                 maxWidth: 200, whiteSpace: "nowrap",
                 display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-                lineHeight: 1.4,
+                lineHeight: 1,
               }}>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{s?.nama || s?.namaDisplay || sub.siswaId}</span>
-                {perluDinilai > 0 && <span style={{ padding: "1px 6px", background: isCurrent ? "rgba(255,255,255,.28)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 9, fontWeight: 700, lineHeight: 1.4, flexShrink: 0 }}>{perluDinilai}</span>}
+                {perluDinilai > 0 && <span style={{ minWidth: 16, height: 16, padding: "0 5px", background: isCurrent ? "rgba(255,255,255,.28)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 999, fontSize: 9, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, lineHeight: 1 }}>{perluDinilai}</span>}
               </button>
             );
           })}
