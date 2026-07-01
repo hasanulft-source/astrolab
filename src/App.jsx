@@ -4619,22 +4619,23 @@ function NilaiEssayModal({ tugas, store, onClose }) {
         </div>
 
         {/* Siswa navigator */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", maxHeight: 120, overflowY: "auto" }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap", maxHeight: 90, overflowY: "auto" }}>
           {subsWithEssay.map((sub, i) => {
             const s = siswaList.find(x => x.id === sub.siswaId);
             const isCurrent = i === activeSubIdx;
             const perluDinilai = (sub.soalResults || []).filter(r => r.statusNilai === "perlu_dinilai").length;
             return (
               <button key={sub.id} onClick={() => setActiveSubIdx(i)} title={s?.nama || sub.siswaId} style={{
-                padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                padding: "6px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
                 border: `1.5px solid ${isCurrent ? "var(--accent)" : "var(--line)"}`,
                 background: isCurrent ? "var(--accent)" : "var(--surface)",
                 color: isCurrent ? "#fff" : "var(--ink-2)",
-                maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                display: "inline-flex", alignItems: "center", gap: 8,
+                maxWidth: 200, whiteSpace: "nowrap",
+                display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                lineHeight: 1.4,
               }}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{s?.nama || s?.namaDisplay || sub.siswaId}</span>
-                {perluDinilai > 0 && <span style={{ padding: "2px 8px", background: isCurrent ? "rgba(255,255,255,.28)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 11, fontWeight: 700, lineHeight: 1.2, flexShrink: 0 }}>{perluDinilai}</span>}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{s?.nama || s?.namaDisplay || sub.siswaId}</span>
+                {perluDinilai > 0 && <span style={{ padding: "1px 6px", background: isCurrent ? "rgba(255,255,255,.28)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 9, fontWeight: 700, lineHeight: 1.4, flexShrink: 0 }}>{perluDinilai}</span>}
               </button>
             );
           })}
