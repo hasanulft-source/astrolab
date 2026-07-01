@@ -4619,20 +4619,22 @@ function NilaiEssayModal({ tugas, store, onClose }) {
         </div>
 
         {/* Siswa navigator */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap", maxHeight: 80, overflowY: "auto" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", maxHeight: 120, overflowY: "auto" }}>
           {subsWithEssay.map((sub, i) => {
             const s = siswaList.find(x => x.id === sub.siswaId);
             const isCurrent = i === activeSubIdx;
             const perluDinilai = (sub.soalResults || []).filter(r => r.statusNilai === "perlu_dinilai").length;
             return (
               <button key={sub.id} onClick={() => setActiveSubIdx(i)} title={s?.nama || sub.siswaId} style={{
-                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
                 border: `1.5px solid ${isCurrent ? "var(--accent)" : "var(--line)"}`,
                 background: isCurrent ? "var(--accent)" : "var(--surface)",
                 color: isCurrent ? "#fff" : "var(--ink-2)",
-                maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                display: "inline-flex", alignItems: "center", gap: 8,
               }}>
-                {s?.nama || s?.namaDisplay || sub.siswaId} {perluDinilai > 0 && <span style={{ marginLeft: 4, padding: "1px 5px", background: isCurrent ? "rgba(255,255,255,.3)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 9 }}>{perluDinilai}</span>}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{s?.nama || s?.namaDisplay || sub.siswaId}</span>
+                {perluDinilai > 0 && <span style={{ padding: "2px 8px", background: isCurrent ? "rgba(255,255,255,.28)" : "#fef3c7", color: isCurrent ? "#fff" : "#92400e", borderRadius: 99, fontSize: 11, fontWeight: 700, lineHeight: 1.2, flexShrink: 0 }}>{perluDinilai}</span>}
               </button>
             );
           })}
