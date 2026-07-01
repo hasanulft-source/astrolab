@@ -610,6 +610,16 @@ function withTimeout(promise, ms = 10000, errMsg = "Koneksi lambat atau terputus
   ]);
 }
 
+// ─── FUZZY MATCH TEXT ───
+// Dipakai untuk grading tipe soal Pseudocode Trace (output) dan Debug Challenge (perbaikan).
+// Strategy: normalisasi (lowercase + collapse whitespace + trim) lalu exact match.
+// Toleran typo spasi/case, tapi strict soal typo huruf. Cocok untuk output pendek & syntax code.
+function fuzzyMatchText(input, expected) {
+  const norm = s => (s == null ? "" : s.toString()).toLowerCase().replace(/\s+/g, " ").trim();
+  const a = norm(input), b = norm(expected);
+  return a.length > 0 && a === b;
+}
+
 // ─── XP / LEVEL / BADGE SYSTEM ───
 // ─── LEVEL SYSTEM: 5 Tier × 4 Sub-level = 20 Levels ───
 // Setiap tier punya icon SVG sendiri, sub-level dibedakan dengan jumlah pip / accent
@@ -2353,16 +2363,18 @@ function ReviewTugas({ user, store, tugasId, navigate }) {
         {(t.soal || []).map((soal, idx) => {
           const r = resultByIdx[idx];
           const isEssay = soal.type === "essay";
-          const isCorrect = isEssay ? (r?.statusNilai === "dinilai" && (r?.nilaiEssay || 0) >= 60) : r?.correct === true;
+          const isRefleksi = soal.type === "refleksi";
+          const isManual = isEssay || isRefleksi;
+          const isCorrect = isManual ? (r?.statusNilai === "dinilai" && (r?.nilaiEssay || 0) >= 60) : r?.correct === true;
           const studentAns = isEssay ? r?.jawabanEssay : (r ? undefined : undefined);
 
           return (
-            <Card key={idx} pad="md" style={{ borderLeft: `4px solid ${isEssay && r?.statusNilai !== "dinilai" ? "var(--warn)" : isCorrect ? "var(--good)" : "var(--bad)"}` }}>
+            <Card key={idx} pad="md" style={{ borderLeft: `4px solid ${isManual && r?.statusNilai !== "dinilai" ? "var(--warn)" : isCorrect ? "var(--good)" : "var(--bad)"}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>SOAL {idx + 1}</span>
-                {isEssay
+                {isManual
                   ? (r?.statusNilai === "dinilai"
-                      ? <span className="chip" style={{ fontSize: 10, background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", color: isCorrect ? "var(--good)" : "var(--bad)" }}>Essay · {r.nilaiEssay}/100</span>
+                      ? <span className="chip" style={{ fontSize: 10, background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", color: isCorrect ? "var(--good)" : "var(--bad)" }}>{isRefleksi ? "Refleksi" : "Essay"} · {r.nilaiEssay}/100</span>
                       : <span className="chip" style={{ fontSize: 10, background: "#fef3c7", color: "#92400e" }}>Belum dinilai</span>)
                   : <span className="chip" style={{ fontSize: 10, background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", color: isCorrect ? "var(--good)" : "var(--bad)" }}>{isCorrect ? "✓ Benar" : "✗ Salah"}</span>
                 }
@@ -2422,6 +2434,64 @@ function ReviewTugas({ user, store, tugasId, navigate }) {
                       <div key={ki} style={{ fontSize: 12 }}>{k} → {soal.kanan?.[(soal.jawaban || [])[ki]] ?? "—"}</div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Pseudocode Trace: kode + jawaban siswa vs kunci */}
+              {soal.type === "pseudocode" && (
+                <div>
+                  <pre style={{ background: "#1e293b", color: "#e2e8f0", padding: "10px 12px", borderRadius: 8, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.55, overflowX: "auto", marginBottom: 8 }}>{soal.kode}</pre>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginBottom: 4 }}>Jawaban kamu:</div>
+                  <div style={{ padding: "8px 12px", background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", borderRadius: 8, fontSize: 13, fontFamily: "var(--mono)", marginBottom: 6, whiteSpace: "pre-wrap" }}>
+                    {r?.pickedText || <span style={{ fontStyle: "italic", color: "var(--ink-3)" }}>(kosong)</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
+                    <b>Output benar:</b> <span style={{ fontFamily: "var(--mono)" }}>{soal.jawabanBenar}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Debug Challenge: kode + jawaban siswa vs kunci */}
+              {soal.type === "debug" && (
+                <div>
+                  <div style={{ background: "#1e293b", color: "#e2e8f0", padding: "10px 0", borderRadius: 8, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6, overflowX: "auto", marginBottom: 8 }}>
+                    {(soal.kodeBuggy || "").split("\n").map((line, i) => (
+                      <div key={i} style={{ display: "flex", padding: "0 12px", background: (i + 1) === soal.barisBug ? "rgba(220,38,38,0.18)" : "transparent" }}>
+                        <span style={{ color: "#64748b", minWidth: 24, textAlign: "right", marginRight: 12 }}>{i + 1}</span>
+                        <span style={{ whiteSpace: "pre" }}>{line || " "}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginBottom: 4 }}>Jawaban kamu:</div>
+                  <div style={{ padding: "6px 12px", background: "var(--surface-alt)", borderRadius: 8, fontSize: 12, marginBottom: 6 }}>
+                    Baris: <b>{r?.pickedDebug?.baris ?? "—"}</b> · Perbaikan: <span style={{ fontFamily: "var(--mono)" }}>{r?.pickedDebug?.perbaikan || "(kosong)"}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
+                    <b>Baris bug:</b> {soal.barisBug} · <b>Perbaikan benar:</b> <span style={{ fontFamily: "var(--mono)" }}>{soal.perbaikanBenar}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Refleksi Terstruktur: 4 kolom siswa + panduan penilaian guru */}
+              {soal.type === "refleksi" && (
+                <div>
+                  {["k1", "k2", "k3", "k4"].map((key, i) => {
+                    const label = soal[`labelKolom${i + 1}`] || ["Prediksi saya", "Yang saya observasi", "Yang salah/bug", "Pelajaran yang saya ambil"][i];
+                    const val = r?.jawabanRefleksi?.[key] || "";
+                    return (
+                      <div key={key} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-2)", marginBottom: 2 }}>{i + 1}. {label}</div>
+                        <div style={{ padding: "6px 10px", background: "var(--surface-alt)", borderRadius: 6, fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                          {val || <span style={{ fontStyle: "italic", color: "var(--ink-3)" }}>(kosong)</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {r?.komentarGuru && (
+                    <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--accent-tint)", borderRadius: 8, fontSize: 12 }}>
+                      <b style={{ color: "var(--accent-2)" }}>Komentar guru:</b> {r.komentarGuru}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2646,7 +2716,15 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       else if (s.type === "komplex") correct = (ans || []).slice().sort().join(",") === (s.jawaban || []).slice().sort().join(",");
       else if (s.type === "pasang") correct = s.jawaban?.every((j, ki) => (ans || {})[ki] === j);
       else if (s.type === "excel") correct = ans === s.jawaban;
+      else if (s.type === "pseudocode") correct = fuzzyMatchText(ans, s.jawabanBenar);
+      else if (s.type === "debug") {
+        // Cek 2 field: nomor baris (int match) & perbaikan (fuzzy text)
+        const barisCocok = Number(ans?.baris) === Number(s.barisBug);
+        const perbaikanCocok = fuzzyMatchText(ans?.perbaikan, s.perbaikanBenar);
+        correct = barisCocok && perbaikanCocok;
+      }
       else if (s.type === "essay") { correct = null; /* perlu penilaian manual */ }
+      else if (s.type === "refleksi") { correct = null; /* perlu penilaian manual */ }
       if (correct === true) { totalPoin += poinSoal; correctCount++; }
       const resultItem = { origIdx: s._origIdx ?? i, correct, poinSoal };
       // Simpan jawaban siswa untuk review (kecuali essay yang pakai jawabanEssay)
@@ -2656,17 +2734,25 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
         resultItem.pickedMulti = ans || [];
       } else if (s.type === "pasang") {
         resultItem.pickedPasang = ans || {};
+      } else if (s.type === "pseudocode") {
+        resultItem.pickedText = ans || "";
+      } else if (s.type === "debug") {
+        resultItem.pickedDebug = { baris: ans?.baris ?? null, perbaikan: ans?.perbaikan || "" };
       }
       if (s.type === "essay") {
         resultItem.jawabanEssay = ans || "";
         resultItem.statusNilai = "perlu_dinilai";
       }
+      if (s.type === "refleksi") {
+        resultItem.jawabanRefleksi = ans || { k1: "", k2: "", k3: "", k4: "" };
+        resultItem.statusNilai = "perlu_dinilai";
+      }
       soalResults.push(resultItem);
     });
-    // Hitung nilai hanya dari soal non-essay (essay menyusul setelah dinilai guru)
-    const nonEssayTotal = t.soal.filter(s => s.type !== "essay").length || 1;
+    // Hitung nilai hanya dari soal auto-graded (essay & refleksi menyusul setelah dinilai guru)
+    const nonEssayTotal = t.soal.filter(s => s.type !== "essay" && s.type !== "refleksi").length || 1;
     const nilai = Math.round((correctCount / nonEssayTotal) * 100);
-    const hasEssay = t.soal.some(s => s.type === "essay");
+    const hasEssay = t.soal.some(s => s.type === "essay" || s.type === "refleksi");
     const dl = fmtDl(t.deadline);
     const ontime = dl.tone !== "bad";
     const prevStats = store.getStats(user.id);
@@ -2749,7 +2835,20 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   const answered = Object.keys(answers).length;
   const belumDijawab = t.soal.map((_, i) => i).filter(i => {
     const a = answers[i];
-    return a === undefined || a === null || (Array.isArray(a) && a.length === 0);
+    const s = t.soal[i];
+    if (a === undefined || a === null) return true;
+    if (Array.isArray(a) && a.length === 0) return true;
+    // Type-aware validation untuk tipe baru
+    if (s?.type === "pseudocode" || s?.type === "essay") {
+      return !a || !a.toString().trim();
+    }
+    if (s?.type === "debug") {
+      return !a.baris || !a.perbaikan || !a.perbaikan.toString().trim();
+    }
+    if (s?.type === "refleksi") {
+      return !a.k1?.trim() || !a.k2?.trim() || !a.k3?.trim() || !a.k4?.trim();
+    }
+    return false;
   });
   const curOk = !belumDijawab.includes(idx);
 
@@ -2851,6 +2950,44 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       {soal.type === "tf" && <div style={{ display: "flex", gap: 10 }}>{["Benar", "Salah"].map((o, i) => <button key={i} className={`quiz-opt ${answers[safeIdx] === i ? "selected" : ""}`} style={{ flex: 1 }} onClick={() => answer(i)}><div className="quiz-letter">{i === 0 ? "B" : "S"}</div><span style={{ flex: 1 }}>{o}</span></button>)}</div>}
       {soal.type === "komplex" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pilih semua jawaban yang benar</div>{soal.opsi?.map((o, i) => { const sel = (answers[safeIdx] || []).includes(i); return <button key={i} className={`quiz-opt ${sel ? "selected" : ""}`} onClick={() => toggleMulti(i)}><div style={{ width: 28, height: 28, borderRadius: 6, border: `2px solid ${sel ? "var(--accent)" : "var(--line)"}`, background: sel ? "var(--accent)" : "var(--surface-alt)", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel && <I n="check" s={13} style={{ color: "#fff" }} />}</div><span style={{ flex: 1 }}>{String.fromCharCode(65 + i)}. {o}</span></button>; })}</>}
       {soal.type === "pasang" && <><div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Pasangkan kolom kiri dengan kolom kanan</div>{soal.kiri?.map((k, ki) => <div key={ki} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}><div style={{ flex: 1, padding: "8px 12px", background: "var(--accent-soft)", borderRadius: "var(--r-sm)", fontSize: 13, fontWeight: 500, color: "var(--accent-2)" }}>{k}</div><I n="chevR" s={14} /><select className="inp" style={{ flex: 1, fontSize: 13 }} value={(answers[safeIdx] || {})[ki] ?? ""} onChange={e => { const cur = answers[safeIdx] || {}; answer({ ...cur, [ki]: Number(e.target.value) }); }}><option value="">Pilih...</option>{soal.kanan?.map((r, ri) => <option key={ri} value={ri}>{r}</option>)}</select></div>)}</>}
+      {soal.type === "pseudocode" && <div>
+        <pre style={{ background: "#1e293b", color: "#e2e8f0", padding: "14px 16px", borderRadius: 8, fontFamily: "var(--mono)", fontSize: 13, lineHeight: 1.6, overflowX: "auto", whiteSpace: "pre", marginBottom: 14 }}>{soal.kode}</pre>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6 }}>Trace output di kepala/kertas, lalu tulis hasil di sini:</div>
+        <textarea className="inp" rows={3} style={{ fontSize: 14, fontFamily: "var(--mono)" }} placeholder="Output..." value={answers[safeIdx] || ""} onChange={e => answer(e.target.value)} />
+      </div>}
+      {soal.type === "debug" && <div>
+        <div style={{ background: "#1e293b", color: "#e2e8f0", padding: "14px 0", borderRadius: 8, fontFamily: "var(--mono)", fontSize: 13, lineHeight: 1.7, overflowX: "auto", marginBottom: 14 }}>
+          {(soal.kodeBuggy || "").split("\n").map((line, i) => (
+            <div key={i} style={{ display: "flex", padding: "0 14px" }}>
+              <span style={{ color: "#64748b", minWidth: 28, textAlign: "right", marginRight: 14, userSelect: "none" }}>{i + 1}</span>
+              <span style={{ whiteSpace: "pre" }}>{line || " "}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+          <div style={{ flex: "0 0 140px" }}>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>Nomor baris bug</div>
+            <input className="inp" type="number" min="1" placeholder="Baris ke..." value={(answers[safeIdx] || {}).baris ?? ""} onChange={e => { const cur = answers[safeIdx] || {}; answer({ ...cur, baris: e.target.value ? Number(e.target.value) : null }); }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>Perbaikan yang benar</div>
+            <input className="inp" style={{ fontFamily: "var(--mono)", fontSize: 13 }} placeholder="Tulis baris yang sudah benar..." value={(answers[safeIdx] || {}).perbaikan || ""} onChange={e => { const cur = answers[safeIdx] || {}; answer({ ...cur, perbaikan: e.target.value }); }} />
+          </div>
+        </div>
+      </div>}
+      {soal.type === "refleksi" && <div>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>Isi keempat kolom refleksi berikut (semua wajib):</div>
+        {["k1", "k2", "k3", "k4"].map((key, i) => {
+          const label = soal[`labelKolom${i + 1}`] || ["Prediksi saya", "Yang saya observasi", "Yang salah/bug", "Pelajaran yang saya ambil"][i];
+          return (
+            <div key={key} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-2)", marginBottom: 4 }}>{i + 1}. {label}</div>
+              <textarea className="inp" rows={3} style={{ fontSize: 13, lineHeight: 1.5 }} placeholder={`Tulis ${label.toLowerCase()}...`} value={(answers[safeIdx] || {})[key] || ""} onChange={e => { const cur = answers[safeIdx] || { k1: "", k2: "", k3: "", k4: "" }; answer({ ...cur, [key]: e.target.value }); }} />
+            </div>
+          );
+        })}
+        <div style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right" }}>📝 Dinilai manual oleh guru</div>
+      </div>}
     </div>
 
     {/* Footer nav */}
@@ -3685,6 +3822,75 @@ async function downloadTemplateSoal() {
     "biologi, tumbuhan"
   ]).eachCell(c => Object.assign(c, exampleStyle));
 
+  // Sheet 7: Pseudocode Trace (khusus Informatika)
+  const ws7p = wb.addWorksheet("7. Pseudocode Trace", { properties: { tabColor: { argb: "FF06B6D4" } } });
+  ws7p.columns = [
+    { header: "Pertanyaan", width: 40 },
+    { header: "Kode Pseudocode", width: 45 },
+    { header: "Jawaban Output", width: 25 },
+    { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
+  ];
+  ws7p.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws7p.getRow(1).height = 35;
+  ws7p.addRow([
+    "Trace output dari pseudocode berikut:",
+    "x = 5\ny = 3\nz = x + y\nprint(z)\nprint(x * y)",
+    "8\n15",
+    10,
+    "Baris 3: z = 5+3 = 8. Baris 4 cetak z. Baris 5 cetak 5*3 = 15.",
+    "informatika, pseudocode, trace"
+  ]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet 8: Debug Challenge (khusus Informatika)
+  const ws8d = wb.addWorksheet("8. Debug Challenge", { properties: { tabColor: { argb: "FFDC2626" } } });
+  ws8d.columns = [
+    { header: "Pertanyaan", width: 40 },
+    { header: "Kode Buggy", width: 45 },
+    { header: "Nomor Baris Bug", width: 15 },
+    { header: "Perbaikan yang Benar", width: 30 },
+    { header: "Poin", width: 8 },
+    { header: "Pembahasan", width: 40 },
+    { header: "Tags", width: 22 },
+  ];
+  ws8d.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws8d.getRow(1).height = 35;
+  ws8d.addRow([
+    "Ada bug pada kode berikut. Cari baris yang salah dan tulis perbaikannya:",
+    "total = 0\nfor i = 1 to 5\n  total = total + i\nprint(total * 2)",
+    4,
+    "print(total)",
+    15,
+    "Baris 4 seharusnya cetak total saja, bukan total*2 (yang tidak sesuai instruksi).",
+    "informatika, debug"
+  ]).eachCell(c => Object.assign(c, exampleStyle));
+
+  // Sheet 9: Refleksi Terstruktur (4 kolom wajib)
+  const ws9r = wb.addWorksheet("9. Refleksi", { properties: { tabColor: { argb: "FF7C3AED" } } });
+  ws9r.columns = [
+    { header: "Prompt Utama", width: 45 },
+    { header: "Label Kolom 1", width: 22 },
+    { header: "Label Kolom 2", width: 22 },
+    { header: "Label Kolom 3", width: 22 },
+    { header: "Label Kolom 4", width: 22 },
+    { header: "Poin", width: 8 },
+    { header: "Panduan Penilaian", width: 40 },
+    { header: "Tags", width: 22 },
+  ];
+  ws9r.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws9r.getRow(1).height = 35;
+  ws9r.addRow([
+    "Refleksikan proses debugging kamu tadi.",
+    "Prediksi saya",
+    "Yang saya observasi",
+    "Yang salah/bug",
+    "Pelajaran yang saya ambil",
+    20,
+    "Nilai 100 kalau semua 4 kolom terisi dengan reflektif dan spesifik. Turun proporsional untuk yang generik atau kosong.",
+    "informatika, refleksi, metakognisi"
+  ]).eachCell(c => Object.assign(c, exampleStyle));
+
   // Sheet PETUNJUK
   const ws7 = wb.addWorksheet("PETUNJUK", { properties: { tabColor: { argb: "FFDC2626" } } });
   ws7.columns = [{ width: 90 }];
@@ -3723,6 +3929,21 @@ async function downloadTemplateSoal() {
     "Essay: Jawaban panjang, dinilai manual oleh guru.",
     "   - Kata Kunci: pisah dengan koma. Akan ditampilkan ke guru saat menilai.",
     "   - Panduan Penilaian: rubrik untuk guru, opsional.",
+    "",
+    "Pseudocode Trace (khusus Informatika): Siswa trace output pseudocode.",
+    "   - Kode Pseudocode: tulis dengan baris terpisah pakai Enter (Alt+Enter di Excel).",
+    "   - Jawaban Output: hasil output persis (auto-check exact match, toleran spasi/case).",
+    "",
+    "Debug Challenge (khusus Informatika): Siswa cari bug & tulis perbaikan.",
+    "   - Kode Buggy: tulis dengan baris terpisah pakai Enter (Alt+Enter di Excel).",
+    "   - Nomor Baris Bug: angka (dihitung dari 1 di atas).",
+    "   - Perbaikan yang Benar: kode/teks pengganti baris yang salah (auto-check).",
+    "",
+    "Refleksi Terstruktur: 4 kolom wajib, dinilai manual oleh guru.",
+    "   - Prompt Utama: pertanyaan/instruksi refleksi.",
+    "   - Label Kolom 1-4: nama kolom yang siswa isi (contoh default: Prediksi saya,",
+    "     Yang saya observasi, Yang salah/bug, Pelajaran yang saya ambil).",
+    "   - Semua 4 kolom wajib diisi siswa sebelum bisa submit.",
     "",
     "=== TIPS ===",
     "",
@@ -3901,10 +4122,13 @@ async function importSoalFromExcel(file) {
           else if (n.includes("pasangkan") || n.includes("urutan") || n.includes("susun") || n.includes("4.") || n.includes("ungu") || n.includes("pasang")) tipe = "pasang";
           else if (n.includes("excel") || n.includes("sandbox") || n.includes("5.") || n.includes("kuning")) tipe = "excel";
           else if (n.includes("essay") || n.includes("6.") || n.includes("pink") || n.includes("magenta")) tipe = "essay";
+          else if (n.includes("pseudocode") || n.includes("trace") || n.includes("7.")) tipe = "pseudocode";
+          else if (n.includes("debug") || n.includes("challenge") || n.includes("8.")) tipe = "debug";
+          else if (n.includes("refleksi") || n.includes("terstruktur") || n.includes("9.")) tipe = "refleksi";
           if (!tipe) return;
 
           rows.forEach(row => {
-            const pertanyaan = row["Pertanyaan"] || row["Pertanyaan / Instruksi"] || row["Pernyataan"] || "";
+            const pertanyaan = row["Pertanyaan"] || row["Pertanyaan / Instruksi"] || row["Pernyataan"] || row["Prompt Utama"] || "";
             if (!pertanyaan.toString().trim()) return;
             const poin = Number(row["Poin"]) || 10;
             // Pembahasan & Tags (optional, common untuk semua tipe)
@@ -3950,6 +4174,24 @@ async function importSoalFromExcel(file) {
               const kataKunci = (row["Kata Kunci (pisah koma)"] || "").toString();
               const panduanNilai = (row["Panduan Penilaian"] || "").toString();
               soal.push({ id: uid(), type: "essay", pertanyaan: pertanyaan.toString(), kataKunci, panduanNilai, poin, pembahasan, tags });
+            } else if (tipe === "pseudocode") {
+              const kode = (row["Kode Pseudocode"] || row["Kode"] || "").toString();
+              const jawabanBenar = (row["Jawaban Output"] || row["Output"] || "").toString();
+              if (!kode.trim() || !jawabanBenar.trim()) return;
+              soal.push({ id: uid(), type: "pseudocode", pertanyaan: pertanyaan.toString(), kode, jawabanBenar, poin, pembahasan, tags });
+            } else if (tipe === "debug") {
+              const kodeBuggy = (row["Kode Buggy"] || row["Kode"] || "").toString();
+              const barisBug = Number(row["Nomor Baris Bug"] || row["Baris Bug"] || 0);
+              const perbaikanBenar = (row["Perbaikan yang Benar"] || row["Perbaikan"] || "").toString();
+              if (!kodeBuggy.trim() || !barisBug || !perbaikanBenar.trim()) return;
+              soal.push({ id: uid(), type: "debug", pertanyaan: pertanyaan.toString(), kodeBuggy, barisBug, perbaikanBenar, poin, pembahasan, tags });
+            } else if (tipe === "refleksi") {
+              const labelKolom1 = (row["Label Kolom 1"] || "Prediksi saya").toString();
+              const labelKolom2 = (row["Label Kolom 2"] || "Yang saya observasi").toString();
+              const labelKolom3 = (row["Label Kolom 3"] || "Yang salah/bug").toString();
+              const labelKolom4 = (row["Label Kolom 4"] || "Pelajaran yang saya ambil").toString();
+              const panduanNilai = (row["Panduan Penilaian"] || "").toString();
+              soal.push({ id: uid(), type: "refleksi", pertanyaan: pertanyaan.toString(), labelKolom1, labelKolom2, labelKolom3, labelKolom4, panduanNilai, poin, pembahasan, tags });
             }
           });
         });
@@ -4297,14 +4539,14 @@ function NilaiEssayModal({ tugas, store, onClose }) {
   const [activeSubIdx, setActiveSubIdx] = useState(0);
   const [savingFor, setSavingFor] = useState(null);
 
-  const essaySoals = (tugas.soal || []).map((s, i) => ({ ...s, idx: i })).filter(s => s.type === "essay");
+  const essaySoals = (tugas.soal || []).map((s, i) => ({ ...s, idx: i })).filter(s => s.type === "essay" || s.type === "refleksi");
 
   if (subsWithEssay.length === 0) {
     return (
       <div className="modal-overlay" onClick={onClose}>
         <div className="modal" onClick={e => e.stopPropagation()}>
-          <h3>Tidak ada essay untuk dinilai</h3>
-          <p style={{ fontSize: 13, color: "var(--ink-3)" }}>Semua essay sudah dinilai. ✅</p>
+          <h3>Tidak ada jawaban untuk dinilai</h3>
+          <p style={{ fontSize: 13, color: "var(--ink-3)" }}>Semua essay/refleksi sudah dinilai. ✅</p>
           <div className="modal-actions" style={{ marginTop: 14 }}>
             <button className="btn btn-primary btn-sm" onClick={onClose}>Tutup</button>
           </div>
@@ -4369,7 +4611,7 @@ function NilaiEssayModal({ tugas, store, onClose }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 600, maxHeight: "92vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <h3 style={{ margin: 0 }}>Nilai Essay</h3>
+          <h3 style={{ margin: 0 }}>Nilai Manual</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--ink-3)" }}>×</button>
         </div>
 
@@ -4420,11 +4662,12 @@ function NilaiEssayModal({ tugas, store, onClose }) {
 function EssayCard({ soal, result, isDinilai, saving, onNilai }) {
   const [nilai, setNilai] = useState(result?.nilaiEssay ?? "");
   const [komentar, setKomentar] = useState(result?.komentarGuru || "");
+  const isRefleksi = soal.type === "refleksi";
 
   return (
     <Card pad="md" style={{ marginBottom: 10, border: isDinilai ? "1.5px solid var(--good)" : "1.5px solid #fde68a" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>SOAL {soal.idx + 1}</span>
+        <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>SOAL {soal.idx + 1} · {isRefleksi ? "REFLEKSI" : "ESSAY"}</span>
         {isDinilai ? <span className="chip chip-good" style={{ fontSize: 10 }}>✓ Dinilai · {result.nilaiEssay}/100</span> : <span style={{ fontSize: 10, padding: "1px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: 600 }}>Perlu dinilai</span>}
       </div>
 
@@ -4444,9 +4687,26 @@ function EssayCard({ soal, result, isDinilai, saving, onNilai }) {
 
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4, fontWeight: 600 }}>Jawaban Siswa:</div>
-        <div style={{ padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-          {result?.jawabanEssay || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(tidak menjawab)</span>}
-        </div>
+        {isRefleksi ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {["k1", "k2", "k3", "k4"].map((key, i) => {
+              const label = soal[`labelKolom${i + 1}`] || ["Prediksi saya", "Yang saya observasi", "Yang salah/bug", "Pelajaran yang saya ambil"][i];
+              const val = result?.jawabanRefleksi?.[key] || "";
+              return (
+                <div key={key}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-2)", marginBottom: 2 }}>{i + 1}. {label}</div>
+                  <div style={{ padding: "6px 10px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                    {val || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(kosong)</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+            {result?.jawabanEssay || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(tidak menjawab)</span>}
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
@@ -5256,7 +5516,7 @@ function BankSoal({ store, navigate }) {
                       <span className="chip chip-info" style={{ fontSize: 10 }}>{s.mapel}</span>
                       <span className="chip" style={{ fontSize: 10, background: "var(--accent-tint)", color: "var(--accent-2)" }}>Kelas {s.jenjang}</span>
                       <span className="chip" style={{ fontSize: 10, background: s.level === "mudah" ? "#d1fae5" : s.level === "sedang" ? "#fef3c7" : "#fee2e2", color: s.level === "mudah" ? "#065f46" : s.level === "sedang" ? "#713f12" : "#991b1b" }}>{s.level}</span>
-                      <span className="chip" style={{ fontSize: 10, background: "var(--surface-alt)" }}>{s.type === "pg" ? "Pilihan Ganda" : s.type === "tf" ? "Benar/Salah" : s.type === "kompleks" ? "PG Kompleks" : s.type === "excel" ? "Excel Sandbox" : s.type === "essay" ? "Essay" : "Pasangkan"}</span>
+                      <span className="chip" style={{ fontSize: 10, background: "var(--surface-alt)" }}>{s.type === "pg" ? "Pilihan Ganda" : s.type === "tf" ? "Benar/Salah" : s.type === "kompleks" ? "PG Kompleks" : s.type === "excel" ? "Excel Sandbox" : s.type === "essay" ? "Essay" : s.type === "pseudocode" ? "Pseudocode Trace" : s.type === "debug" ? "Debug Challenge" : s.type === "refleksi" ? "Refleksi" : "Pasangkan"}</span>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{s.pertanyaan}</div>
                     {(s.tags || []).length > 0 && (
