@@ -5846,6 +5846,7 @@ function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, 
   const [filterMapel, setFilterMapel] = useState(defaultMapel || "semua");
   const [filterJenjang, setFilterJenjang] = useState(defaultJenjang || "semua");
   const [filterLevel, setFilterLevel] = useState("semua");
+  const [filterTag, setFilterTag] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(new Set());
 
@@ -5854,9 +5855,11 @@ function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, 
     if (filterMapel !== "semua" && s.mapel !== filterMapel) return false;
     if (filterJenjang !== "semua" && s.jenjang !== filterJenjang) return false;
     if (filterLevel !== "semua" && s.level !== filterLevel) return false;
+    if (filterTag && !(s.tags || []).some(t => t.toLowerCase().includes(filterTag.toLowerCase()))) return false;
     if (search && !s.pertanyaan.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+  const allTags = [...new Set(soalList.flatMap(s => s.tags || []))];
 
   function toggle(id) {
     const next = new Set(selected);
@@ -5898,6 +5901,14 @@ function PilihDariBankSoalModal({ store, defaultMapel, defaultJenjang, onClose, 
               <option value="sulit">Sulit</option>
             </select>
           </div>
+          <input className="inp" placeholder="🏷️ Filter tag..." value={filterTag} onChange={e => setFilterTag(e.target.value)} />
+          {allTags.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {allTags.slice(0, 15).map(t => (
+                <button key={t} onClick={() => setFilterTag(filterTag === t ? "" : t)} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 99, border: "1px solid var(--line)", background: filterTag === t ? "var(--accent-tint)" : "var(--surface)", color: filterTag === t ? "var(--accent-2)" : "var(--ink-2)", fontWeight: 600, cursor: "pointer" }}>{t}</button>
+              ))}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: "var(--ink-3)" }}>
             <span>{selected.size} dipilih dari {filtered.length} soal</span>
             <button onClick={selectAll} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Pilih semua</button>
