@@ -5343,6 +5343,104 @@ function ChatScreen({ user, store, params = {} }) {
 
 // ─── KELAS VIEW ───
 // ─── EXPORT LAPORAN PRINT-FRIENDLY ───
+// ─── IMPORT CONFIRM MODAL ───
+// Muncul setelah file Excel di-parse, sebelum soal commit ke Bank Soal.
+// Guru pilih Mapel/Kelas/Level yang berlaku untuk SEMUA soal dalam batch ini
+// (karena template Excel tidak punya kolom mapel/jenjang per-baris).
+function ImportConfirmModal({ soal, store, onClose, onSuccess }) {
+  const [mapel, setMapel] = useState("IPA");
+  const [jenjang, setJenjang] = useState("VII");
+  const [level, setLevel] = useState("sedang");
+  const [saving, setSaving] = useState(false);
+
+  // Preview: hitung breakdown tipe soal untuk ditampilkan ke guru
+  const tipeCount = {};
+  soal.forEach(s => { tipeCount[s.type] = (tipeCount[s.type] || 0) + 1; });
+  const tipeLabel = { pg: "Pilihan Ganda", tf: "Benar/Salah", komplex: "PG Kompleks", pasang: "Pasangkan", excel: "Excel Sandbox", essay: "Essay", pseudocode: "Pseudocode Trace", debug: "Debug Challenge", refleksi: "Refleksi" };
+
+  async function handleConfirm() {
+    setSaving(true);
+    try {
+      const bankSoalList = soal.map(s => {
+        const base = { mapel, jenjang, level, type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: (s.tags && s.tags.length) ? s.tags : ["import"], pembahasan: s.pembahasan || "" };
+        if (s.type === "pg") return { ...base, opsi: s.opsi, jawaban: s.jawaban };
+        if (s.type === "tf") return { ...base, jawaban: s.jawaban };
+        if (s.type === "komplex") {
+          const benarOpsi = (s.opsi || []).map((_, i) => (s.jawaban || []).includes(i));
+          return { ...base, opsi: s.opsi, benarOpsi };
+        }
+        if (s.type === "pasang") {
+          const pasangan = (s.kiri || []).map((k, i) => [k, (s.kanan || [])[i] || ""]);
+          return { ...base, pasangan };
+        }
+        if (s.type === "excel") return { ...base, headers: s.headers, table: s.table, opsi: s.opsi, jawaban: s.jawaban };
+        if (s.type === "essay") return { ...base, kataKunci: s.kataKunci || "", panduanNilai: s.panduanNilai || "" };
+        if (s.type === "pseudocode") return { ...base, kode: s.kode, jawabanBenar: s.jawabanBenar };
+        if (s.type === "debug") return { ...base, kodeBuggy: s.kodeBuggy, barisBug: s.barisBug, perbaikanBenar: s.perbaikanBenar };
+        if (s.type === "refleksi") return { ...base, labelKolom1: s.labelKolom1, labelKolom2: s.labelKolom2, labelKolom3: s.labelKolom3, labelKolom4: s.labelKolom4, panduanNilai: s.panduanNilai || "" };
+        return base;
+      });
+      await store.addBankSoalBulk(bankSoalList);
+      onSuccess(bankSoalList.length);
+    } catch (err) {
+      alert("Gagal import: " + (err?.message || "coba lagi"));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+        <h3>Konfirmasi Import</h3>
+        <p style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 14 }}>
+          <b>{soal.length} soal</b> siap diimport ke Bank Soal. Pilih Mapel, Kelas, dan Level yang berlaku untuk semua soal ini.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12, padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8, fontSize: 12 }}>
+          {Object.entries(tipeCount).map(([t, n]) => (
+            <div key={t} style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "var(--ink-2)" }}>{tipeLabel[t] || t}</span>
+              <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{n}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <div style={{ flex: 1 }}>
+            <label className="lbl">Mapel</label>
+            <select className="inp" value={mapel} onChange={e => setMapel(e.target.value)}>
+              <option value="IPA">IPA</option>
+              <option value="Informatika">Informatika</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="lbl">Kelas</label>
+            <select className="inp" value={jenjang} onChange={e => setJenjang(e.target.value)}>
+              <option value="VII">VII</option>
+              <option value="VIII">VIII</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="lbl">Level</label>
+            <select className="inp" value={level} onChange={e => setLevel(e.target.value)}>
+              <option value="mudah">Mudah</option>
+              <option value="sedang">Sedang</option>
+              <option value="sulit">Sulit</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleConfirm} disabled={saving}>
+            {saving ? "Mengimport..." : `Import ${soal.length} Soal`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── BANK SOAL PAGE ───
 function BankSoal({ store, navigate }) {
   const [filterMapel, setFilterMapel] = useState("semua");
@@ -5354,6 +5452,7 @@ function BankSoal({ store, navigate }) {
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toast, setToast] = useState("");
+  const [pendingImport, setPendingImport] = useState(null); // { soal: [...] } — nunggu konfirmasi mapel/jenjang/level
 
   const soalList = store.getBankSoal();
 
@@ -5371,6 +5470,20 @@ function BankSoal({ store, navigate }) {
   const allTags = [...new Set(soalList.flatMap(s => s.tags || []))];
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
+
+  // Handler shared untuk kedua tombol Import (desktop & mobile topbar) — parse file lalu
+  // buka modal konfirmasi mapel/jenjang/level, gak langsung commit ke Bank Soal.
+  async function handleImportFile(file, resetInput) {
+    if (!file) return;
+    try {
+      const imported = await importSoalFromExcel(file);
+      if (!imported.length) { showToast("Tidak ada soal yang valid di file."); resetInput?.(); return; }
+      setPendingImport({ soal: imported });
+    } catch (err) {
+      showToast("Gagal membaca file: " + (err?.message || "format tidak dikenali"));
+    }
+    resetInput?.();
+  }
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -5396,35 +5509,7 @@ function BankSoal({ store, navigate }) {
           </button>
           <label className="btn btn-outline btn-sm" style={{ cursor: "pointer", margin: 0 }} title="Import dari Excel">
             <I n="upload" s={13} /> Import
-            <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={async e => {
-              const file = e.target.files[0]; if (!file) return;
-              try {
-                const imported = await importSoalFromExcel(file);
-                if (!imported.length) { showToast("Tidak ada soal yang valid di file."); e.target.value = ""; return; }
-                // Convert ke format bank soal
-                const bankSoalList = imported.map(s => {
-                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: (s.tags && s.tags.length) ? s.tags : ["import"], pembahasan: s.pembahasan || "" };
-                  if (s.type === "pg") return { ...base, opsi: s.opsi, jawaban: s.jawaban };
-                  if (s.type === "tf") return { ...base, jawaban: s.jawaban };
-                  if (s.type === "komplex") {
-                    const benarOpsi = (s.opsi || []).map((_, i) => (s.jawaban || []).includes(i));
-                    return { ...base, opsi: s.opsi, benarOpsi };
-                  }
-                  if (s.type === "pasang") {
-                    const pasangan = (s.kiri || []).map((k, i) => [k, (s.kanan || [])[i] || ""]);
-                    return { ...base, pasangan };
-                  }
-                  if (s.type === "excel") return { ...base, headers: s.headers, table: s.table, opsi: s.opsi, jawaban: s.jawaban };
-                  if (s.type === "essay") return { ...base, kataKunci: s.kataKunci || "", panduanNilai: s.panduanNilai || "" };
-                  return base;
-                });
-                await store.addBankSoalBulk(bankSoalList);
-                showToast(`${bankSoalList.length} soal berhasil diimport!`);
-              } catch (err) {
-                showToast("Gagal import: " + err.message);
-              }
-              e.target.value = "";
-            }} />
+            <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => handleImportFile(e.target.files[0], () => { e.target.value = ""; })} />
           </label>
           <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setShowForm(true); }}>
             <I n="plus" s={13} /> Tambah
@@ -5439,34 +5524,7 @@ function BankSoal({ store, navigate }) {
           <button className="btn btn-ghost btn-sm" onClick={downloadTemplateSoal} title="Template"><I n="chartBar" s={13} /></button>
           <label className="btn btn-outline btn-sm" style={{ cursor: "pointer", margin: 0, padding: "6px 10px" }} title="Import">
             <I n="upload" s={13} />
-            <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={async e => {
-              const file = e.target.files[0]; if (!file) return;
-              try {
-                const imported = await importSoalFromExcel(file);
-                if (!imported.length) { showToast("Tidak ada soal yang valid."); e.target.value = ""; return; }
-                const bankSoalList = imported.map(s => {
-                  const base = { mapel: "IPA", jenjang: "VII", level: "sedang", type: s.type === "komplex" ? "kompleks" : s.type === "pasang" ? "pasangkan" : s.type, pertanyaan: s.pertanyaan, gambar: null, tags: (s.tags && s.tags.length) ? s.tags : ["import"], pembahasan: s.pembahasan || "" };
-                  if (s.type === "pg") return { ...base, opsi: s.opsi, jawaban: s.jawaban };
-                  if (s.type === "tf") return { ...base, jawaban: s.jawaban };
-                  if (s.type === "komplex") {
-                    const benarOpsi = (s.opsi || []).map((_, i) => (s.jawaban || []).includes(i));
-                    return { ...base, opsi: s.opsi, benarOpsi };
-                  }
-                  if (s.type === "pasang") {
-                    const pasangan = (s.kiri || []).map((k, i) => [k, (s.kanan || [])[i] || ""]);
-                    return { ...base, pasangan };
-                  }
-                  if (s.type === "excel") return { ...base, headers: s.headers, table: s.table, opsi: s.opsi, jawaban: s.jawaban };
-                  if (s.type === "essay") return { ...base, kataKunci: s.kataKunci || "", panduanNilai: s.panduanNilai || "" };
-                  return base;
-                });
-                await store.addBankSoalBulk(bankSoalList);
-                showToast(`${bankSoalList.length} soal berhasil diimport!`);
-              } catch (err) {
-                showToast("Gagal import: " + err.message);
-              }
-              e.target.value = "";
-            }} />
+            <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => handleImportFile(e.target.files[0], () => { e.target.value = ""; })} />
           </label>
           <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setShowForm(true); }}><I n="plus" s={13} /></button>
         </div>
@@ -5475,6 +5533,7 @@ function BankSoal({ store, navigate }) {
       {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, boxShadow: "var(--shadow)" }}>{toast}</div>}
       {deleteTarget && <Confirm title="Hapus soal?" desc={deleteTarget.pertanyaan.slice(0, 80) + "..."} onOk={handleDelete} onCancel={() => setDeleteTarget(null)} />}
       {showForm && <BankSoalForm store={store} editTarget={editTarget} onClose={() => { setShowForm(false); setEditTarget(null); }} onSuccess={() => { setShowForm(false); setEditTarget(null); showToast(editTarget ? "Soal diupdate." : "Soal ditambahkan."); }} />}
+      {pendingImport && <ImportConfirmModal soal={pendingImport.soal} store={store} onClose={() => setPendingImport(null)} onSuccess={(count) => { setPendingImport(null); showToast(`${count} soal berhasil diimport!`); }} />}
 
       {/* Filter bar */}
       <Card style={{ marginBottom: 12 }}>
