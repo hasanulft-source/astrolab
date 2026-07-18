@@ -7221,7 +7221,7 @@ function ManajemenSiswa({ store }) {
       <div className="dt">
         <div><h1>Manajemen Siswa</h1><p>Tambah, impor, dan kelola akun siswa</p></div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => printKartuLogin(store.getAllSiswa(jenjang).map(s => ({ ...s, password: store.genPassword(s.id) })), jenjang)} disabled={store.getAllSiswa(jenjang).length === 0} title="Cetak kartu login siswa untuk kelas aktif">
+          <button className="btn btn-outline btn-sm" onClick={() => printKartuLogin(store.getAllSiswa(jenjang).map(s => ({ ...s, password: s.password || "—" })), jenjang)} disabled={store.getAllSiswa(jenjang).length === 0} title="Cetak kartu login siswa untuk kelas aktif">
             <I n="download" s={13} /> Cetak Kartu
           </button>
           <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}><I n="chartBar" s={13} /> Import Excel</button>
