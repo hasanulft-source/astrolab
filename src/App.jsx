@@ -1763,7 +1763,7 @@ function LoginScreen({ onLogin }) {
           <div className="login-field">
             <label className="login-lbl">ID Siswa / Guru</label>
             <input className="login-inp" value={id} onChange={e => { setId(e.target.value); setErr(""); }}
-              placeholder="Contoh: fata" onKeyDown={e => e.key === "Enter" && submit()} autoCapitalize="none" />
+              placeholder="Contoh: law" onKeyDown={e => e.key === "Enter" && submit()} autoCapitalize="none" />
           </div>
           <div className="login-field">
             <label className="login-lbl">Password</label>
