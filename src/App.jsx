@@ -7003,6 +7003,173 @@ function ResetSemesterModal({ store, onClose }) {
   );
 }
 
+// ─── PRINT KARTU LOGIN SISWA ───
+// Bikin HTML print-friendly dengan grid 3×4 kartu per halaman A4 portrait.
+// Setiap kartu berisi: nama, ID (username), password, kelas, URL login.
+// Batas potong (dashed) di setiap kartu supaya gampang digunting.
+function printKartuLogin(siswaList, jenjang) {
+  if (!siswaList || siswaList.length === 0) return;
+  const now = new Date();
+  const tglCetak = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+
+  const cards = siswaList.map(s => `
+    <div class="card">
+      <div class="card-header">
+        <div class="brand">
+          <div class="brand-mark">A</div>
+          <div class="brand-name">Astrolab</div>
+        </div>
+        <div class="kelas-badge">Kelas ${s.jenjang || jenjang}</div>
+      </div>
+      <div class="nama">${escapeHtml(s.nama || "-")}</div>
+      <div class="credentials">
+        <div class="cred-row">
+          <div class="cred-label">Username</div>
+          <div class="cred-value">${escapeHtml(s.id || "-")}</div>
+        </div>
+        <div class="cred-row">
+          <div class="cred-label">Password</div>
+          <div class="cred-value">${escapeHtml(s.password || "-")}</div>
+        </div>
+      </div>
+      <div class="card-footer">astrolab-id.vercel.app</div>
+    </div>
+  `).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Kartu Login Siswa - Kelas ${jenjang}</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Plus Jakarta Sans", -apple-system, "Segoe UI", sans-serif; background: #f5f5f5; padding: 10mm; color: #1a1a1a; }
+  .header-info { max-width: 190mm; margin: 0 auto 8mm; padding-bottom: 6mm; border-bottom: 1px solid #ccc; }
+  .header-info h1 { font-size: 16pt; margin-bottom: 2mm; color: #09637E; }
+  .header-info .meta { font-size: 10pt; color: #666; display: flex; gap: 20px; }
+  .grid { max-width: 190mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 60mm; gap: 4mm; }
+  .card {
+    border: 1.5px dashed #999;
+    border-radius: 3mm;
+    padding: 4mm 4mm 3mm;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    page-break-inside: avoid;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 3mm;
+    background: linear-gradient(90deg, #09637E 0%, #088395 50%, #7AB2B2 100%);
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2mm;
+    margin-bottom: 3mm;
+  }
+  .brand { display: flex; align-items: center; gap: 2mm; }
+  .brand-mark {
+    width: 6mm; height: 6mm;
+    background: #09637E;
+    color: white;
+    border-radius: 1.5mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 10pt;
+  }
+  .brand-name { font-size: 9pt; font-weight: 700; color: #09637E; }
+  .kelas-badge {
+    font-size: 7.5pt;
+    font-weight: 600;
+    color: #666;
+    background: #eef7f7;
+    padding: 1mm 2.5mm;
+    border-radius: 999px;
+  }
+  .nama {
+    font-size: 12pt;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #1a1a1a;
+    margin-bottom: 3mm;
+    /* Truncate ke 2 baris kalau nama panjang */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .credentials {
+    background: #f8fafb;
+    border-radius: 2mm;
+    padding: 2.5mm 3mm;
+    margin-bottom: 2mm;
+  }
+  .cred-row { display: flex; justify-content: space-between; align-items: baseline; padding: 1mm 0; }
+  .cred-row + .cred-row { border-top: 1px dashed #e0e0e0; }
+  .cred-label { font-size: 7pt; color: #999; text-transform: uppercase; letter-spacing: 0.5pt; font-weight: 600; }
+  .cred-value { font-family: "SFMono-Regular", Consolas, monospace; font-size: 10pt; font-weight: 700; color: #09637E; }
+  .card-footer {
+    font-size: 7pt;
+    color: #999;
+    text-align: center;
+    padding-top: 1mm;
+    border-top: 1px solid #eee;
+  }
+  .print-btn {
+    position: fixed; top: 20px; right: 20px;
+    padding: 10px 20px;
+    background: #09637E;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  @media print {
+    body { background: white; padding: 0; }
+    .print-btn, .header-info { display: none; }
+    .grid { max-width: none; }
+  }
+</style>
+</head>
+<body>
+  <button class="print-btn" onclick="window.print()">🖨️ Cetak</button>
+  <div class="header-info">
+    <h1>Kartu Login Siswa · Kelas ${jenjang}</h1>
+    <div class="meta">
+      <span><b>${siswaList.length}</b> siswa</span>
+      <span>Dicetak: ${tglCetak}</span>
+      <span style="color:#999">Klik tombol Cetak untuk print</span>
+    </div>
+  </div>
+  <div class="grid">
+    ${cards}
+  </div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  if (!win) { alert("Popup diblokir. Izinkan popup untuk cetak kartu."); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
+// Helper: escape HTML untuk mencegah karakter khusus di nama merusak layout
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 // ─── MANAJEMEN SISWA (Guru) ───
 function ManajemenSiswa({ store }) {
   const [jenjang, setJenjang] = useState("VII");
@@ -7054,6 +7221,9 @@ function ManajemenSiswa({ store }) {
       <div className="dt">
         <div><h1>Manajemen Siswa</h1><p>Tambah, impor, dan kelola akun siswa</p></div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => printKartuLogin(store.getAllSiswa(jenjang).map(s => ({ ...s, password: store.genPassword(s.id) })), jenjang)} disabled={store.getAllSiswa(jenjang).length === 0} title="Cetak kartu login siswa untuk kelas aktif">
+            <I n="download" s={13} /> Cetak Kartu
+          </button>
           <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}><I n="chartBar" s={13} /> Import Excel</button>
           <button className="btn btn-primary" onClick={() => setShowAdd(true)}><I n="plus" s={14} /> Tambah Siswa</button>
         </div>
