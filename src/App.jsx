@@ -1443,6 +1443,49 @@ function useStore() {
   const deleteBroadcast = async (id) => { await remove(ref(db, `broadcasts/${id}`)); };
   const getBroadcasts = (jenjang) => broadcasts.filter(b => b.target === "semua" || b.target === jenjang);
 
+  // ─── LAPORAN SISWA (semi-anonim, guru-only read) ───
+  // Data model: { kategori, kategoriLain?, deskripsi, pelaporId, pelaporNama, jenjang, kelas, createdAt, status, catatanGuru? }
+  // Rules Firebase: siswa cuma bisa CREATE (jenjang wajib "VII"), guru bisa read/write semua.
+  // ASUMSI: semua siswa jenjang "VII" di sistem adalah VII-3 (kelas wali Fata).
+  // TODO: refactor kalau sistem mulai support kelas granular (VII-1, VII-2, dst).
+  const [reports, setReports] = useState([]);
+  useEffect(() => {
+    // Hanya guru yang boleh listen ke /reports (aturan Firebase Rules).
+    // Siswa akan dapet PERMISSION_DENIED dan list tetap kosong — itu memang expected.
+    const rRef = ref(db, "reports");
+    const u7 = onValue(rRef, snap => {
+      const data = snap.val();
+      const list = data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : [];
+      setReports(list.sort((a, b) => b.createdAt - a.createdAt));
+    }, () => setReports([])); // silent fail untuk siswa
+    return () => u7();
+  }, []);
+
+  const addReport = async ({ kategori, kategoriLain, deskripsi, pelaporId, pelaporNama, jenjang }) => {
+    const now = Date.now();
+    const newRef = push(ref(db, "reports"));
+    await set(newRef, {
+      kategori,
+      kategoriLain: kategoriLain || "",
+      deskripsi,
+      pelaporId,
+      pelaporNama,
+      jenjang,
+      createdAt: now,
+      status: "baru",
+    });
+  };
+  const updateReportStatus = async (id, status, catatanGuru) => {
+    await update(ref(db, `reports/${id}`), {
+      status,
+      catatanGuru: catatanGuru || "",
+      updatedAt: Date.now(),
+    });
+  };
+  const deleteReport = async (id) => { await remove(ref(db, `reports/${id}`)); };
+  const getReports = () => reports;
+  const getUnreadReportCount = () => reports.filter(r => r.status === "baru").length;
+
   const [photos, setPhotos] = useState({});
 
   useEffect(() => {
@@ -1661,7 +1704,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -1763,7 +1806,7 @@ function LoginScreen({ onLogin }) {
           <div className="login-field">
             <label className="login-lbl">ID Siswa / Guru</label>
             <input className="login-inp" value={id} onChange={e => { setId(e.target.value); setErr(""); }}
-              placeholder="Contoh: law" onKeyDown={e => e.key === "Enter" && submit()} autoCapitalize="none" />
+              placeholder="Contoh: fata" onKeyDown={e => e.key === "Enter" && submit()} autoCapitalize="none" />
           </div>
           <div className="login-field">
             <label className="login-lbl">Password</label>
@@ -3093,6 +3136,114 @@ function BroadcastModal({ existing, onSave, onClose }) {
 }
 
 // ─── PROFIL SISWA ───
+// ─── LAPOR KEJADIAN MODAL (Siswa) ───
+// Semi-anonim: guru bisa liat identitas pelapor, tapi UI di sisi siswa gak nyisa jejak.
+// Setelah submit, session-only feedback "terkirim", refresh page hilang.
+function LaporModal({ user, store, onClose }) {
+  const [kategori, setKategori] = useState("");
+  const [kategoriLain, setKategoriLain] = useState("");
+  const [deskripsi, setDeskripsi] = useState("");
+  const [sending, setSending] = useState(false);
+  const [terkirim, setTerkirim] = useState(false);
+
+  const KATEGORI_LIST = [
+    { value: "konflik", label: "Konflik dengan teman" },
+    { value: "bullying", label: "Bullying / perundungan" },
+    { value: "sarpras", label: "Sarana/prasarana rusak" },
+    { value: "akademik", label: "Kesulitan akademik" },
+    { value: "kesehatan", label: "Kesehatan/kondisi diri" },
+    { value: "lainnya", label: "Lainnya (tulis di bawah)" },
+  ];
+
+  const canSubmit = kategori && deskripsi.trim().length >= 10 && (kategori !== "lainnya" || kategoriLain.trim().length >= 3);
+
+  async function handleSubmit() {
+    if (!canSubmit || sending) return;
+    setSending(true);
+    try {
+      await store.addReport({
+        kategori,
+        kategoriLain: kategori === "lainnya" ? kategoriLain.trim() : "",
+        deskripsi: deskripsi.trim(),
+        pelaporId: user.id,
+        pelaporNama: user.nama,
+        jenjang: user.jenjang,
+      });
+      setTerkirim(true);
+    } catch (e) {
+      alert("Gagal mengirim laporan. Cek koneksi internet dan coba lagi.");
+      setSending(false);
+    }
+  }
+
+  // Session-only feedback: laporan terkirim
+  if (terkirim) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal" style={{ maxWidth: 420, textAlign: "center", padding: 28 }} onClick={e => e.stopPropagation()}>
+          <div style={{ fontSize: 44, marginBottom: 8 }}>✓</div>
+          <h3 style={{ marginBottom: 8 }}>Laporan Terkirim</h3>
+          <p style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 20 }}>
+            Laporan kamu sudah diterima wali kelas. Terima kasih sudah percaya untuk melapor.
+            <br /><br />
+            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+              Identitas kamu hanya diketahui wali kelas dan akan dirahasiakan saat menindaklanjuti.
+            </span>
+          </p>
+          <button className="btn btn-primary btn-full" onClick={onClose}>Tutup</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <h3 style={{ margin: 0 }}>Lapor Kejadian</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--ink-3)", padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+        <p style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 16, lineHeight: 1.55 }}>
+          Ceritakan kejadian yang ingin kamu laporkan. Hanya wali kelas yang bisa membaca laporan ini.
+        </p>
+
+        <label className="lbl">Kategori</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
+          {KATEGORI_LIST.map(k => (
+            <label key={k.value} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: `1.5px solid ${kategori === k.value ? "var(--accent)" : "var(--line)"}`, borderRadius: 6, cursor: "pointer", background: kategori === k.value ? "var(--accent-tint)" : "var(--surface)", fontSize: 13 }}>
+              <input type="radio" name="kategori" value={k.value} checked={kategori === k.value} onChange={() => setKategori(k.value)} style={{ accentColor: "var(--accent)" }} />
+              <span style={{ color: kategori === k.value ? "var(--accent-2)" : "var(--ink-1)", fontWeight: kategori === k.value ? 600 : 400 }}>{k.label}</span>
+            </label>
+          ))}
+        </div>
+
+        {kategori === "lainnya" && (
+          <div style={{ marginBottom: 14 }}>
+            <label className="lbl">Kategori kamu</label>
+            <input className="inp" placeholder="Contoh: masalah keluarga, tekanan..." value={kategoriLain} onChange={e => setKategoriLain(e.target.value)} maxLength={50} />
+          </div>
+        )}
+
+        <label className="lbl">Ceritakan kejadiannya <span style={{ color: "var(--ink-3)", fontWeight: 400 }}>(min 10 karakter)</span></label>
+        <textarea className="inp" rows={5} placeholder="Ceritakan apa yang terjadi, kapan, di mana, siapa yang terlibat..." value={deskripsi} onChange={e => setDeskripsi(e.target.value)} maxLength={1000} style={{ resize: "vertical" }} />
+        <div style={{ fontSize: 10, color: "var(--ink-3)", textAlign: "right", marginTop: 2 }}>{deskripsi.length}/1000</div>
+
+        <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginTop: 12, marginBottom: 16, fontSize: 11, lineHeight: 1.55, color: "var(--ink-2)" }}>
+          <b style={{ color: "var(--ink-1)" }}>Butuh bantuan segera?</b><br />
+          Hubungi BK sekolah atau hotline SEJIWA <b>119 ext 8</b> (gratis, 24 jam) untuk krisis kesehatan mental.
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={sending}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit || sending}>
+            {sending ? "Mengirim..." : "Kirim Laporan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProfilSiswa({ user, store }) {
   const stats = store.getStats(user.id);
   const lb = store.getLeaderboard(user.jenjang);
@@ -3100,7 +3251,12 @@ function ProfilSiswa({ user, store }) {
   const subs = store.getSubs().filter(s => s.siswaId === user.id);
   const myBadges = store.getBadges(user.id);
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [showLapor, setShowLapor] = useState(false);
   const photo = store.getPhoto(user.uid || user.id);
+
+  // Feature flag fitur Lapor: aktif untuk siswa VII saja (kelas wali Fata).
+  // ASUMSI: semua siswa jenjang "VII" di sistem adalah VII-3.
+  const laporEnabled = user.jenjang === "VII";
 
   const PRESETS = [
     "#0d6b7a","#1e40af","#7c3aed","#b45309","#0f766e",
@@ -3199,11 +3355,28 @@ function ProfilSiswa({ user, store }) {
         <BadgesRow badges={myBadges} emptyText="Belum ada badge. Terus kerjakan tugas!" />
       </Card>
 
+      {/* Fitur Lapor Kejadian — cuma untuk siswa VII (kelas wali) */}
+      {laporEnabled && (
+        <Card style={{ marginBottom: 12, background: "linear-gradient(135deg, var(--accent-tint) 0%, var(--surface) 60%)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <I n="mail" s={18} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-1)" }}>Lapor Kejadian di Kelas</div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.45 }}>Cerita kejadian ke wali kelas. Rahasia terjaga.</div>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowLapor(true)} style={{ flexShrink: 0 }}>Lapor</button>
+          </div>
+        </Card>
+      )}
+
       {stats.poinHistory?.length > 0 && <Card style={{ marginBottom: 12 }}><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Perjalanan poin</div><PoinChart data={stats.poinHistory} /></Card>}
 
       <div className="sh"><h2>Riwayat pengerjaan</h2></div>
       {subs.length === 0 ? <Card><div className="empty">Belum ada tugas yang dikerjakan.</div></Card> :
         <Card pad="none" style={{ overflow: "hidden" }}><div style={{ padding: "4px 16px" }}>{subs.slice().reverse().map(s => { const t = store.getTugas().find(x => x.id === s.tugasId); return <div key={s.id} className="row"><div style={{ width: 36, height: 36, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={16} /></div><div className="row-main"><div className="row-title">{t?.judul || "Tugas dihapus"}</div><div className="row-sub">{new Date(s.submittedAt).toLocaleDateString("id-ID")} · nilai {s.nilai}</div></div><div className="stat-num" style={{ fontSize: 14, fontWeight: 600, color: "var(--good)" }}>+{s.poinDapat}</div></div>; })}</div></Card>}
+      {showLapor && <LaporModal user={user} store={store} onClose={() => setShowLapor(false)} />}
     </div>
   </>;
 }
@@ -7623,7 +7796,7 @@ function BadgeManager({ store }) {
 
 // ─── NAV ───
 const SNAV = [{ id: "home", l: "Beranda", ic: "home" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "tugas", l: "Tugas", ic: "book" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "profil", l: "Profil", ic: "user" }];
-const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }];
+const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "mail" }];
 
 function Sidebar({ user, route, navigate, onLogout, store }) {
   const nav = user.role === "guru" ? GNAV : SNAV;
@@ -7634,6 +7807,7 @@ function Sidebar({ user, route, navigate, onLogout, store }) {
       <div style={{ position: "relative" }}>
         <I n={item.ic} s={16} />
         {item.id === "chat" && unread > 0 && <div style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{unread > 9 ? "9+" : unread}</div>}
+        {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 99, background: "var(--bad)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</div>}
       </div>
       <span>{item.l}</span>
     </button>)}
@@ -7663,6 +7837,7 @@ function BottomNav({ user, route, navigate, store }) {
         <div style={{ position: "relative" }}>
           <I n={item.ic} s={20} />
           {item.id === "chat" && unread > 0 && <div style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{unread > 9 ? "9+" : unread}</div>}
+          {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 99, background: "var(--bad)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</div>}
         </div>
         <span>{item.l}</span>
       </button>;
@@ -7671,6 +7846,208 @@ function BottomNav({ user, route, navigate, store }) {
 }
 
 // ─── APP ───
+// ─── LAPORAN GURU (wali kelas view) ───
+// Halaman list semua laporan siswa. Cuma guru yang bisa akses (Firebase Rules).
+// Guru bisa lihat identitas pelapor, isi laporan, update status, kasih catatan.
+function LaporanGuru({ store }) {
+  const [filterStatus, setFilterStatus] = useState("semua");
+  const [filterKategori, setFilterKategori] = useState("semua");
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [showDelete, setShowDelete] = useState(null);
+
+  const KATEGORI_LABEL = {
+    konflik: "Konflik dengan teman",
+    bullying: "Bullying / perundungan",
+    sarpras: "Sarana/prasarana rusak",
+    akademik: "Kesulitan akademik",
+    kesehatan: "Kesehatan/kondisi diri",
+    lainnya: "Lainnya",
+  };
+  const STATUS_LABEL = {
+    baru: { label: "Baru", color: "var(--bad)", bg: "#fee2e2" },
+    diproses: { label: "Diproses", color: "#92400e", bg: "#fef3c7" },
+    selesai: { label: "Selesai", color: "var(--good)", bg: "var(--good-bg)" },
+  };
+
+  const allReports = store.getReports();
+  const filtered = allReports.filter(r => {
+    if (filterStatus !== "semua" && r.status !== filterStatus) return false;
+    if (filterKategori !== "semua" && r.kategori !== filterKategori) return false;
+    return true;
+  });
+
+  const counts = {
+    baru: allReports.filter(r => r.status === "baru").length,
+    diproses: allReports.filter(r => r.status === "diproses").length,
+    selesai: allReports.filter(r => r.status === "selesai").length,
+  };
+
+  function fmtWaktu(ts) {
+    const d = new Date(ts);
+    const now = Date.now();
+    const diff = now - ts;
+    if (diff < 60000) return "baru saja";
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m lalu`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}j lalu`;
+    return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "2-digit" });
+  }
+
+  return (
+    <div className="page">
+      <div className="dt">
+        <div><h1>Laporan Siswa</h1><p>Laporan kejadian dari siswa · rahasia, hanya wali kelas yang lihat</p></div>
+      </div>
+      <div className="topbar">
+        <div style={{ width: 36 }} />
+        <div className="topbar-title">Laporan</div>
+        <div style={{ width: 36 }} />
+      </div>
+
+      {/* Ringkasan status */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
+        <div style={{ padding: "12px 14px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--bad)", fontFamily: "var(--mono)" }}>{counts.baru}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>Baru</div>
+        </div>
+        <div style={{ padding: "12px 14px", borderRadius: 8, background: "#fef3c7", border: "1px solid #fde68a" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#92400e", fontFamily: "var(--mono)" }}>{counts.diproses}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>Diproses</div>
+        </div>
+        <div style={{ padding: "12px 14px", borderRadius: 8, background: "var(--good-bg)", border: "1px solid #a7f3d0" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--good)", fontFamily: "var(--mono)" }}>{counts.selesai}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>Selesai</div>
+        </div>
+      </div>
+
+      {/* Filter */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <select className="inp" style={{ flex: "1 1 140px", maxWidth: 200 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <option value="semua">Semua Status</option>
+          <option value="baru">Baru</option>
+          <option value="diproses">Diproses</option>
+          <option value="selesai">Selesai</option>
+        </select>
+        <select className="inp" style={{ flex: "1 1 140px", maxWidth: 200 }} value={filterKategori} onChange={e => setFilterKategori(e.target.value)}>
+          <option value="semua">Semua Kategori</option>
+          {Object.entries(KATEGORI_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </div>
+
+      {/* List */}
+      {filtered.length === 0 ? (
+        <Card><div className="empty">Belum ada laporan{filterStatus !== "semua" || filterKategori !== "semua" ? " yang cocok dengan filter" : ""}.</div></Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {filtered.map(r => {
+            const status = STATUS_LABEL[r.status] || STATUS_LABEL.baru;
+            const kategoriTxt = r.kategori === "lainnya" && r.kategoriLain ? r.kategoriLain : (KATEGORI_LABEL[r.kategori] || r.kategori);
+            return (
+              <Card key={r.id} pad="md" style={{ cursor: "pointer", borderLeft: `4px solid ${status.color}` }} onClick={() => setSelectedReport(r)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 6 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                      <span className="chip" style={{ fontSize: 10, background: status.bg, color: status.color, fontWeight: 700 }}>{status.label}</span>
+                      <span style={{ fontSize: 12, color: "var(--ink-2)", fontWeight: 600 }}>{kategoriTxt}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--ink-1)", lineHeight: 1.5, marginBottom: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.deskripsi}</div>
+                    <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                      <b style={{ color: "var(--ink-2)" }}>{r.pelaporNama}</b> · {r.jenjang} · {fmtWaktu(r.createdAt)}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedReport && <LaporanDetailModal report={selectedReport} store={store} kategoriLabel={KATEGORI_LABEL} onClose={() => setSelectedReport(null)} onDelete={() => { setShowDelete(selectedReport); setSelectedReport(null); }} />}
+      {showDelete && <Confirm title="Hapus laporan?" desc="Laporan akan dihapus permanen dan tidak bisa dikembalikan." onOk={async () => { await store.deleteReport(showDelete.id); setShowDelete(null); }} onCancel={() => setShowDelete(null)} />}
+    </div>
+  );
+}
+
+// Modal detail laporan — guru bisa update status + tambah catatan internal
+function LaporanDetailModal({ report, store, kategoriLabel, onClose, onDelete }) {
+  const [status, setStatus] = useState(report.status);
+  const [catatan, setCatatan] = useState(report.catatanGuru || "");
+  const [saving, setSaving] = useState(false);
+
+  const isChanged = status !== report.status || catatan !== (report.catatanGuru || "");
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await store.updateReportStatus(report.id, status, catatan);
+      onClose();
+    } catch (e) {
+      alert("Gagal menyimpan: " + (e?.message || "coba lagi"));
+      setSaving(false);
+    }
+  }
+
+  const kategoriTxt = report.kategori === "lainnya" && report.kategoriLain ? report.kategoriLain : (kategoriLabel[report.kategori] || report.kategori);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <h3 style={{ margin: 0 }}>Detail Laporan</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--ink-3)", padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Meta pelapor */}
+        <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 14, fontSize: 12, lineHeight: 1.7 }}>
+          <div><span style={{ color: "var(--ink-3)" }}>Pelapor:</span> <b>{report.pelaporNama}</b> <span style={{ color: "var(--ink-3)" }}>({report.pelaporId})</span></div>
+          <div><span style={{ color: "var(--ink-3)" }}>Kelas:</span> {report.jenjang}</div>
+          <div><span style={{ color: "var(--ink-3)" }}>Kategori:</span> <b>{kategoriTxt}</b></div>
+          <div><span style={{ color: "var(--ink-3)" }}>Dilaporkan:</span> {new Date(report.createdAt).toLocaleString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+        </div>
+
+        {/* Isi laporan */}
+        <label className="lbl">Isi Laporan</label>
+        <div style={{ padding: "12px 14px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: 14, maxHeight: 200, overflowY: "auto" }}>
+          {report.deskripsi}
+        </div>
+
+        {/* Status */}
+        <label className="lbl">Status Penanganan</label>
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {[
+            { v: "baru", l: "Baru", color: "var(--bad)" },
+            { v: "diproses", l: "Diproses", color: "#92400e" },
+            { v: "selesai", l: "Selesai", color: "var(--good)" },
+          ].map(s => (
+            <button key={s.v} onClick={() => setStatus(s.v)} style={{
+              flex: 1, padding: "8px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              border: `1.5px solid ${status === s.v ? s.color : "var(--line)"}`,
+              background: status === s.v ? s.color : "var(--surface)",
+              color: status === s.v ? "#fff" : "var(--ink-2)",
+            }}>{s.l}</button>
+          ))}
+        </div>
+
+        {/* Catatan guru */}
+        <label className="lbl">Catatan Internal (opsional)</label>
+        <textarea className="inp" rows={3} placeholder="Catatan tindak lanjut, hasil pembicaraan dengan siswa, dll..." value={catatan} onChange={e => setCatatan(e.target.value)} style={{ resize: "vertical" }} maxLength={500} />
+        <div style={{ fontSize: 10, color: "var(--ink-3)", textAlign: "right", marginTop: 2, marginBottom: 14 }}>{catatan.length}/500 · Catatan hanya terlihat oleh guru</div>
+
+        <div className="modal-actions" style={{ justifyContent: "space-between" }}>
+          <button className="btn btn-ghost btn-sm" onClick={onDelete} disabled={saving} style={{ color: "var(--bad)" }}>
+            <I n="trash" s={12} /> Hapus
+          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Tutup</button>
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={!isChanged || saving}>
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── NOTIFICATIONS HOOK ───
 function useNotifications(user, store, route) {
   const [notifs, setNotifs] = useState([]);
@@ -7975,6 +8352,7 @@ function AppInner() {
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
       else if (route === "bank-soal") screen = <BankSoal store={store} navigate={navigate} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswa store={store} />;
+      else if (route === "laporan-guru") screen = <LaporanGuru store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
     } else {
