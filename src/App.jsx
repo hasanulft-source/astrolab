@@ -3228,12 +3228,7 @@ function LaporModal({ user, store, onClose }) {
         <textarea className="inp" rows={5} placeholder="Ceritakan apa yang terjadi, kapan, di mana, siapa yang terlibat..." value={deskripsi} onChange={e => setDeskripsi(e.target.value)} maxLength={1000} style={{ resize: "vertical" }} />
         <div style={{ fontSize: 10, color: "var(--ink-3)", textAlign: "right", marginTop: 2 }}>{deskripsi.length}/1000</div>
 
-        <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginTop: 12, marginBottom: 16, fontSize: 11, lineHeight: 1.55, color: "var(--ink-2)" }}>
-          <b style={{ color: "var(--ink-1)" }}>Butuh bantuan segera?</b><br />
-          Hubungi BK sekolah atau hotline SEJIWA <b>119 ext 8</b> (gratis, 24 jam) untuk krisis kesehatan mental.
-        </div>
-
-        <div className="modal-actions">
+        <div className="modal-actions" style={{ marginTop: 16 }}>
           <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={sending}>Batal</button>
           <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit || sending}>
             {sending ? "Mengirim..." : "Kirim Laporan"}
@@ -3360,7 +3355,7 @@ function ProfilSiswa({ user, store }) {
         <Card style={{ marginBottom: 12, background: "linear-gradient(135deg, var(--accent-tint) 0%, var(--surface) 60%)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <I n="mail" s={18} />
+              <I n="flag" s={18} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-1)" }}>Lapor Kejadian di Kelas</div>
@@ -7796,7 +7791,7 @@ function BadgeManager({ store }) {
 
 // ─── NAV ───
 const SNAV = [{ id: "home", l: "Beranda", ic: "home" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "tugas", l: "Tugas", ic: "book" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "profil", l: "Profil", ic: "user" }];
-const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "mail" }];
+const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "flag" }];
 
 function Sidebar({ user, route, navigate, onLogout, store }) {
   const nav = user.role === "guru" ? GNAV : SNAV;
@@ -7807,7 +7802,7 @@ function Sidebar({ user, route, navigate, onLogout, store }) {
       <div style={{ position: "relative" }}>
         <I n={item.ic} s={16} />
         {item.id === "chat" && unread > 0 && <div style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{unread > 9 ? "9+" : unread}</div>}
-        {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 99, background: "var(--bad)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</div>}
+        {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 99, background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</div>}
       </div>
       <span>{item.l}</span>
     </button>)}
@@ -7837,7 +7832,7 @@ function BottomNav({ user, route, navigate, store }) {
         <div style={{ position: "relative" }}>
           <I n={item.ic} s={20} />
           {item.id === "chat" && unread > 0 && <div style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{unread > 9 ? "9+" : unread}</div>}
-          {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 99, background: "var(--bad)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</div>}
+          {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 99, background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</div>}
         </div>
         <span>{item.l}</span>
       </button>;
@@ -7864,9 +7859,9 @@ function LaporanGuru({ store }) {
     lainnya: "Lainnya",
   };
   const STATUS_LABEL = {
-    baru: { label: "Baru", color: "var(--bad)", bg: "#fee2e2" },
-    diproses: { label: "Diproses", color: "#92400e", bg: "#fef3c7" },
-    selesai: { label: "Selesai", color: "var(--good)", bg: "var(--good-bg)" },
+    baru: { label: "Baru", color: "var(--accent-2)", bg: "var(--accent-tint)", border: "var(--accent)" },
+    diproses: { label: "Diproses", color: "var(--ink-2)", bg: "var(--surface-alt)", border: "var(--ink-3)" },
+    selesai: { label: "Selesai", color: "var(--ink-3)", bg: "var(--surface-alt)", border: "var(--line)" },
   };
 
   const allReports = store.getReports();
@@ -7903,19 +7898,28 @@ function LaporanGuru({ store }) {
         <div style={{ width: 36 }} />
       </div>
 
-      {/* Ringkasan status */}
+      {/* Ringkasan status — neutral + accent teal untuk 'Baru' (butuh perhatian) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
-        <div style={{ padding: "12px 14px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca" }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--bad)", fontFamily: "var(--mono)" }}>{counts.baru}</div>
-          <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>Baru</div>
+        <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--accent-tint)", border: "1px solid var(--accent-soft)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <div style={{ color: "var(--accent-2)" }}><I n="flag" s={14} /></div>
+            <div style={{ fontSize: 11, color: "var(--accent-2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Baru</div>
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "var(--accent-2)", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.baru}</div>
         </div>
-        <div style={{ padding: "12px 14px", borderRadius: 8, background: "#fef3c7", border: "1px solid #fde68a" }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#92400e", fontFamily: "var(--mono)" }}>{counts.diproses}</div>
-          <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>Diproses</div>
+        <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--surface-alt)", border: "1px solid var(--line)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <div style={{ color: "var(--ink-2)" }}><I n="clock" s={14} /></div>
+            <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Diproses</div>
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "var(--ink-1)", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.diproses}</div>
         </div>
-        <div style={{ padding: "12px 14px", borderRadius: 8, background: "var(--good-bg)", border: "1px solid #a7f3d0" }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--good)", fontFamily: "var(--mono)" }}>{counts.selesai}</div>
-          <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>Selesai</div>
+        <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--surface-alt)", border: "1px solid var(--line)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <div style={{ color: "var(--ink-3)" }}><I n="checkCircle" s={14} /></div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Selesai</div>
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "var(--ink-2)", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.selesai}</div>
         </div>
       </div>
 
@@ -7942,7 +7946,7 @@ function LaporanGuru({ store }) {
             const status = STATUS_LABEL[r.status] || STATUS_LABEL.baru;
             const kategoriTxt = r.kategori === "lainnya" && r.kategoriLain ? r.kategoriLain : (KATEGORI_LABEL[r.kategori] || r.kategori);
             return (
-              <Card key={r.id} pad="md" style={{ cursor: "pointer", borderLeft: `4px solid ${status.color}` }} onClick={() => setSelectedReport(r)}>
+              <Card key={r.id} pad="md" style={{ cursor: "pointer", borderLeft: `4px solid ${status.border}` }} onClick={() => setSelectedReport(r)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 6 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
@@ -8014,9 +8018,9 @@ function LaporanDetailModal({ report, store, kategoriLabel, onClose, onDelete })
         <label className="lbl">Status Penanganan</label>
         <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
           {[
-            { v: "baru", l: "Baru", color: "var(--bad)" },
-            { v: "diproses", l: "Diproses", color: "#92400e" },
-            { v: "selesai", l: "Selesai", color: "var(--good)" },
+            { v: "baru", l: "Baru", color: "var(--accent)" },
+            { v: "diproses", l: "Diproses", color: "var(--ink-2)" },
+            { v: "selesai", l: "Selesai", color: "var(--ink-3)" },
           ].map(s => (
             <button key={s.v} onClick={() => setStatus(s.v)} style={{
               flex: 1, padding: "8px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer",
