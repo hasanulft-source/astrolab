@@ -1062,9 +1062,9 @@ function BadgesRow({ badges = [], emptyText = "Belum ada badge" }) {
   if (!badges.length) return <div style={{ fontSize: 12, color: "var(--ink-4)", padding: "8px 0" }}>{emptyText}</div>;
   return <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{badges.map(id => <BadgeChip key={id} badgeId={id} />)}</div>;
 }
-function Card({ children, cls = "", style, pad = "p" }) {
+function Card({ children, cls = "", style, pad = "p", ...rest }) {
   const p = { p: "cp", lg: "clg", none: "cn" }[pad] || "cp";
-  return <div className={`card ${p} ${cls}`} style={style}>{children}</div>;
+  return <div className={`card ${p} ${cls}`} style={style} {...rest}>{children}</div>;
 }
 function PoinChart({ data }) {
   if (!data || data.length < 2) return <div style={{ height: 80, display: "grid", placeItems: "center", color: "var(--ink-4)", fontSize: 12 }}>Belum ada data</div>;
