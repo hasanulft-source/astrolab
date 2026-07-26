@@ -542,49 +542,81 @@ function StreakCard({ streak, compact = false, label }) {
         {!compact && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 500, marginTop: 4 }}>streak on fire</div>}
       </div>
 
-      {/* Flame SVG backdrop di kanan */}
-      <svg style={{ position: "absolute", right: compact ? -30 : -40, top: "50%", transform: "translateY(-50%)", height: "220%", opacity: 0.95, pointerEvents: "none" }} viewBox="0 0 1024 256" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      {/* Flame SVG comet trail: arrow tip di kanan, trail memanjang ke kiri (fade ke area angka) */}
+      <svg style={{ position: "absolute", right: 0, top: 0, height: "100%", width: compact ? "60%" : "70%", pointerEvents: "none" }} viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         <defs>
-          <linearGradient id={`${uid}-outer`} x1="0" y1="128" x2="1024" y2="128">
-            <stop offset="0%" stopColor={t.outer[0]} stopOpacity="0" />
-            <stop offset="30%" stopColor={t.outer[0]} stopOpacity="0.4" />
-            <stop offset="65%" stopColor={t.outer[1]} stopOpacity="0.85" />
-            <stop offset="100%" stopColor={t.outer[2]} />
-          </linearGradient>
-          <linearGradient id={`${uid}-core`} x1="0" y1="128" x2="1024" y2="128">
-            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0" />
-            <stop offset="30%" stopColor={t.inner[0]} stopOpacity="0.6" />
-            <stop offset="70%" stopColor={t.inner[1]} />
+          <linearGradient id={`${uid}-outer`} x1="0" y1="0.5" x2="1" y2="0.5">
+            <stop offset="0%" stopColor={t.outer[2]} stopOpacity="0" />
+            <stop offset="40%" stopColor={t.outer[2]} stopOpacity="0.5" />
+            <stop offset="80%" stopColor={t.outer[1]} stopOpacity="0.85" />
             <stop offset="100%" stopColor={t.outer[0]} />
           </linearGradient>
+          <linearGradient id={`${uid}-mid`} x1="0" y1="0.5" x2="1" y2="0.5">
+            <stop offset="0%" stopColor={t.outer[1]} stopOpacity="0" />
+            <stop offset="50%" stopColor={t.outer[0]} stopOpacity="0.7" />
+            <stop offset="100%" stopColor={t.inner[0]} />
+          </linearGradient>
+          <linearGradient id={`${uid}-inner`} x1="0" y1="0.5" x2="1" y2="0.5">
+            <stop offset="0%" stopColor={t.inner[0]} stopOpacity="0" />
+            <stop offset="60%" stopColor={t.inner[1]} stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#FFFFFF" />
+          </linearGradient>
         </defs>
-        {/* Soft bloom belakang */}
-        <ellipse cx="720" cy="128" rx="320" ry="50" fill={t.outer[0]} opacity="0.15">
-          <animate attributeName="rx" values="300;340;315;300" dur="2.4s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.10;0.22;0.15;0.10" dur="2.4s" repeatCount="indefinite" />
+
+        {/* Background bloom */}
+        <ellipse cx="600" cy="100" rx="200" ry="45" fill={t.outer[1]} opacity="0.15">
+          <animate attributeName="rx" values="180;220;190;180" dur="2.4s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.10;0.22;0.14;0.10" dur="2.4s" repeatCount="indefinite" />
         </ellipse>
-        {/* Outer flame */}
-        <path fill={`url(#${uid}-outer)`} d="M20 128 C 100 82, 240 62, 380 68 C 500 74, 620 44, 760 58 C 850 68, 950 90, 1005 128 C 950 165, 850 200, 760 210 C 620 220, 500 195, 380 195 C 240 195, 100 178, 20 128 Z">
-          <animate attributeName="opacity" values="0.9;1;0.92;1;0.9" dur="1.8s" repeatCount="indefinite" />
+
+        {/* Layer 1 — Outer flame (deepest, widest) */}
+        <path d="M 50 100 Q 200 70, 380 65 Q 550 55, 680 75 L 770 95 L 780 100 L 770 105 L 680 125 Q 550 145, 380 135 Q 200 130, 50 100 Z" fill={`url(#${uid}-outer)`}>
+          <animate attributeName="opacity" values="0.85;1;0.9;1;0.85" dur="1.6s" repeatCount="indefinite" />
         </path>
-        {/* Core */}
-        <path fill={`url(#${uid}-core)`} d="M60 128 C 150 105, 280 100, 400 108 C 500 114, 620 92, 740 102 C 830 112, 920 122, 985 128 C 920 138, 830 152, 740 158 C 620 168, 500 152, 400 154 C 280 156, 150 152, 60 128 Z">
-          <animate attributeName="opacity" values="0.85;1;0.9;1;0.85" dur="1.4s" repeatCount="indefinite" />
+
+        {/* Layer 2 — Mid blue */}
+        <path d="M 100 100 Q 240 80, 400 78 Q 560 72, 680 88 L 760 100 L 680 112 Q 560 128, 400 122 Q 240 120, 100 100 Z" fill={`url(#${uid}-mid)`} opacity="0.9">
+          <animate attributeName="opacity" values="0.75;0.95;0.82;0.95;0.75" dur="1.2s" repeatCount="indefinite" />
         </path>
-        {/* Sparks */}
-        <circle cx="420" cy="80" r="2.5" fill="#FFFFFF" />
-        <circle cx="520" cy="60" r="2" fill={t.outer[0]} />
-        <circle cx="620" cy="72" r="2.8" fill="#FFFFFF" />
-        <circle cx="740" cy="52" r="2" fill={t.outer[0]} />
-        <circle cx="820" cy="90" r="2.4" fill="#FFFFFF" />
-        <circle cx="470" cy="180" r="1.8" fill={t.inner[0]} />
-        <circle cx="580" cy="195" r="2.2" fill="#FFFFFF" />
-        <circle cx="690" cy="185" r="1.5" fill={t.outer[0]} />
-        <circle cx="800" cy="200" r="2" fill="#FFFFFF" />
-        {/* White core flicker */}
-        <ellipse cx="700" cy="128" rx="180" ry="12" fill="#FFFFFF" opacity="0.15">
-          <animate attributeName="opacity" values="0.08;0.25;0.12;0.22;0.08" dur="0.6s" repeatCount="indefinite" />
-        </ellipse>
+
+        {/* Layer 3 — Inner cyan */}
+        <path d="M 200 100 Q 320 88, 480 88 Q 600 85, 690 96 L 755 100 L 690 104 Q 600 115, 480 112 Q 320 112, 200 100 Z" fill={`url(#${uid}-inner)`} opacity="0.9">
+          <animate attributeName="opacity" values="0.7;1;0.85;1;0.7" dur="0.8s" repeatCount="indefinite" />
+        </path>
+
+        {/* Layer 4 — White core spine (flicker cepat) */}
+        <path d="M 350 100 Q 480 96, 620 97 L 750 100 L 620 103 Q 480 104, 350 100 Z" fill="#FFFFFF" opacity="0.85">
+          <animate attributeName="opacity" values="0.65;1;0.8;1;0.65" dur="0.4s" repeatCount="indefinite" />
+        </path>
+
+        {/* Sparks — twinkle random */}
+        <circle cx="200" cy="70" r="2" fill={t.inner[1]}>
+          <animate attributeName="opacity" values="0.3;1;0.5;0.3" dur="1.4s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="320" cy="55" r="2.5" fill="#FFFFFF">
+          <animate attributeName="opacity" values="1;0.4;0.8;1" dur="1.1s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="450" cy="45" r="2" fill={t.inner[0]}>
+          <animate attributeName="opacity" values="0.5;1;0.6;0.5" dur="1.3s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="580" cy="55" r="3" fill="#FFFFFF">
+          <animate attributeName="opacity" values="0.7;0.3;1;0.7" dur="0.9s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="700" cy="40" r="2" fill={t.inner[1]}>
+          <animate attributeName="opacity" values="0.4;1;0.6;0.4" dur="1.5s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="230" cy="140" r="1.8" fill={t.inner[0]}>
+          <animate attributeName="opacity" values="0.6;0.2;0.9;0.6" dur="1.2s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="380" cy="155" r="2.2" fill="#FFFFFF">
+          <animate attributeName="opacity" values="0.4;1;0.5;0.4" dur="1s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="540" cy="150" r="2" fill={t.inner[1]}>
+          <animate attributeName="opacity" values="0.7;0.3;1;0.7" dur="1.3s" repeatCount="indefinite" />
+        </circle>
+        <circle cx="680" cy="160" r="1.5" fill="#FFFFFF">
+          <animate attributeName="opacity" values="1;0.4;0.7;1" dur="0.8s" repeatCount="indefinite" />
+        </circle>
       </svg>
     </div>
   );
