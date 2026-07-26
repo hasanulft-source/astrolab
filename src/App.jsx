@@ -508,14 +508,144 @@ function FlameAnimated({ size = 44, streak = 1 }) {
   );
 }
 
-// ─── STREAK CARD ───
-// Card besar untuk dashboard & result screen. Backdrop = flame cyan-blue memancar dari kanan.
-// Skala warna ikut getFlameTheme (streak makin tinggi = warna makin intense).
-// Cuma render kalau streak > 0 (return null kalau 0 — caller gak perlu conditional).
+// ─── STREAK COMET SVG (reusable backdrop) ───
+// Comet flame trail dengan arrow tip di kanan, trail memanjang ke kiri.
+// Level 2 animations: bloom breathing dramatic, layered flame pulse cepat,
+// white core super-flicker (0.28s), 5 particle emit dari tip drift ke kiri,
+// 3 trailing streak lines, arrow tip bob dengan bright ball scale pulse.
+// Reusable di hero card dashboard & compact card result screen.
+// Prop: streak (int), width (%), heightPx (int), rightPx & topPx (positioning).
+function StreakCometSVG({ streak, width = "70%", heightPx = 130, rightPx = 0, topPx = 0 }) {
+  if (!streak || streak <= 0) return null;
+  const t = getFlameTheme(streak);
+  const uid = `sc${streak}-${heightPx}`;
+
+  return (
+    <svg style={{ position: "absolute", right: rightPx, top: topPx, height: heightPx, width, pointerEvents: "none" }} viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${uid}-outer`} x1="0" y1="0.5" x2="1" y2="0.5">
+          <stop offset="0%" stopColor={t.outer[2]} stopOpacity="0" />
+          <stop offset="40%" stopColor={t.outer[2]} stopOpacity="0.55" />
+          <stop offset="80%" stopColor={t.outer[1]} stopOpacity="0.9" />
+          <stop offset="100%" stopColor={t.outer[0]} />
+        </linearGradient>
+        <linearGradient id={`${uid}-mid`} x1="0" y1="0.5" x2="1" y2="0.5">
+          <stop offset="0%" stopColor={t.outer[1]} stopOpacity="0" />
+          <stop offset="50%" stopColor={t.outer[0]} stopOpacity="0.75" />
+          <stop offset="100%" stopColor={t.inner[0]} />
+        </linearGradient>
+        <linearGradient id={`${uid}-inner`} x1="0" y1="0.5" x2="1" y2="0.5">
+          <stop offset="0%" stopColor={t.inner[0]} stopOpacity="0" />
+          <stop offset="60%" stopColor={t.inner[1]} stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#FFFFFF" />
+        </linearGradient>
+      </defs>
+
+      {/* Background bloom — breathing dramatic */}
+      <ellipse cx="600" cy="100" rx="220" ry="55" fill={t.outer[1]} opacity="0.18">
+        <animate attributeName="rx" values="180;250;200;180" dur="1.8s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.10;0.28;0.15;0.10" dur="1.8s" repeatCount="indefinite" />
+      </ellipse>
+
+      {/* 3 trailing streak lines (thin cyan/white) */}
+      <line x1="770" y1="94" x2="150" y2="82" stroke={t.inner[0]} strokeWidth="1.2" opacity="0.35">
+        <animate attributeName="opacity" values="0.15;0.55;0.25;0.15" dur="1.3s" repeatCount="indefinite" />
+      </line>
+      <line x1="770" y1="106" x2="120" y2="118" stroke={t.inner[1]} strokeWidth="1" opacity="0.3">
+        <animate attributeName="opacity" values="0.1;0.5;0.2;0.1" dur="1.6s" repeatCount="indefinite" />
+      </line>
+      <line x1="765" y1="100" x2="200" y2="100" stroke="#FFFFFF" strokeWidth="0.8" opacity="0.25">
+        <animate attributeName="opacity" values="0.1;0.4;0.15;0.1" dur="1.1s" repeatCount="indefinite" />
+      </line>
+
+      {/* Layer 1 — Outer flame */}
+      <path d="M 50 100 Q 200 68, 380 62 Q 550 52, 680 74 L 770 94 L 780 100 L 770 106 L 680 126 Q 550 146, 380 138 Q 200 132, 50 100 Z" fill={`url(#${uid}-outer)`}>
+        <animate attributeName="opacity" values="0.82;1;0.88;1;0.82" dur="1.4s" repeatCount="indefinite" />
+      </path>
+
+      {/* Layer 2 — Mid blue */}
+      <path d="M 100 100 Q 240 78, 400 76 Q 560 70, 680 88 L 760 100 L 680 112 Q 560 130, 400 124 Q 240 122, 100 100 Z" fill={`url(#${uid}-mid)`} opacity="0.9">
+        <animate attributeName="opacity" values="0.7;1;0.8;1;0.7" dur="1s" repeatCount="indefinite" />
+      </path>
+
+      {/* Layer 3 — Inner cyan */}
+      <path d="M 200 100 Q 320 86, 480 86 Q 600 83, 690 96 L 755 100 L 690 104 Q 600 117, 480 114 Q 320 114, 200 100 Z" fill={`url(#${uid}-inner)`} opacity="0.9">
+        <animate attributeName="opacity" values="0.6;1;0.8;1;0.6" dur="0.6s" repeatCount="indefinite" />
+      </path>
+
+      {/* Layer 4 — White core spine (super flicker 0.28s) */}
+      <path d="M 350 100 Q 480 96, 620 97 L 750 100 L 620 103 Q 480 104, 350 100 Z" fill="#FFFFFF" opacity="0.9">
+        <animate attributeName="opacity" values="0.55;1;0.75;1;0.55" dur="0.28s" repeatCount="indefinite" />
+      </path>
+
+      {/* Sparks — static twinkle */}
+      <circle cx="200" cy="70" r="2" fill={t.inner[1]}>
+        <animate attributeName="opacity" values="0.3;1;0.5;0.3" dur="1.4s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="320" cy="55" r="2.5" fill="#FFFFFF">
+        <animate attributeName="opacity" values="1;0.4;0.8;1" dur="1.1s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="450" cy="45" r="2" fill={t.inner[0]}>
+        <animate attributeName="opacity" values="0.5;1;0.6;0.5" dur="1.3s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="580" cy="55" r="3" fill="#FFFFFF">
+        <animate attributeName="opacity" values="0.7;0.3;1;0.7" dur="0.9s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="700" cy="40" r="2" fill={t.inner[1]}>
+        <animate attributeName="opacity" values="0.4;1;0.6;0.4" dur="1.5s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="230" cy="140" r="1.8" fill={t.inner[0]}>
+        <animate attributeName="opacity" values="0.6;0.2;0.9;0.6" dur="1.2s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="380" cy="155" r="2.2" fill="#FFFFFF">
+        <animate attributeName="opacity" values="0.4;1;0.5;0.4" dur="1s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="540" cy="150" r="2" fill={t.inner[1]}>
+        <animate attributeName="opacity" values="0.7;0.3;1;0.7" dur="1.3s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="680" cy="160" r="1.5" fill="#FFFFFF">
+        <animate attributeName="opacity" values="1;0.4;0.7;1" dur="0.8s" repeatCount="indefinite" />
+      </circle>
+
+      {/* 5 emit particles — drift from arrow tip ke kiri */}
+      <circle r="1.8" fill="#FFFFFF" opacity="0">
+        <animate attributeName="opacity" values="0;1;0.6;0" dur="1.6s" repeatCount="indefinite" />
+        <animateMotion path="M 770 95 L 100 88" dur="1.6s" repeatCount="indefinite" />
+      </circle>
+      <circle r="1.5" fill={t.inner[1]} opacity="0">
+        <animate attributeName="opacity" values="0;1;0.4;0" dur="1.9s" begin="0.3s" repeatCount="indefinite" />
+        <animateMotion path="M 770 100 L 80 110" dur="1.9s" begin="0.3s" repeatCount="indefinite" />
+      </circle>
+      <circle r="1.8" fill={t.inner[0]} opacity="0">
+        <animate attributeName="opacity" values="0;0.9;0.3;0" dur="2.2s" begin="0.7s" repeatCount="indefinite" />
+        <animateMotion path="M 770 106 L 120 128" dur="2.2s" begin="0.7s" repeatCount="indefinite" />
+      </circle>
+      <circle r="1.2" fill="#FFFFFF" opacity="0">
+        <animate attributeName="opacity" values="0;1;0.5;0" dur="1.4s" begin="1s" repeatCount="indefinite" />
+        <animateMotion path="M 770 90 L 200 70" dur="1.4s" begin="1s" repeatCount="indefinite" />
+      </circle>
+      <circle r="1.6" fill={t.inner[1]} opacity="0">
+        <animate attributeName="opacity" values="0;0.8;0.4;0" dur="2s" begin="0.5s" repeatCount="indefinite" />
+        <animateMotion path="M 770 110 L 90 140" dur="2s" begin="0.5s" repeatCount="indefinite" />
+      </circle>
+
+      {/* Arrow tip bright ball — bob + scale pulse */}
+      <g>
+        <circle cx="780" cy="100" r="4" fill="#FFFFFF" opacity="0.95">
+          <animate attributeName="r" values="3.5;5;4;5;3.5" dur="0.5s" repeatCount="indefinite" />
+        </circle>
+        <animateTransform attributeName="transform" type="translate" values="0,0; 0,-2; 0,1; 0,-1; 0,0" dur="0.7s" repeatCount="indefinite" />
+      </g>
+    </svg>
+  );
+}
+
+// ─── STREAK CARD (compact, dipakai di result screen setelah submit tugas) ───
+// Dashboard pakai layout merged di HeroCard (langsung inline dengan Total Poin),
+// bukan komponen ini. StreakCard ini dedicated untuk result screen compact.
 function StreakCard({ streak, compact = false, label }) {
   if (!streak || streak <= 0) return null;
   const t = getFlameTheme(streak);
-  const uid = `sc${streak}${compact ? "c" : "l"}`;
   const h = compact ? 80 : 120;
   const numSize = compact ? 34 : 56;
 
@@ -536,88 +666,14 @@ function StreakCard({ streak, compact = false, label }) {
       <div style={{ position: "relative", zIndex: 2 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
           <span style={{ fontSize: numSize, fontWeight: 500, color: "#ffffff", lineHeight: 1, fontFamily: "var(--mono)" }}>{streak}</span>
-          <span style={{ fontSize: compact ? 16 : 22, color: t.outer[0], fontWeight: 500 }}>×</span>
+          <span style={{ fontSize: compact ? 16 : 22, color: t.inner[1], fontWeight: 500 }}>×</span>
           {compact && label && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginLeft: 6, fontWeight: 500 }}>{label}</span>}
         </div>
         {!compact && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 500, marginTop: 4 }}>streak on fire</div>}
       </div>
 
-      {/* Flame SVG comet trail: arrow tip di kanan, trail memanjang ke kiri (fade ke area angka) */}
-      <svg style={{ position: "absolute", right: 0, top: 0, height: "100%", width: compact ? "60%" : "70%", pointerEvents: "none" }} viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        <defs>
-          <linearGradient id={`${uid}-outer`} x1="0" y1="0.5" x2="1" y2="0.5">
-            <stop offset="0%" stopColor={t.outer[2]} stopOpacity="0" />
-            <stop offset="40%" stopColor={t.outer[2]} stopOpacity="0.5" />
-            <stop offset="80%" stopColor={t.outer[1]} stopOpacity="0.85" />
-            <stop offset="100%" stopColor={t.outer[0]} />
-          </linearGradient>
-          <linearGradient id={`${uid}-mid`} x1="0" y1="0.5" x2="1" y2="0.5">
-            <stop offset="0%" stopColor={t.outer[1]} stopOpacity="0" />
-            <stop offset="50%" stopColor={t.outer[0]} stopOpacity="0.7" />
-            <stop offset="100%" stopColor={t.inner[0]} />
-          </linearGradient>
-          <linearGradient id={`${uid}-inner`} x1="0" y1="0.5" x2="1" y2="0.5">
-            <stop offset="0%" stopColor={t.inner[0]} stopOpacity="0" />
-            <stop offset="60%" stopColor={t.inner[1]} stopOpacity="0.85" />
-            <stop offset="100%" stopColor="#FFFFFF" />
-          </linearGradient>
-        </defs>
-
-        {/* Background bloom */}
-        <ellipse cx="600" cy="100" rx="200" ry="45" fill={t.outer[1]} opacity="0.15">
-          <animate attributeName="rx" values="180;220;190;180" dur="2.4s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.10;0.22;0.14;0.10" dur="2.4s" repeatCount="indefinite" />
-        </ellipse>
-
-        {/* Layer 1 — Outer flame (deepest, widest) */}
-        <path d="M 50 100 Q 200 70, 380 65 Q 550 55, 680 75 L 770 95 L 780 100 L 770 105 L 680 125 Q 550 145, 380 135 Q 200 130, 50 100 Z" fill={`url(#${uid}-outer)`}>
-          <animate attributeName="opacity" values="0.85;1;0.9;1;0.85" dur="1.6s" repeatCount="indefinite" />
-        </path>
-
-        {/* Layer 2 — Mid blue */}
-        <path d="M 100 100 Q 240 80, 400 78 Q 560 72, 680 88 L 760 100 L 680 112 Q 560 128, 400 122 Q 240 120, 100 100 Z" fill={`url(#${uid}-mid)`} opacity="0.9">
-          <animate attributeName="opacity" values="0.75;0.95;0.82;0.95;0.75" dur="1.2s" repeatCount="indefinite" />
-        </path>
-
-        {/* Layer 3 — Inner cyan */}
-        <path d="M 200 100 Q 320 88, 480 88 Q 600 85, 690 96 L 755 100 L 690 104 Q 600 115, 480 112 Q 320 112, 200 100 Z" fill={`url(#${uid}-inner)`} opacity="0.9">
-          <animate attributeName="opacity" values="0.7;1;0.85;1;0.7" dur="0.8s" repeatCount="indefinite" />
-        </path>
-
-        {/* Layer 4 — White core spine (flicker cepat) */}
-        <path d="M 350 100 Q 480 96, 620 97 L 750 100 L 620 103 Q 480 104, 350 100 Z" fill="#FFFFFF" opacity="0.85">
-          <animate attributeName="opacity" values="0.65;1;0.8;1;0.65" dur="0.4s" repeatCount="indefinite" />
-        </path>
-
-        {/* Sparks — twinkle random */}
-        <circle cx="200" cy="70" r="2" fill={t.inner[1]}>
-          <animate attributeName="opacity" values="0.3;1;0.5;0.3" dur="1.4s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="320" cy="55" r="2.5" fill="#FFFFFF">
-          <animate attributeName="opacity" values="1;0.4;0.8;1" dur="1.1s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="450" cy="45" r="2" fill={t.inner[0]}>
-          <animate attributeName="opacity" values="0.5;1;0.6;0.5" dur="1.3s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="580" cy="55" r="3" fill="#FFFFFF">
-          <animate attributeName="opacity" values="0.7;0.3;1;0.7" dur="0.9s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="700" cy="40" r="2" fill={t.inner[1]}>
-          <animate attributeName="opacity" values="0.4;1;0.6;0.4" dur="1.5s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="230" cy="140" r="1.8" fill={t.inner[0]}>
-          <animate attributeName="opacity" values="0.6;0.2;0.9;0.6" dur="1.2s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="380" cy="155" r="2.2" fill="#FFFFFF">
-          <animate attributeName="opacity" values="0.4;1;0.5;0.4" dur="1s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="540" cy="150" r="2" fill={t.inner[1]}>
-          <animate attributeName="opacity" values="0.7;0.3;1;0.7" dur="1.3s" repeatCount="indefinite" />
-        </circle>
-        <circle cx="680" cy="160" r="1.5" fill="#FFFFFF">
-          <animate attributeName="opacity" values="1;0.4;0.7;1" dur="0.8s" repeatCount="indefinite" />
-        </circle>
-      </svg>
+      {/* Comet backdrop */}
+      <StreakCometSVG streak={streak} width={compact ? "60%" : "70%"} heightPx={h} rightPx={0} topPx={0} />
     </div>
   );
 }
@@ -1977,24 +2033,40 @@ function DashboardSiswa({ user, store, navigate }) {
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay}</h1>
       </div>
       <div className="dt" style={{ paddingTop: 0, marginBottom: 4 }}></div>
-      <Card pad="lg" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#fff", marginBottom: 12, border: "none" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 12, opacity: .8, fontWeight: 500 }}>TOTAL POIN</div>
-            <div className="stat-num" style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-.03em" }}>{stats.poin.toLocaleString("id-ID")}</div>
-            <div style={{ fontSize: 13, opacity: .8, marginTop: 2 }}>Ranking #{myRank?.rank || "—"} di Kelas {user.jenjang}</div>
+      {/* HERO CARD MERGED: Total Poin + Streak dalam 1 dark navy card dengan comet backdrop */}
+      <Card pad="none" style={{ background: "linear-gradient(135deg, #0a1220 0%, #142338 60%, #1a3554 100%)", color: "#fff", marginBottom: 12, border: "none", position: "relative", overflow: "hidden", minHeight: 200, boxShadow: `0 4px 20px ${getFlameTheme(stats.streak || 0).glow}` }}>
+        {/* Comet flame backdrop (kanan area) — cuma render kalau streak > 0 */}
+        {(stats.streak || 0) > 0 && <StreakCometSVG streak={stats.streak} width="65%" heightPx={130} rightPx={0} topPx={40} />}
+
+        {/* Layer konten di atas comet (z-index tinggi) */}
+        <div style={{ position: "relative", zIndex: 3, padding: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+            {/* KIRI — Total Poin */}
+            <div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", fontWeight: 500, letterSpacing: "0.05em" }}>TOTAL POIN</div>
+              <div className="stat-num" style={{ fontSize: 42, fontWeight: 700, letterSpacing: "-.02em", lineHeight: 1.05, marginTop: 4 }}>{stats.poin.toLocaleString("id-ID")}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 6 }}>Ranking #{myRank?.rank || "—"} di Kelas {user.jenjang}</div>
+            </div>
+            {/* KANAN — Streak (kalau ada) + tugas selesai */}
+            <div style={{ textAlign: "right" }}>
+              {(stats.streak || 0) > 0 && (
+                <>
+                  <div style={{ display: "inline-flex", alignItems: "baseline", gap: 3 }}>
+                    <span style={{ fontSize: 32, fontWeight: 500, color: "#fff", lineHeight: 1, fontFamily: "var(--mono)" }}>{stats.streak}</span>
+                    <span style={{ fontSize: 16, color: getFlameTheme(stats.streak).inner[1], fontWeight: 500 }}>×</span>
+                  </div>
+                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 500, marginTop: 2 }}>streak on fire</div>
+                </>
+              )}
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: (stats.streak || 0) > 0 ? 8 : 0 }}>{stats.tugasSelesai} tugas selesai</div>
+            </div>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{stats.tugasSelesai} tugas selesai</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.15)", color: "#fff", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.1)" }} onClick={() => navigate("leaderboard")}><I n="trophy" s={13} /> Ranking</button>
+            <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.12)", color: "#fff", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.08)" }} onClick={() => navigate("tugas")}><I n="book" s={13} /> Tugas</button>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.2)", color: "#fff", backdropFilter: "blur(4px)" }} onClick={() => navigate("leaderboard")}><I n="trophy" s={13} /> Ranking</button>
-          <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.15)", color: "#fff", backdropFilter: "blur(4px)" }} onClick={() => navigate("tugas")}><I n="book" s={13} /> Tugas</button>
         </div>
       </Card>
-      {/* Streak card — hanya render kalau streak > 0 */}
-      <StreakCard streak={stats.streak} />
       <div className="g3" style={{ marginBottom: 12 }}>
         {[
           { label: "Tugas selesai", val: stats.tugasSelesai, icon: "checkCircle", cls: "mini-icon-1" },
