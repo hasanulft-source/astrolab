@@ -306,10 +306,10 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .divider{text-align:center;font-size:11px;color:var(--ink-4);letter-spacing:.08em;padding:8px 0;}
 
 /* STREAK BADGE */
-.streak-flame{display:inline-flex;flex-direction:column;align-items:center;gap:2px;color:#ea580c;}
-.streak-flame svg{filter:drop-shadow(0 2px 6px rgba(234,88,12,.5));}
+.streak-flame{display:inline-flex;flex-direction:column;align-items:center;gap:2px;color:#0284c7;}
+.streak-flame svg{filter:drop-shadow(0 2px 6px rgba(0,207,255,.5));}
 .streak-num{font-family:var(--mono);font-size:13px;font-weight:800;color:#fff;line-height:1;margin-top:2px;text-shadow:0 1px 2px rgba(0,0,0,.2);}
-.streak-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:11px;font-weight:700;font-family:var(--mono);}
+.streak-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;background:#E6F9FF;color:#003D7A;border:1px solid #8AF7FF;font-size:11px;font-weight:700;font-family:var(--mono);}
 .streak-pill svg{flex-shrink:0;}
 
 /* FLAME ANIMATION */
@@ -469,15 +469,16 @@ function I({ n, s = 16, style, cls = "" }) {
 
 // ─── ANIMATED FLAME ───
 function getFlameTheme(streak) {
-  if (streak >= 300) return { outer: ["#d8b4fe","#9333ea","#4c1d95"], inner: ["#f5f3ff","#d8b4fe"], text: "#fff" };
-  if (streak >= 200) return { outer: ["#e879f9","#a21caf","#6b21a8"], inner: ["#fdf4ff","#f0abfc"], text: "#fff" };
-  if (streak >= 100) return { outer: ["#f472b6","#db2777","#9d174d"], inner: ["#fdf2f8","#f9a8d4"], text: "#fff" };
-  if (streak >= 60)  return { outer: ["#f87171","#dc2626","#7f1d1d"], inner: ["#fff1f2","#fca5a5"], text: "#fff" };
-  if (streak >= 30)  return { outer: ["#fca5a5","#ef4444","#7f1d1d"], inner: ["#fee2e2","#fca5a5"], text: "#fff" };
-  if (streak >= 20)  return { outer: ["#fb923c","#f97316","#9a3412"], inner: ["#fed7aa","#fb923c"], text: "#fff" };
-  if (streak >= 10)  return { outer: ["#fdba74","#f97316","#c2410c"], inner: ["#ffedd5","#fdba74"], text: "#fff" };
-  if (streak >= 7)   return { outer: ["#fcd34d","#fb923c","#c2410c"], inner: ["#fffbeb","#fde68a"], text: "#78350f" };
-  return               { outer: ["#fef08a","#fbbf24","#d97706"], inner: ["#fff","#fef9c3"], text: "#78350f" };
+  // Skala energy: cyan light → cyan intense → violet → magenta plasma
+  if (streak >= 300) return { outer: ["#f0abfc","#c026d3","#6b21a8"], inner: ["#fdf4ff","#f0abfc"], text: "#fff", glow: "rgba(192,38,211,.55)" };
+  if (streak >= 200) return { outer: ["#e879f9","#9333ea","#4c1d95"], inner: ["#faf5ff","#e9d5ff"], text: "#fff", glow: "rgba(147,51,234,.5)" };
+  if (streak >= 100) return { outer: ["#c4b5fd","#7c3aed","#3730a3"], inner: ["#f5f3ff","#c4b5fd"], text: "#fff", glow: "rgba(124,58,237,.45)" };
+  if (streak >= 60)  return { outer: ["#67e8f9","#0891b2","#164e63"], inner: ["#ecfeff","#a5f3fc"], text: "#fff", glow: "rgba(6,182,212,.5)" };
+  if (streak >= 30)  return { outer: ["#8AF7FF","#00CFFF","#006CFF"], inner: ["#E8FFFF","#8AF7FF"], text: "#fff", glow: "rgba(0,207,255,.55)" };
+  if (streak >= 20)  return { outer: ["#a5f3fc","#22d3ee","#0e7490"], inner: ["#ecfeff","#a5f3fc"], text: "#0e7490", glow: "rgba(34,211,238,.45)" };
+  if (streak >= 10)  return { outer: ["#bef4fb","#67e8f9","#0891b2"], inner: ["#ecfeff","#bef4fb"], text: "#155e75", glow: "rgba(103,232,249,.4)" };
+  if (streak >= 7)   return { outer: ["#cffafe","#a5f3fc","#22d3ee"], inner: ["#ecfeff","#cffafe"], text: "#155e75", glow: "rgba(165,243,252,.4)" };
+  return              { outer: ["#e0f2fe","#7dd3fc","#0284c7"], inner: ["#f0f9ff","#e0f2fe"], text: "#075985", glow: "rgba(125,211,252,.35)" };
 }
 function FlameAnimated({ size = 44, streak = 1 }) {
   const t = getFlameTheme(streak);
@@ -504,6 +505,88 @@ function FlameAnimated({ size = 44, streak = 1 }) {
       {/* number */}
       <text x="24" y="41" textAnchor="middle" fontFamily="DM Mono,monospace" fontWeight="700" fontSize={fs} fill={t.text} style={{ userSelect: "none" }}>{streak}</text>
     </svg>
+  );
+}
+
+// ─── STREAK CARD ───
+// Card besar untuk dashboard & result screen. Backdrop = flame cyan-blue memancar dari kanan.
+// Skala warna ikut getFlameTheme (streak makin tinggi = warna makin intense).
+// Cuma render kalau streak > 0 (return null kalau 0 — caller gak perlu conditional).
+function StreakCard({ streak, compact = false, label }) {
+  if (!streak || streak <= 0) return null;
+  const t = getFlameTheme(streak);
+  const uid = `sc${streak}${compact ? "c" : "l"}`;
+  const h = compact ? 80 : 120;
+  const numSize = compact ? 34 : 56;
+
+  return (
+    <div style={{
+      position: "relative",
+      background: "linear-gradient(135deg, #0a1220 0%, #142338 60%, #1a3554 100%)",
+      borderRadius: 16,
+      padding: compact ? "14px 20px" : "20px 24px",
+      height: h,
+      overflow: "hidden",
+      display: "flex",
+      alignItems: "center",
+      marginBottom: 12,
+      boxShadow: `0 4px 20px ${t.glow}`,
+    }}>
+      {/* Angka streak di kiri */}
+      <div style={{ position: "relative", zIndex: 2 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+          <span style={{ fontSize: numSize, fontWeight: 500, color: "#ffffff", lineHeight: 1, fontFamily: "var(--mono)" }}>{streak}</span>
+          <span style={{ fontSize: compact ? 16 : 22, color: t.outer[0], fontWeight: 500 }}>×</span>
+          {compact && label && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginLeft: 6, fontWeight: 500 }}>{label}</span>}
+        </div>
+        {!compact && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 500, marginTop: 4 }}>streak on fire</div>}
+      </div>
+
+      {/* Flame SVG backdrop di kanan */}
+      <svg style={{ position: "absolute", right: compact ? -30 : -40, top: "50%", transform: "translateY(-50%)", height: "220%", opacity: 0.95, pointerEvents: "none" }} viewBox="0 0 1024 256" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id={`${uid}-outer`} x1="0" y1="128" x2="1024" y2="128">
+            <stop offset="0%" stopColor={t.outer[0]} stopOpacity="0" />
+            <stop offset="30%" stopColor={t.outer[0]} stopOpacity="0.4" />
+            <stop offset="65%" stopColor={t.outer[1]} stopOpacity="0.85" />
+            <stop offset="100%" stopColor={t.outer[2]} />
+          </linearGradient>
+          <linearGradient id={`${uid}-core`} x1="0" y1="128" x2="1024" y2="128">
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0" />
+            <stop offset="30%" stopColor={t.inner[0]} stopOpacity="0.6" />
+            <stop offset="70%" stopColor={t.inner[1]} />
+            <stop offset="100%" stopColor={t.outer[0]} />
+          </linearGradient>
+        </defs>
+        {/* Soft bloom belakang */}
+        <ellipse cx="720" cy="128" rx="320" ry="50" fill={t.outer[0]} opacity="0.15">
+          <animate attributeName="rx" values="300;340;315;300" dur="2.4s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.10;0.22;0.15;0.10" dur="2.4s" repeatCount="indefinite" />
+        </ellipse>
+        {/* Outer flame */}
+        <path fill={`url(#${uid}-outer)`} d="M20 128 C 100 82, 240 62, 380 68 C 500 74, 620 44, 760 58 C 850 68, 950 90, 1005 128 C 950 165, 850 200, 760 210 C 620 220, 500 195, 380 195 C 240 195, 100 178, 20 128 Z">
+          <animate attributeName="opacity" values="0.9;1;0.92;1;0.9" dur="1.8s" repeatCount="indefinite" />
+        </path>
+        {/* Core */}
+        <path fill={`url(#${uid}-core)`} d="M60 128 C 150 105, 280 100, 400 108 C 500 114, 620 92, 740 102 C 830 112, 920 122, 985 128 C 920 138, 830 152, 740 158 C 620 168, 500 152, 400 154 C 280 156, 150 152, 60 128 Z">
+          <animate attributeName="opacity" values="0.85;1;0.9;1;0.85" dur="1.4s" repeatCount="indefinite" />
+        </path>
+        {/* Sparks */}
+        <circle cx="420" cy="80" r="2.5" fill="#FFFFFF" />
+        <circle cx="520" cy="60" r="2" fill={t.outer[0]} />
+        <circle cx="620" cy="72" r="2.8" fill="#FFFFFF" />
+        <circle cx="740" cy="52" r="2" fill={t.outer[0]} />
+        <circle cx="820" cy="90" r="2.4" fill="#FFFFFF" />
+        <circle cx="470" cy="180" r="1.8" fill={t.inner[0]} />
+        <circle cx="580" cy="195" r="2.2" fill="#FFFFFF" />
+        <circle cx="690" cy="185" r="1.5" fill={t.outer[0]} />
+        <circle cx="800" cy="200" r="2" fill="#FFFFFF" />
+        {/* White core flicker */}
+        <ellipse cx="700" cy="128" rx="180" ry="12" fill="#FFFFFF" opacity="0.15">
+          <animate attributeName="opacity" values="0.08;0.25;0.12;0.22;0.08" dur="0.6s" repeatCount="indefinite" />
+        </ellipse>
+      </svg>
+    </div>
   );
 }
 
@@ -1869,14 +1952,7 @@ function DashboardSiswa({ user, store, navigate }) {
             <div className="stat-num" style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-.03em" }}>{stats.poin.toLocaleString("id-ID")}</div>
             <div style={{ fontSize: 13, opacity: .8, marginTop: 2 }}>Ranking #{myRank?.rank || "—"} di Kelas {user.jenjang}</div>
           </div>
-          <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-            {(stats.streak || 0) > 0 ? (
-              <div className="streak-flame">
-                <FlameAnimated size={44} streak={stats.streak} />
-              </div>
-            ) : (
-              <div style={{ color: "rgba(255,255,255,.4)" }}><I n="flame" s={36} /></div>
-            )}
+          <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{stats.tugasSelesai} tugas selesai</div>
           </div>
         </div>
@@ -1885,6 +1961,8 @@ function DashboardSiswa({ user, store, navigate }) {
           <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.15)", color: "#fff", backdropFilter: "blur(4px)" }} onClick={() => navigate("tugas")}><I n="book" s={13} /> Tugas</button>
         </div>
       </Card>
+      {/* Streak card — hanya render kalau streak > 0 */}
+      <StreakCard streak={stats.streak} />
       <div className="g3" style={{ marginBottom: 12 }}>
         {[
           { label: "Tugas selesai", val: stats.tugasSelesai, icon: "checkCircle", cls: "mini-icon-1" },
@@ -2850,8 +2928,8 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>+{result.poinDapat} poin didapat</div>
       <div style={{ width: "100%", maxWidth: 320, marginTop: 16 }}><LevelCard poin={newPoin} /></div>
       {result.ontime && result.newStreak > 0 && (
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 12, padding: "8px 16px", borderRadius: 99, background: "#fff7ed", color: "#c2410c", border: "1.5px solid #fed7aa", fontSize: 14, fontWeight: 700 }}>
-          <FlameAnimated size={28} streak={result.newStreak} /> Streak {result.newStreak}x!
+        <div style={{ width: "100%", maxWidth: 340, marginTop: 12 }}>
+          <StreakCard streak={result.newStreak} compact label="Streak baru!" />
         </div>
       )}
       {!result.ontime && (
