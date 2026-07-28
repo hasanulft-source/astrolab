@@ -1529,6 +1529,66 @@ function useStore() {
     await update(ref(db, `stats/${sid}`), { streak: 0 });
   };
 
+  // ─── INTERVENSI NILAI (guru only) ───
+  // Guru ubah nilai submission siswa. Auto-recompute poin di submission + stats siswa.
+  // Kalau nilai baru = 0 (misal kecurangan), streak siswa auto-reset.
+  // Kalau nilai naik dari failing (< 60) ke passing, streak TIDAK dipulihkan (waktu udah lewat).
+  // Simpan history intervensi di submission.riwayatIntervensi[] untuk audit trail.
+  const updateSubmissionNilai = async (subId, nilaiBaru, alasan) => {
+    const sub = subs.find(s => s.id === subId);
+    if (!sub) throw new Error("Submission tidak ditemukan");
+    if (nilaiBaru < 0 || nilaiBaru > 100) throw new Error("Nilai harus 0-100");
+    if (!alasan || alasan.trim().length < 10) throw new Error("Alasan minimal 10 karakter");
+
+    const t = tugas.find(t => t.id === sub.tugasId);
+    if (!t) throw new Error("Tugas tidak ditemukan");
+
+    // Hitung poin baru proporsional: nilai baru × total poin tugas / 100
+    const totalPoinTugas = (t.soal || []).reduce((sum, s) => sum + (Number(s.poin) || 10), 0);
+    const nilaiLama = sub.nilai;
+    const poinLama = sub.poinDapat || 0;
+    const poinBaru = Math.round((nilaiBaru / 100) * totalPoinTugas);
+    const deltaPoin = poinBaru - poinLama;
+
+    // Update submission — set nilai baru, poin baru, append ke riwayatIntervensi
+    const now = Date.now();
+    const riwayatBaru = [
+      ...(sub.riwayatIntervensi || []),
+      {
+        nilaiSebelum: nilaiLama,
+        nilaiSetelah: nilaiBaru,
+        poinSebelum: poinLama,
+        poinSetelah: poinBaru,
+        alasan: alasan.trim(),
+        updatedAt: now,
+      },
+    ];
+    await update(ref(db, `submissions/${subId}`), {
+      nilai: nilaiBaru,
+      poinDapat: poinBaru,
+      riwayatIntervensi: riwayatBaru,
+    });
+
+    // Update stats siswa — adjust total poin & recompute nilaiList/nilaiRata
+    const st = getStats(sub.siswaId);
+    const newPoin = (st.poin || 0) + deltaPoin;
+    // Ganti nilai lama dengan nilai baru di nilaiList (find by index)
+    const nilaiList = [...(st.nilaiList || [])];
+    // Cari index nilai lama yg match subId — kalau gak match sub tertentu, ganti nilai lama pertama yg cocok
+    // Approach: rebuild nilaiList dari semua sub siswa yang sudah dinilai
+    const allSiswaSubs = subs.filter(s => s.siswaId === sub.siswaId).map(s => s.id === subId ? { ...s, nilai: nilaiBaru } : s);
+    const newNilaiList = allSiswaSubs.filter(s => typeof s.nilai === "number").map(s => s.nilai);
+    const newNilaiRata = newNilaiList.length ? Math.round(newNilaiList.reduce((a, b) => a + b, 0) / newNilaiList.length) : 0;
+
+    const statsUpdate = { poin: newPoin, nilaiList: newNilaiList, nilaiRata: newNilaiRata };
+    // Kalau nilai baru = 0, reset streak (asumsi kecurangan)
+    if (nilaiBaru === 0) statsUpdate.streak = 0;
+
+    await update(ref(db, `stats/${sub.siswaId}`), statsUpdate);
+
+    return { deltaPoin, poinBaru, nilaiLama, nilaiBaru };
+  };
+
   const [messages, setMessages] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -1875,7 +1935,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -3168,11 +3228,13 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
           placeholder="Tulis jawaban kamu di sini..."
           value={answers[safeIdx] || ""}
           onChange={e => answer(e.target.value)}
+          onPaste={e => e.preventDefault()}
         />
-        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6, display: "flex", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
           <span>{(answers[safeIdx] || "").length} karakter · {((answers[safeIdx] || "").trim().split(/\s+/).filter(Boolean) || []).length} kata</span>
           <span>📝 Dinilai manual oleh guru</span>
         </div>
+        <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2, fontStyle: "italic" }}>✋ Tempel (paste) dinonaktifkan — ketik langsung jawabanmu</div>
       </div>}
       {soal.type === "pg" && soal.opsi?.map((o, i) => <button key={i} className={`quiz-opt ${answers[safeIdx] === i ? "selected" : ""}`} onClick={() => answer(i)}><div className="quiz-letter">{String.fromCharCode(65 + i)}</div><span style={{ flex: 1 }}>{o}</span></button>)}
       {soal.type === "tf" && <div style={{ display: "flex", gap: 10 }}>{["Benar", "Salah"].map((o, i) => <button key={i} className={`quiz-opt ${answers[safeIdx] === i ? "selected" : ""}`} style={{ flex: 1 }} onClick={() => answer(i)}><div className="quiz-letter">{i === 0 ? "B" : "S"}</div><span style={{ flex: 1 }}>{o}</span></button>)}</div>}
@@ -3210,10 +3272,11 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
           return (
             <div key={key} style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-2)", marginBottom: 4 }}>{i + 1}. {label}</div>
-              <textarea className="inp" rows={3} style={{ fontSize: 13, lineHeight: 1.5 }} placeholder={`Tulis ${label.toLowerCase()}...`} value={(answers[safeIdx] || {})[key] || ""} onChange={e => { const cur = answers[safeIdx] || { k1: "", k2: "", k3: "", k4: "" }; answer({ ...cur, [key]: e.target.value }); }} />
+              <textarea className="inp" rows={3} style={{ fontSize: 13, lineHeight: 1.5 }} placeholder={`Tulis ${label.toLowerCase()}...`} value={(answers[safeIdx] || {})[key] || ""} onChange={e => { const cur = answers[safeIdx] || { k1: "", k2: "", k3: "", k4: "" }; answer({ ...cur, [key]: e.target.value }); }} onPaste={e => e.preventDefault()} />
             </div>
           );
         })}
+        <div style={{ fontSize: 10, color: "var(--ink-3)", fontStyle: "italic", marginBottom: 4 }}>✋ Tempel (paste) dinonaktifkan — ketik langsung jawabanmu</div>
         <div style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right" }}>📝 Dinilai manual oleh guru</div>
       </div>}
     </div>
@@ -3552,7 +3615,36 @@ function ProfilSiswa({ user, store }) {
 
       <div className="sh"><h2>Riwayat pengerjaan</h2></div>
       {subs.length === 0 ? <Card><div className="empty">Belum ada tugas yang dikerjakan.</div></Card> :
-        <Card pad="none" style={{ overflow: "hidden" }}><div style={{ padding: "4px 16px" }}>{subs.slice().reverse().map(s => { const t = store.getTugas().find(x => x.id === s.tugasId); return <div key={s.id} className="row"><div style={{ width: 36, height: 36, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={16} /></div><div className="row-main"><div className="row-title">{t?.judul || "Tugas dihapus"}</div><div className="row-sub">{new Date(s.submittedAt).toLocaleDateString("id-ID")} · nilai {s.nilai}</div></div><div className="stat-num" style={{ fontSize: 14, fontWeight: 600, color: "var(--good)" }}>+{s.poinDapat}</div></div>; })}</div></Card>}
+        <Card pad="none" style={{ overflow: "hidden" }}><div style={{ padding: "4px 16px" }}>{subs.slice().reverse().map(s => {
+          const t = store.getTugas().find(x => x.id === s.tugasId);
+          const intervensi = s.riwayatIntervensi || [];
+          const lastIntervensi = intervensi.length > 0 ? intervensi[intervensi.length - 1] : null;
+          return (
+            <div key={s.id} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={16} /></div>
+                <div className="row-main">
+                  <div className="row-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {t?.judul || "Tugas dihapus"}
+                    {lastIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diperbarui guru</span>}
+                  </div>
+                  <div className="row-sub">{new Date(s.submittedAt).toLocaleDateString("id-ID")} · nilai {s.nilai}</div>
+                </div>
+                <div className="stat-num" style={{ fontSize: 14, fontWeight: 600, color: "var(--good)" }}>+{s.poinDapat}</div>
+              </div>
+              {lastIntervensi && (
+                <div style={{ marginLeft: 48, padding: "6px 10px", background: "var(--accent-tint)", borderRadius: 6, fontSize: 11, lineHeight: 1.55 }}>
+                  <div style={{ color: "var(--accent-2)", fontWeight: 600 }}>
+                    Nilai diubah: {lastIntervensi.nilaiSebelum} → {lastIntervensi.nilaiSetelah}
+                  </div>
+                  <div style={{ color: "var(--ink-2)", marginTop: 2 }}>
+                    <b>Alasan:</b> {lastIntervensi.alasan}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}</div></Card>}
       {showLapor && <LaporModal user={user} store={store} onClose={() => setShowLapor(false)} />}
     </div>
   </>;
@@ -5348,12 +5440,143 @@ function MateriManagerModal({ store, jenjang, onClose, onSuccess }) {
   );
 }
 
+// ─── INTERVENSI NILAI MODAL (Guru) ───
+// Modal 2-level: (1) list semua submission untuk 1 tugas, (2) sub-modal ubah nilai per siswa.
+// Guru bisa naikkan nilai (re-assess formatif) atau turunkan (kecurangan). Alasan wajib 10+ char.
+// Auto: poin siswa recompute, streak reset kalau nilai = 0.
+function IntervensiNilaiModal({ tugas, store, onClose }) {
+  const [editTarget, setEditTarget] = useState(null); // submission yg lagi diedit
+  const [toast, setToast] = useState("");
+
+  const allSubs = store.getSubs().filter(s => s.tugasId === tugas.id);
+  const siswaList = store.getAllSiswa(tugas.jenjang);
+
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Kelola Nilai</h3>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{tugas.judul}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--ink-3)", padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 12, fontSize: 11, color: "var(--ink-2)", lineHeight: 1.55 }}>
+          <b>Kenapa mengubah nilai?</b> Untuk re-assess formatif (naikkan nilai setelah tes ulang) atau intervensi kecurangan (turunkan nilai). Alasan wajib diisi & tersimpan di riwayat.
+        </div>
+
+        <div style={{ overflowY: "auto", flex: 1, marginRight: -4, paddingRight: 4 }}>
+          {allSubs.length === 0 ? (
+            <div className="empty" style={{ padding: "30px 20px" }}>Belum ada siswa yang mengerjakan tugas ini.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {allSubs.map(sub => {
+                const siswa = siswaList.find(s => s.id === sub.siswaId);
+                const nama = siswa?.nama || sub.siswaId;
+                const nilai = sub.nilai;
+                const nilaiColor = nilai >= 80 ? "var(--good)" : nilai >= 60 ? "var(--warn)" : "var(--bad)";
+                const hasIntervensi = (sub.riwayatIntervensi || []).length > 0;
+                return (
+                  <div key={sub.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nama}</div>
+                        {hasIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diintervensi ×{sub.riwayatIntervensi.length}</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Poin: +{sub.poinDapat || 0} · Submit: {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}</div>
+                    </div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 20, fontWeight: 800, color: nilaiColor, minWidth: 40, textAlign: "center" }}>{nilai}</div>
+                    <button className="btn btn-outline btn-sm" onClick={() => setEditTarget(sub)}>
+                      <I n="edit" s={12} /> Ubah
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {toast && <div style={{ position: "fixed", bottom: 30, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 999 }}>{toast}</div>}
+      </div>
+
+      {editTarget && <UbahNilaiModal sub={editTarget} tugas={tugas} store={store} siswa={siswaList.find(s => s.id === editTarget.siswaId)} onClose={() => setEditTarget(null)} onSuccess={(msg) => { setEditTarget(null); showToast(msg); }} />}
+    </div>
+  );
+}
+
+// Sub-modal untuk ubah nilai 1 submission
+function UbahNilaiModal({ sub, tugas, store, siswa, onClose, onSuccess }) {
+  const [nilaiBaru, setNilaiBaru] = useState(sub.nilai);
+  const [alasan, setAlasan] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const totalPoinTugas = (tugas.soal || []).reduce((sum, s) => sum + (Number(s.poin) || 10), 0);
+  const poinBaru = Math.round((Number(nilaiBaru) / 100) * totalPoinTugas);
+  const deltaPoin = poinBaru - (sub.poinDapat || 0);
+  const deltaNilai = Number(nilaiBaru) - sub.nilai;
+
+  const canSubmit = !saving && Number(nilaiBaru) >= 0 && Number(nilaiBaru) <= 100 && alasan.trim().length >= 10 && Number(nilaiBaru) !== sub.nilai;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await store.updateSubmissionNilai(sub.id, Number(nilaiBaru), alasan.trim());
+      onSuccess(`Nilai ${siswa?.nama || sub.siswaId} diubah ke ${nilaiBaru}`);
+    } catch (e) {
+      alert("Gagal mengubah nilai: " + (e?.message || "coba lagi"));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1001 }}>
+      <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+        <h3>Ubah Nilai Siswa</h3>
+        <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 14, fontSize: 12, lineHeight: 1.6 }}>
+          <div><span style={{ color: "var(--ink-3)" }}>Siswa:</span> <b>{siswa?.nama || sub.siswaId}</b></div>
+          <div><span style={{ color: "var(--ink-3)" }}>Tugas:</span> {tugas.judul}</div>
+          <div><span style={{ color: "var(--ink-3)" }}>Nilai sekarang:</span> <b>{sub.nilai}</b> · Poin: +{sub.poinDapat || 0}</div>
+        </div>
+
+        <label className="lbl">Nilai Baru (0-100)</label>
+        <input className="inp" type="number" min={0} max={100} value={nilaiBaru} onChange={e => setNilaiBaru(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 16, fontWeight: 700 }} />
+
+        {/* Preview delta */}
+        {Number(nilaiBaru) !== sub.nilai && Number(nilaiBaru) >= 0 && Number(nilaiBaru) <= 100 && (
+          <div style={{ marginTop: 8, padding: "8px 12px", background: deltaPoin >= 0 ? "var(--good-bg)" : "#fee2e2", borderRadius: 6, fontSize: 12, lineHeight: 1.6 }}>
+            <div><b>Preview:</b></div>
+            <div>Nilai: {sub.nilai} → <b>{nilaiBaru}</b> ({deltaNilai > 0 ? "+" : ""}{deltaNilai})</div>
+            <div>Poin: +{sub.poinDapat || 0} → <b>+{poinBaru}</b> ({deltaPoin > 0 ? "+" : ""}{deltaPoin})</div>
+            {Number(nilaiBaru) === 0 && <div style={{ color: "var(--bad)", fontWeight: 700, marginTop: 4 }}>⚠ Streak siswa akan direset ke 0</div>}
+          </div>
+        )}
+
+        <label className="lbl" style={{ marginTop: 14 }}>Alasan <span style={{ color: "var(--ink-3)", fontWeight: 400 }}>(min 10 karakter, wajib)</span></label>
+        <textarea className="inp" rows={3} placeholder="Contoh: 'Tes ulang formatif — siswa berhasil menjelaskan konsep dengan benar' atau 'Ditemukan nyontek dari teman'" value={alasan} onChange={e => setAlasan(e.target.value)} maxLength={300} style={{ resize: "vertical" }} />
+        <div style={{ fontSize: 10, color: "var(--ink-3)", textAlign: "right", marginTop: 2, marginBottom: 12 }}>{alasan.length}/300 · Alasan akan terlihat oleh siswa</div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit}>
+            {saving ? "Menyimpan..." : "Simpan Perubahan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TugasGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const [confirm, setConfirm] = useState(null);
   const [filter, setFilter] = useState("aktif");
   const [toast, setToast] = useState("");
   const [showMateriManager, setShowMateriManager] = useState(false);
+  const [intervensiTarget, setIntervensiTarget] = useState(null);
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
   const tugasAll = store.getTugas().filter(t => t.jenjang === jenjang);
   const siswa = store.getAllSiswa(jenjang);
@@ -5422,6 +5645,7 @@ function TugasGuru({ store, navigate }) {
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, flexDirection: "column", alignItems: "flex-end" }}>
                     <div style={{ display: "flex", gap: 6 }}>
+                      {subCount > 0 && <button className="btn btn-soft btn-sm" title="Kelola nilai siswa" onClick={() => setIntervensiTarget(t)}><I n="edit" s={13} /> Nilai</button>}
                       {!lewat && <button className="btn btn-soft btn-sm" onClick={() => navigate("edit-tugas", { tugasId: t.id })}><I n="edit" s={13} /></button>}
                       <button className="btn btn-soft btn-sm" title="Duplikat" onClick={() => { store.duplicateTugas(t); showToast?.("Tugas diduplikat!"); }}><I n="copy" s={13} /></button>
                       <button className="btn btn-danger btn-sm" onClick={() => setConfirm(t.id)}><I n="trash" s={13} /></button>
@@ -5449,6 +5673,7 @@ function TugasGuru({ store, navigate }) {
         </div>
       )}
     </div>
+    {intervensiTarget && <IntervensiNilaiModal tugas={intervensiTarget} store={store} onClose={() => setIntervensiTarget(null)} />}
   </>;
 }
 
