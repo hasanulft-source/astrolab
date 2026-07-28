@@ -2186,6 +2186,104 @@ function DashboardSiswa({ user, store, navigate }) {
   </>;
 }
 
+// ─── CONFETTI RAIN (canvas, continuous loop) ───
+// Dipakai di podium leaderboard rank 1-3. Intensity beda per rank:
+// high (rank 1) = padat, 4 bentuk (rect/circle/star/streamer), 8 warna
+// medium (rank 2) = jarang, 2 bentuk, 4 warna netral+gold
+// low (rank 3) = jarang, 2 bentuk, 4 warna bronze+gold
+// PENTING: pakai cancelAnimationFrame di cleanup — animasi WAJIB berhenti
+// begitu komponen unmount (siswa pindah halaman), supaya gak jalan terus di background.
+function ConfettiRain({ intensity = "high" }) {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const presets = {
+      high: { colors: ["#fbbf24", "#f97316", "#ef4444", "#10b981", "#3b82f6", "#a855f7", "#ec4899", "#06b6d4"], spawnRate: 4, spawnCount: 3, stars: true, streamers: true },
+      medium: { colors: ["#94a3b8", "#fbbf24", "#10b981", "#e2e8f0"], spawnRate: 10, spawnCount: 1, stars: false, streamers: false },
+      low: { colors: ["#cd7f32", "#fbbf24", "#ef4444", "#f0c987"], spawnRate: 9, spawnCount: 1, stars: false, streamers: false },
+    };
+    const opts = presets[intensity] || presets.medium;
+    let particles = [];
+    let t = 0;
+
+    function spawn() {
+      const shapeRoll = Math.random();
+      let shape = "rect";
+      if (opts.stars && shapeRoll < 0.25) shape = "star";
+      else if (opts.streamers && shapeRoll < 0.4) shape = "streamer";
+      else if (shapeRoll > 0.7) shape = "circle";
+      particles.push({
+        x: Math.random() * rect.width,
+        y: -10,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: Math.random() * 1.5 + 1.5,
+        size: Math.random() * 6 + 4,
+        color: opts.colors[Math.floor(Math.random() * opts.colors.length)],
+        rotation: Math.random() * 360,
+        rotSpeed: (Math.random() - 0.5) * 8,
+        shape,
+        sway: Math.random() * 2,
+        swayPhase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    function drawStar(size) {
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+        const x = Math.cos(angle) * size / 2;
+        const y = Math.sin(angle) * size / 2;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function animate() {
+      t++;
+      if (t % opts.spawnRate === 0) {
+        for (let i = 0; i < opts.spawnCount; i++) spawn();
+      }
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.y += p.vy;
+        p.x += Math.sin(t * 0.05 + p.swayPhase) * p.sway * 0.3;
+        p.rotation += p.rotSpeed;
+        if (p.y > rect.height + 20) { particles.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation * Math.PI / 180);
+        ctx.fillStyle = p.color;
+        if (p.shape === "rect") ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.6);
+        else if (p.shape === "circle") { ctx.beginPath(); ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2); ctx.fill(); }
+        else if (p.shape === "star") drawStar(p.size * 1.3);
+        else if (p.shape === "streamer") ctx.fillRect(-p.size / 6, -p.size * 1.2, p.size / 3, p.size * 2.4);
+        ctx.restore();
+      }
+      rafRef.current = requestAnimationFrame(animate);
+    }
+    rafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [intensity]);
+
+  return <canvas ref={canvasRef} style={{ position: "absolute", top: -60, left: 0, width: "100%", height: "calc(100% + 60px)", pointerEvents: "none", zIndex: 1 }} />;
+}
+
 // ─── CELEBRATION AVATAR (animasi konfeti untuk rank #1) ───
 function CelebrationAvatar({ userId, name, size, store }) {
   const [tick, setTick] = useState(0);
@@ -2327,27 +2425,31 @@ function LeaderboardScreen({ user, store }) {
               const podH = [52, 72, 40][idx];
               const podBg = isFirst ? "#fbbf24" : place === 2 ? "#94a3b8" : "#cd7f32";
               const podTextCol = isFirst ? "#78350f" : "#fff";
+              const confettiIntensity = place === 1 ? "high" : place === 2 ? "medium" : "low";
               return (
-                <div key={s.id} style={{ flex: 1, maxWidth: 100, textAlign: "center", minWidth: 0 }}>
-                  {isFirst
-                    ? <CelebrationAvatar userId={s.id} name={s.nama} size="lg" store={store} />
-                    : <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
-                  }
-                  <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingInline: 4 }}>{getFirstName(s.nama)}</div>
-                  <div className="stat-num" style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>{s.poin.toLocaleString("id-ID")} pt</div>
-                  <div className={isFirst ? "podium-1" : ""} style={{
-                    height: podH,
-                    background: podBg,
-                    borderTopLeftRadius: 6,
-                    borderTopRightRadius: 6,
-                    display: "grid",
-                    placeItems: "center",
-                    fontFamily: "var(--mono)",
-                    fontSize: isFirst ? 18 : 14,
-                    fontWeight: 800,
-                    color: podTextCol,
-                  }}>
-                    {place}
+                <div key={s.id} style={{ flex: 1, maxWidth: 100, textAlign: "center", minWidth: 0, position: "relative" }}>
+                  <ConfettiRain intensity={confettiIntensity} />
+                  <div style={{ position: "relative", zIndex: 2 }}>
+                    {isFirst
+                      ? <CelebrationAvatar userId={s.id} name={s.nama} size="lg" store={store} />
+                      : <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
+                    }
+                    <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingInline: 4 }}>{getFirstName(s.nama)}</div>
+                    <div className="stat-num" style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>{s.poin.toLocaleString("id-ID")} pt</div>
+                    <div className={isFirst ? "podium-1" : ""} style={{
+                      height: podH,
+                      background: podBg,
+                      borderTopLeftRadius: 6,
+                      borderTopRightRadius: 6,
+                      display: "grid",
+                      placeItems: "center",
+                      fontFamily: "var(--mono)",
+                      fontSize: isFirst ? 18 : 14,
+                      fontWeight: 800,
+                      color: podTextCol,
+                    }}>
+                      {place}
+                    </div>
                   </div>
                 </div>
               );
