@@ -1717,6 +1717,132 @@ function useStore() {
   const getReports = () => reports;
   const getUnreadReportCount = () => reports.filter(r => r.status === "baru").length;
 
+  // ─── NILAI AKHIR (komposit multi-komponen, per siswa per mapel per periode) ───
+  // Data model per record: key = `${siswaId}_${mapel}_${jenjang}_${periode}` (periode = "Semester Ganjil 2026/2027")
+  // Shape: {
+  //   siswaId, mapel, jenjang, periode,
+  //   sumatif: { "BAB 1: Metode Ilmiah": 80, "BAB 2: ...": 75 },   // dinamis, key = nama kolom
+  //   kuis: { "1 Agt": 90, "5 Agt": 85 },                            // dinamis, key = tanggal/label
+  //   uts: 85, uas: 88, portofolio: 90,                              // manual, 1 angka
+  //   updatedAt
+  // }
+  // "Tugas Astrolab" (20%) TIDAK disimpan di record ini — selalu di-derive real-time dari
+  // submissions siswa yang tugas.mapel match, supaya selalu sinkron tanpa perlu manual update.
+  // PENTING: filter mapel STRICT — nilai IPA dan Informatika tidak boleh tercampur.
+  const [nilaiAkhirData, setNilaiAkhirData] = useState({});
+  useEffect(() => {
+    const naRef = ref(db, "nilaiAkhir");
+    const u8 = onValue(naRef, snap => {
+      setNilaiAkhirData(snap.val() || {});
+    });
+    return () => u8();
+  }, []);
+
+  function nilaiAkhirKey(siswaId, mapel, jenjang, periode) {
+    return `${siswaId}_${mapel}_${jenjang}_${periode}`.replace(/[.#$/[\]]/g, "-");
+  }
+
+  // Ambil record mentah (atau default kosong) untuk 1 siswa
+  const getNilaiAkhirRecord = (siswaId, mapel, jenjang, periode) => {
+    const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
+    return nilaiAkhirData[key] || { siswaId, mapel, jenjang, periode, sumatif: {}, kuis: {}, uts: null, uas: null, portofolio: null };
+  };
+
+  // Hitung rata-rata "Tugas Astrolab" untuk siswa, STRICT filter by mapel (tidak boleh campur IPA/Informatika)
+  const getTugasAstrolabAvg = (siswaId, mapel) => {
+    const mySubs = subs.filter(s => {
+      if (s.siswaId !== siswaId || typeof s.nilai !== "number") return false;
+      const t = tugas.find(x => x.id === s.tugasId);
+      return t && t.mapel === mapel; // strict match, tugas tanpa match di-exclude
+    });
+    if (mySubs.length === 0) return null;
+    return Math.round(mySubs.reduce((sum, s) => sum + s.nilai, 0) / mySubs.length);
+  };
+
+  // Hitung Nilai Akhir lengkap (breakdown + total weighted) untuk 1 siswa
+  const computeNilaiAkhir = (siswaId, mapel, jenjang, periode) => {
+    const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
+    const sumatifVals = Object.values(rec.sumatif || {}).filter(v => typeof v === "number");
+    const sumatifAvg = sumatifVals.length ? sumatifVals.reduce((a, b) => a + b, 0) / sumatifVals.length : null;
+    const kuisVals = Object.values(rec.kuis || {}).filter(v => typeof v === "number");
+    const kuisAvg = kuisVals.length ? kuisVals.reduce((a, b) => a + b, 0) / kuisVals.length : null;
+    const tugasAvg = getTugasAstrolabAvg(siswaId, mapel);
+
+    const komponen = [
+      { label: "Sumatif per BAB", val: sumatifAvg, bobot: 0.10 },
+      { label: "Tugas Astrolab", val: tugasAvg, bobot: 0.20 },
+      { label: "UTS", val: rec.uts, bobot: 0.20 },
+      { label: "UAS", val: rec.uas, bobot: 0.20 },
+      { label: "Kuis Harian", val: kuisAvg, bobot: 0.10 },
+      { label: "Portofolio", val: rec.portofolio, bobot: 0.20 },
+    ];
+
+    // Nilai akhir = jumlah (val × bobot) untuk komponen yang punya nilai.
+    // Komponen kosong (belum diisi) di-exclude dari perhitungan (bukan dianggap 0),
+    // supaya nilai akhir gak anjlok cuma karena guru belum sempat input semua komponen.
+    const filled = komponen.filter(k => typeof k.val === "number");
+    const totalBobotTerisi = filled.reduce((sum, k) => sum + k.bobot, 0);
+    const nilaiAkhir = totalBobotTerisi > 0
+      ? Math.round(filled.reduce((sum, k) => sum + k.val * k.bobot, 0) / totalBobotTerisi * 100) / 100
+      : null;
+
+    return { komponen, nilaiAkhir, lengkap: filled.length === komponen.length, sumatifAvg, kuisAvg, tugasAvg, rec };
+  };
+
+  // Update 1 kolom dinamis (sumatif atau kuis) — dipanggil dari grid inline edit
+  const updateNilaiKolom = async (siswaId, mapel, jenjang, periode, tipe, kolomKey, nilai) => {
+    const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
+    const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
+    const updated = { ...rec[tipe], [kolomKey]: nilai === "" || nilai === null ? null : Number(nilai) };
+    await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [tipe]: updated, updatedAt: Date.now() });
+  };
+
+  // Update field manual (uts/uas/portofolio) — 1 angka langsung
+  const updateNilaiManual = async (siswaId, mapel, jenjang, periode, field, nilai) => {
+    const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
+    await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [field]: nilai === "" || nilai === null ? null : Number(nilai), updatedAt: Date.now() });
+  };
+
+  // Tambah kolom dinamis baru (BAB atau Kuis) — apply ke SEMUA siswa di kelas+mapel+periode itu sekaligus
+  // (supaya kolom muncul konsisten di grid untuk semua siswa, walau nilai masih kosong)
+  const addKolomDinamis = async (siswaIds, mapel, jenjang, periode, tipe, kolomLabel) => {
+    const updates = {};
+    siswaIds.forEach(siswaId => {
+      const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
+      const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
+      if (!(kolomLabel in (rec[tipe] || {}))) {
+        updates[`nilaiAkhir/${key}/siswaId`] = siswaId;
+        updates[`nilaiAkhir/${key}/mapel`] = mapel;
+        updates[`nilaiAkhir/${key}/jenjang`] = jenjang;
+        updates[`nilaiAkhir/${key}/periode`] = periode;
+        updates[`nilaiAkhir/${key}/${tipe}/${kolomLabel.replace(/[.#$/[\]]/g, "-")}`] = null;
+        updates[`nilaiAkhir/${key}/updatedAt`] = Date.now();
+      }
+    });
+    if (Object.keys(updates).length > 0) await update(ref(db), updates);
+  };
+
+  // Hapus kolom dinamis dari SEMUA siswa sekaligus
+  const hapusKolomDinamis = async (siswaIds, mapel, jenjang, periode, tipe, kolomLabel) => {
+    const updates = {};
+    const safeKey = kolomLabel.replace(/[.#$/[\]]/g, "-");
+    siswaIds.forEach(siswaId => {
+      const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
+      updates[`nilaiAkhir/${key}/${tipe}/${safeKey}`] = null;
+    });
+    await update(ref(db), updates);
+  };
+
+  // Ambil daftar semua kolom dinamis (union dari semua siswa) — dipakai buat render header grid
+  const getKolomDinamisList = (siswaIds, mapel, jenjang, periode, tipe) => {
+    const labels = new Set();
+    siswaIds.forEach(siswaId => {
+      const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
+      Object.keys(rec[tipe] || {}).forEach(k => labels.add(k));
+    });
+    return [...labels];
+  };
+
   const [photos, setPhotos] = useState({});
 
   useEffect(() => {
@@ -1935,7 +2061,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, getTugasAstrolabAvg, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -5748,7 +5874,9 @@ function TugasGuru({ store, navigate }) {
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, flexDirection: "column", alignItems: "flex-end" }}>
                     <div style={{ display: "flex", gap: 6 }}>
                       {subCount > 0 && <button className="btn btn-soft btn-sm" title="Kelola nilai siswa" onClick={() => setIntervensiTarget(t)}><I n="edit" s={13} /> Nilai</button>}
-                      {!lewat && <button className="btn btn-soft btn-sm" onClick={() => navigate("edit-tugas", { tugasId: t.id })}><I n="edit" s={13} /></button>}
+                      <button className="btn btn-soft btn-sm" title={lewat ? "Perpanjang deadline / edit tugas" : "Edit tugas"} onClick={() => navigate("edit-tugas", { tugasId: t.id })}>
+                        <I n="edit" s={13} />{lewat && " Perpanjang"}
+                      </button>
                       <button className="btn btn-soft btn-sm" title="Duplikat" onClick={() => { store.duplicateTugas(t); showToast?.("Tugas diduplikat!"); }}><I n="copy" s={13} /></button>
                       <button className="btn btn-danger btn-sm" onClick={() => setConfirm(t.id)}><I n="trash" s={13} /></button>
                     </div>
@@ -8300,7 +8428,7 @@ function BadgeManager({ store }) {
 
 // ─── NAV ───
 const SNAV = [{ id: "home", l: "Beranda", ic: "home" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "tugas", l: "Tugas", ic: "book" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "profil", l: "Profil", ic: "user" }];
-const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "flag" }];
+const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "flag" }, { id: "nilai-akhir", l: "Nilai Akhir", ic: "award" }];
 
 function Sidebar({ user, route, navigate, onLogout, store }) {
   const nav = user.role === "guru" ? GNAV : SNAV;
@@ -8353,7 +8481,229 @@ function BottomNav({ user, route, navigate, store }) {
 // ─── LAPORAN GURU (wali kelas view) ───
 // Halaman list semua laporan siswa. Cuma guru yang bisa akses (Firebase Rules).
 // Guru bisa lihat identitas pelapor, isi laporan, update status, kasih catatan.
+// ─── NILAI AKHIR (Guru) ───
+// Grid inline editing untuk komposit nilai akhir siswa: Sumatif per BAB (dinamis),
+// Tugas Astrolab (auto-pull read-only, filtered strict by mapel), UTS, UAS,
+// Kuis Harian (dinamis), Portofolio. Nilai Akhir dihitung otomatis (weighted average).
+function NilaiAkhirPage({ store }) {
+  const [mapel, setMapel] = useState("IPA");
+  const [jenjang, setJenjang] = useState("VII");
+  const [periode, setPeriode] = useState(getPeriodeAktif());
+  const periodeOptions = getPeriodeOptions();
+  const [addModal, setAddModal] = useState(null); // "sumatif" | "kuis" | null
+  const [deleteTarget, setDeleteTarget] = useState(null); // { tipe, label } | null
+  const [toast, setToast] = useState("");
+
+  const siswaList = store.getAllSiswa(jenjang);
+  const siswaIds = siswaList.map(s => s.id);
+
+  const babKolom = store.getKolomDinamisList(siswaIds, mapel, jenjang, periode, "sumatif");
+  const kuisKolom = store.getKolomDinamisList(siswaIds, mapel, jenjang, periode, "kuis");
+
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2200); }
+
+  function handleCellSave(siswaId, tipe, kolomKey, val) {
+    store.updateNilaiKolom(siswaId, mapel, jenjang, periode, tipe, kolomKey, val);
+  }
+  function handleManualSave(siswaId, field, val) {
+    store.updateNilaiManual(siswaId, mapel, jenjang, periode, field, val);
+  }
+  async function handleAddKolom(tipe, label) {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const existing = tipe === "sumatif" ? babKolom : kuisKolom;
+    if (existing.includes(trimmed)) { showToast("Kolom dengan nama itu sudah ada."); return; }
+    await store.addKolomDinamis(siswaIds, mapel, jenjang, periode, tipe, trimmed);
+    setAddModal(null);
+    showToast(`Kolom "${trimmed}" ditambahkan ke semua siswa.`);
+  }
+  async function handleDeleteKolom() {
+    if (!deleteTarget) return;
+    await store.hapusKolomDinamis(siswaIds, mapel, jenjang, periode, deleteTarget.tipe, deleteTarget.label);
+    setDeleteTarget(null);
+    showToast(`Kolom "${deleteTarget.label}" dihapus.`);
+  }
+
+  return (
+    <div className="page">
+      <div className="dt">
+        <div><h1>Nilai Akhir</h1><p>Komposit 6 komponen · Sumatif 10% · Tugas Astrolab 20% · UTS 20% · UAS 20% · Kuis 10% · Portofolio 20%</p></div>
+      </div>
+      <div className="topbar">
+        <div style={{ width: 36 }} />
+        <div className="topbar-title">Nilai Akhir</div>
+        <div style={{ width: 36 }} />
+      </div>
+
+      {/* Filter mapel + kelas + periode */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <select className="inp" style={{ flex: "1 1 140px", maxWidth: 180 }} value={mapel} onChange={e => setMapel(e.target.value)}>
+          <option value="IPA">IPA</option>
+          <option value="Informatika">Informatika</option>
+        </select>
+        <select className="inp" style={{ flex: "1 1 100px", maxWidth: 140 }} value={jenjang} onChange={e => setJenjang(e.target.value)}>
+          <option value="VII">Kelas VII</option>
+          <option value="VIII">Kelas VIII</option>
+        </select>
+        <select className="inp" style={{ flex: "1 1 220px", maxWidth: 280 }} value={periode} onChange={e => setPeriode(e.target.value)}>
+          {periodeOptions.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+
+      {/* Toolbar tambah kolom */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <button className="btn btn-outline btn-sm" onClick={() => setAddModal("sumatif")}>
+          <I n="plus" s={12} /> Tambah BAB (Sumatif)
+        </button>
+        <button className="btn btn-outline btn-sm" onClick={() => setAddModal("kuis")}>
+          <I n="plus" s={12} /> Tambah Kuis
+        </button>
+      </div>
+
+      {siswaList.length === 0 ? (
+        <Card><div className="empty">Belum ada siswa di kelas {jenjang}.</div></Card>
+      ) : (
+        <Card pad="none" style={{ overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "var(--surface-alt)", borderBottom: "2px solid var(--line)" }}>
+                  <th style={{ ...thStyle, position: "sticky", left: 0, background: "var(--surface-alt)", zIndex: 2, minWidth: 140, textAlign: "left" }}>Nama</th>
+                  {babKolom.map(k => (
+                    <th key={k} style={{ ...thStyle, minWidth: 90 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                        <span>{k}</span>
+                        <button onClick={() => setDeleteTarget({ tipe: "sumatif", label: k })} title="Hapus kolom" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bad)", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
+                      </div>
+                      <div style={{ fontSize: 9, fontWeight: 400, color: "var(--ink-3)" }}>Sumatif</div>
+                    </th>
+                  ))}
+                  <th style={{ ...thStyle, minWidth: 80, background: "var(--accent-tint)" }}>Sumatif<br/>Avg</th>
+                  <th style={{ ...thStyle, minWidth: 90, background: "var(--surface)" }}>Tugas<br/>Astrolab<div style={{ fontSize: 9, fontWeight: 400, color: "var(--ink-3)" }}>auto</div></th>
+                  <th style={{ ...thStyle, minWidth: 80 }}>UTS</th>
+                  <th style={{ ...thStyle, minWidth: 80 }}>UAS</th>
+                  {kuisKolom.map(k => (
+                    <th key={k} style={{ ...thStyle, minWidth: 90 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                        <span>{k}</span>
+                        <button onClick={() => setDeleteTarget({ tipe: "kuis", label: k })} title="Hapus kolom" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bad)", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
+                      </div>
+                      <div style={{ fontSize: 9, fontWeight: 400, color: "var(--ink-3)" }}>Kuis</div>
+                    </th>
+                  ))}
+                  <th style={{ ...thStyle, minWidth: 80, background: "var(--accent-tint)" }}>Kuis<br/>Avg</th>
+                  <th style={{ ...thStyle, minWidth: 80 }}>Portofolio</th>
+                  <th style={{ ...thStyle, minWidth: 90, background: "var(--accent-2)", color: "#fff" }}>Nilai<br/>Akhir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siswaList.map(s => {
+                  const result = store.computeNilaiAkhir(s.id, mapel, jenjang, periode);
+                  const rec = result.rec;
+                  return (
+                    <tr key={s.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
+                      <td style={{ ...tdStyle, position: "sticky", left: 0, background: "var(--surface)", zIndex: 1, textAlign: "left", fontWeight: 600 }}>{s.nama}</td>
+                      {babKolom.map(k => (
+                        <td key={k} style={tdStyle}>
+                          <EditableCell value={rec.sumatif?.[k]} onSave={v => handleCellSave(s.id, "sumatif", k, v)} />
+                        </td>
+                      ))}
+                      <td style={{ ...tdStyle, background: "var(--accent-tint)", fontWeight: 700, color: "var(--accent-2)" }}>{result.sumatifAvg !== null ? Math.round(result.sumatifAvg) : "—"}</td>
+                      <td style={{ ...tdStyle, background: "var(--surface-alt)", color: "var(--ink-2)" }}>{result.tugasAvg !== null ? result.tugasAvg : "—"}</td>
+                      <td style={tdStyle}><EditableCell value={rec.uts} onSave={v => handleManualSave(s.id, "uts", v)} /></td>
+                      <td style={tdStyle}><EditableCell value={rec.uas} onSave={v => handleManualSave(s.id, "uas", v)} /></td>
+                      {kuisKolom.map(k => (
+                        <td key={k} style={tdStyle}>
+                          <EditableCell value={rec.kuis?.[k]} onSave={v => handleCellSave(s.id, "kuis", k, v)} />
+                        </td>
+                      ))}
+                      <td style={{ ...tdStyle, background: "var(--accent-tint)", fontWeight: 700, color: "var(--accent-2)" }}>{result.kuisAvg !== null ? Math.round(result.kuisAvg) : "—"}</td>
+                      <td style={tdStyle}><EditableCell value={rec.portofolio} onSave={v => handleManualSave(s.id, "portofolio", v)} /></td>
+                      <td style={{ ...tdStyle, background: "var(--accent-2)", color: "#fff", fontWeight: 800, fontFamily: "var(--mono)" }}>
+                        {result.nilaiAkhir !== null ? result.nilaiAkhir : "—"}
+                        {!result.lengkap && <div style={{ fontSize: 8, fontWeight: 400, opacity: 0.85 }}>belum lengkap</div>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 10, lineHeight: 1.6 }}>
+        💡 Klik sel untuk edit nilai. Nilai tersimpan otomatis saat kamu klik di luar sel (blur). Kolom "Tugas Astrolab" otomatis diambil dari rata-rata nilai tugas {mapel} siswa di Astrolab — tidak bisa diedit manual.
+      </div>
+
+      {addModal && <AddKolomModal tipe={addModal} onClose={() => setAddModal(null)} onSave={label => handleAddKolom(addModal, label)} />}
+      {deleteTarget && <Confirm title="Hapus kolom?" desc={`Kolom "${deleteTarget.label}" akan dihapus dari SEMUA siswa. Nilai yang sudah diisi di kolom ini akan hilang permanen.`} onOk={handleDeleteKolom} onCancel={() => setDeleteTarget(null)} />}
+      {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, boxShadow: "var(--shadow)" }}>{toast}</div>}
+    </div>
+  );
+}
+
+// Modal tambah kolom dinamis (BAB Sumatif / Kuis)
+function AddKolomModal({ tipe, onClose, onSave }) {
+  const [label, setLabel] = useState("");
+  const isKuis = tipe === "kuis";
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <h3>{isKuis ? "Tambah Kolom Kuis" : "Tambah Kolom Sumatif (BAB)"}</h3>
+        <p style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 14 }}>
+          Kolom baru akan muncul untuk semua siswa di kelas & mapel ini. Nilai bisa diisi belakangan.
+        </p>
+        <label className="lbl">{isKuis ? "Label Kuis (misal: '5 Agustus' atau 'Kuis Bab 2')" : "Nama BAB (misal: 'BAB 1: Metode Ilmiah')"}</label>
+        <input className="inp" autoFocus value={label} onChange={e => setLabel(e.target.value)} placeholder={isKuis ? "5 Agustus" : "BAB 1: Metode Ilmiah"} maxLength={40} onKeyDown={e => { if (e.key === "Enter") onSave(label); }} />
+        <div className="modal-actions" style={{ marginTop: 16 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Batal</button>
+          <button className="btn btn-primary btn-sm" disabled={!label.trim()} onClick={() => onSave(label)}>Tambah</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const thStyle = { padding: "8px 6px", fontSize: 10, fontWeight: 700, color: "var(--ink-2)", textAlign: "center", whiteSpace: "nowrap" };
+const tdStyle = { padding: "6px", textAlign: "center", fontFamily: "var(--mono)" };
+
+// Sel editable — local state sync dari prop, save on blur kalau berubah
+function EditableCell({ value, onSave }) {
+  const [local, setLocal] = useState(value ?? "");
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => { if (!focused) setLocal(value ?? ""); }, [value, focused]);
+
+  function handleBlur() {
+    setFocused(false);
+    const numVal = local === "" ? null : Number(local);
+    if (numVal !== (value ?? null)) onSave(local === "" ? "" : numVal);
+  }
+
+  return (
+    <input
+      type="number"
+      min={0}
+      max={100}
+      value={local}
+      onFocus={() => setFocused(true)}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={handleBlur}
+      placeholder="—"
+      style={{
+        width: 52, padding: "4px 2px", textAlign: "center", border: "1px solid transparent",
+        borderRadius: 4, fontFamily: "var(--mono)", fontSize: 12, background: "transparent",
+        outline: "none",
+      }}
+      onMouseEnter={e => e.target.style.border = "1px solid var(--line)"}
+      onMouseLeave={e => { if (document.activeElement !== e.target) e.target.style.border = "1px solid transparent"; }}
+    />
+  );
+}
+
 function LaporanGuru({ store }) {
+
   const [filterStatus, setFilterStatus] = useState("semua");
   const [filterKategori, setFilterKategori] = useState("semua");
   const [selectedReport, setSelectedReport] = useState(null);
@@ -8866,6 +9216,7 @@ function AppInner() {
       else if (route === "bank-soal") screen = <BankSoal store={store} navigate={navigate} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswa store={store} />;
       else if (route === "laporan-guru") screen = <LaporanGuru store={store} />;
+      else if (route === "nilai-akhir") screen = <NilaiAkhirPage store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
     } else {
