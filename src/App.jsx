@@ -8502,26 +8502,42 @@ function NilaiAkhirPage({ store }) {
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2200); }
 
-  function handleCellSave(siswaId, tipe, kolomKey, val) {
-    store.updateNilaiKolom(siswaId, mapel, jenjang, periode, tipe, kolomKey, val);
+  async function handleCellSave(siswaId, tipe, kolomKey, val) {
+    try {
+      await store.updateNilaiKolom(siswaId, mapel, jenjang, periode, tipe, kolomKey, val);
+    } catch (e) {
+      showToast("Gagal menyimpan nilai: " + (e?.message || "cek koneksi/izin akses"));
+    }
   }
-  function handleManualSave(siswaId, field, val) {
-    store.updateNilaiManual(siswaId, mapel, jenjang, periode, field, val);
+  async function handleManualSave(siswaId, field, val) {
+    try {
+      await store.updateNilaiManual(siswaId, mapel, jenjang, periode, field, val);
+    } catch (e) {
+      showToast("Gagal menyimpan nilai: " + (e?.message || "cek koneksi/izin akses"));
+    }
   }
   async function handleAddKolom(tipe, label) {
     const trimmed = label.trim();
     if (!trimmed) return;
     const existing = tipe === "sumatif" ? babKolom : kuisKolom;
     if (existing.includes(trimmed)) { showToast("Kolom dengan nama itu sudah ada."); return; }
-    await store.addKolomDinamis(siswaIds, mapel, jenjang, periode, tipe, trimmed);
-    setAddModal(null);
-    showToast(`Kolom "${trimmed}" ditambahkan ke semua siswa.`);
+    try {
+      await store.addKolomDinamis(siswaIds, mapel, jenjang, periode, tipe, trimmed);
+      setAddModal(null);
+      showToast(`Kolom "${trimmed}" ditambahkan ke semua siswa.`);
+    } catch (e) {
+      showToast("Gagal menambah kolom: " + (e?.message || "cek koneksi/izin akses"));
+    }
   }
   async function handleDeleteKolom() {
     if (!deleteTarget) return;
-    await store.hapusKolomDinamis(siswaIds, mapel, jenjang, periode, deleteTarget.tipe, deleteTarget.label);
-    setDeleteTarget(null);
-    showToast(`Kolom "${deleteTarget.label}" dihapus.`);
+    try {
+      await store.hapusKolomDinamis(siswaIds, mapel, jenjang, periode, deleteTarget.tipe, deleteTarget.label);
+      setDeleteTarget(null);
+      showToast(`Kolom "${deleteTarget.label}" dihapus.`);
+    } catch (e) {
+      showToast("Gagal menghapus kolom: " + (e?.message || "cek koneksi/izin akses"));
+    }
   }
 
   return (
