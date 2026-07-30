@@ -7396,12 +7396,13 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
 
 // ─── LAPORAN PER KELAS ───
 function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif()) {
-  const siswa = store.getAllSiswa(jenjang);
-  const tugas = store.getTugas().filter(t => t.jenjang === jenjang);
-  const subs = store.getSubs();
-  const now = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
+  try {
+    const siswa = store.getAllSiswa(jenjang);
+    const tugas = store.getTugas().filter(t => t.jenjang === jenjang);
+    const subs = store.getSubs();
+    const now = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
 
-  let bodyContent = "";
+    let bodyContent = "";
 
   if (mode === "siswa") {
     // Per siswa — 1 halaman per siswa
@@ -7529,8 +7530,16 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif
 </html>`;
 
   const win = window.open("", "_blank");
+  if (!win) {
+    alert("Popup diblokir browser. Izinkan popup untuk situs ini (biasanya ada ikon di address bar), lalu coba cetak lagi.");
+    return;
+  }
   win.document.write(html);
   win.document.close();
+  } catch (e) {
+    console.error("Gagal generate laporan:", e);
+    alert("Gagal membuat laporan: " + (e?.message || "terjadi kesalahan tak terduga") + "\n\nCoba lagi. Kalau masih gagal, screenshot pesan ini dan kabari developer.");
+  }
 }
 
 // ─── LAPORAN MODAL ───
@@ -8083,10 +8092,11 @@ function ResetSemesterModal({ store, onClose }) {
 // Batas potong (dashed) di setiap kartu supaya gampang digunting.
 function printKartuLogin(siswaList, jenjang) {
   if (!siswaList || siswaList.length === 0) return;
-  const now = new Date();
-  const tglCetak = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  try {
+    const now = new Date();
+    const tglCetak = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
-  const cards = siswaList.map(s => `
+    const cards = siswaList.map(s => `
     <div class="card">
       <div class="card-header">
         <div class="brand">
@@ -8237,6 +8247,10 @@ function printKartuLogin(siswaList, jenjang) {
   if (!win) { alert("Popup diblokir. Izinkan popup untuk cetak kartu."); return; }
   win.document.write(html);
   win.document.close();
+  } catch (e) {
+    console.error("Gagal generate kartu login:", e);
+    alert("Gagal membuat kartu login: " + (e?.message || "terjadi kesalahan tak terduga") + "\n\nCoba lagi. Kalau masih gagal, screenshot pesan ini dan kabari developer.");
+  }
 }
 
 // Helper: escape HTML untuk mencegah karakter khusus di nama merusak layout
