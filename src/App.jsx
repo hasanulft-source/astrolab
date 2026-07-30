@@ -1793,7 +1793,10 @@ function useStore() {
   const updateNilaiKolom = async (siswaId, mapel, jenjang, periode, tipe, kolomKey, nilai) => {
     const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
     const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
-    const updated = { ...rec[tipe], [kolomKey]: nilai === "" || nilai === null ? null : Number(nilai) };
+    // PENTING: Firebase RTDB menganggap value `null` sebagai perintah HAPUS path itu,
+    // bukan "buat kosong". Makanya pakai "" (empty string) sebagai placeholder kolom-kosong,
+    // supaya kolom tetap persist/kebaca walau nilainya belum diisi guru.
+    const updated = { ...rec[tipe], [kolomKey]: nilai === "" || nilai === null ? "" : Number(nilai) };
     await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [tipe]: updated, updatedAt: Date.now() });
   };
 
@@ -1815,7 +1818,9 @@ function useStore() {
         updates[`nilaiAkhir/${key}/mapel`] = mapel;
         updates[`nilaiAkhir/${key}/jenjang`] = jenjang;
         updates[`nilaiAkhir/${key}/periode`] = periode;
-        updates[`nilaiAkhir/${key}/${tipe}/${kolomLabel.replace(/[.#$/[\]]/g, "-")}`] = null;
+        // PENTING: pakai "" bukan null — null di Firebase RTDB berarti "hapus/jangan buat apa-apa",
+        // sehingga kolom TIDAK PERNAH benar-benar tercipta kalau pakai null (bug yang kejadian sebelumnya).
+        updates[`nilaiAkhir/${key}/${tipe}/${kolomLabel.replace(/[.#$/[\]]/g, "-")}`] = "";
         updates[`nilaiAkhir/${key}/updatedAt`] = Date.now();
       }
     });
