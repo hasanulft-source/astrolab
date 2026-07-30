@@ -7181,38 +7181,53 @@ const LAPORAN_CSS = `
   }
 `;
 
-// Helper: render 1 blok tabel breakdown Nilai Akhir untuk 1 mapel (dipakai di laporan siswa)
-function renderNilaiAkhirBlock(mapel, result) {
-  const rows = result.komponen.map(k => `
+// Helper: render 1 tabel gabungan Nilai Akhir — kolom per mapel berdampingan (hemat kertas A4).
+// mapelResults = [{ label: "IPA", result }, { label: "Informatika", result }] — adaptif,
+// kalau cuma 1 mapel (misal kelas VIII gak ada Informatika), tabel otomatis cuma 1 kolom nilai.
+function renderNilaiAkhirGabungan(mapelResults) {
+  if (mapelResults.length === 0) return "";
+  // Semua mapel pakai struktur komponen yang sama (Sumatif, Tugas Astrolab, UTS, UAS, Kuis, Portofolio)
+  const komponenLabels = mapelResults[0].result.komponen.map(k => ({ label: k.label, bobot: k.bobot }));
+
+  const rows = komponenLabels.map((k, i) => `
     <tr>
       <td style="font-weight:600">${k.label}</td>
       <td style="text-align:center;color:#64748b">${Math.round(k.bobot * 100)}%</td>
-      <td style="text-align:center;font-weight:700;color:${typeof k.val === "number" ? getNilaiColor(k.val) : "#94a3b8"}">
-        ${typeof k.val === "number" ? Math.round(k.val * 100) / 100 : "Belum diisi"}
-      </td>
+      ${mapelResults.map(m => {
+        const val = m.result.komponen[i].val;
+        const color = typeof val === "number" ? getNilaiColor(val) : "#94a3b8";
+        return `<td style="text-align:center;font-weight:700;color:${color}">${typeof val === "number" ? Math.round(val * 100) / 100 : "Belum diisi"}</td>`;
+      }).join("")}
     </tr>
   `).join("");
+
+  const finalRow = `
+    <tr style="background:#f0fdfa">
+      <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
+      ${mapelResults.map(m => `
+        <td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
+          ${m.result.nilaiAkhir !== null ? m.result.nilaiAkhir : "—"}
+          ${!m.result.lengkap ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">belum lengkap</div>' : ""}
+        </td>
+      `).join("")}
+    </tr>
+  `;
+
   return `
     <div class="section">
-      <div class="section-title">Nilai Akhir Komposit — ${mapel}</div>
+      <div class="section-title">Nilai Akhir Komposit</div>
       <table>
-        <thead><tr><th>Komponen</th><th style="text-align:center">Bobot</th><th style="text-align:center">Nilai</th></tr></thead>
-        <tbody>
-          ${rows}
-          <tr style="background:#f0fdfa">
-            <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
-            <td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
-              ${result.nilaiAkhir !== null ? result.nilaiAkhir : "—"}
-              ${!result.lengkap ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">belum lengkap</div>' : ""}
-            </td>
-          </tr>
-        </tbody>
+        <thead><tr>
+          <th>Komponen</th>
+          <th style="text-align:center">Bobot</th>
+          ${mapelResults.map(m => `<th style="text-align:center">${m.label}</th>`).join("")}
+        </tr></thead>
+        <tbody>${rows}${finalRow}</tbody>
       </table>
     </div>
   `;
 }
 
-// ─── LAPORAN PER SISWA ───
 function generateLaporanSiswa(s, store, jenjang, periode) {
   const stats = store.getStats(s.id);
   const lv = getLevel(stats.poin || 0);
@@ -7223,8 +7238,13 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
   const nilaiRata = stats.nilaiRata || (subs.length ? Math.round(subs.reduce((a,b) => a+b.nilai,0)/subs.length) : 0);
 
   // Nilai Akhir komposit — dihitung terpisah per mapel (IPA dan Informatika TIDAK dicampur)
+  // Nilai Akhir komposit — dihitung terpisah per mapel (IPA dan Informatika TIDAK dicampur).
+  // PENTING: Informatika cuma diajarkan di kelas VII — kelas VIII gak ada mapel ini,
+  // jadi section-nya jangan dipaksa muncul untuk semua jenjang.
   const naIPA = store.computeNilaiAkhir(s.id, "IPA", jenjang, periode);
-  const naInformatika = store.computeNilaiAkhir(s.id, "Informatika", jenjang, periode);
+  const naInformatika = jenjang === "VII" ? store.computeNilaiAkhir(s.id, "Informatika", jenjang, periode) : null;
+  const mapelResults = [{ label: "IPA", result: naIPA }];
+  if (naInformatika) mapelResults.push({ label: "Informatika", result: naInformatika });
 
   // Kelompokkan tugas per materi → hitung rata-rata, jumlah, range nilai
   const materiMap = {};
@@ -7334,9 +7354,8 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
         </table>`}
     </div>
 
-    <!-- Nilai Akhir Komposit (IPA & Informatika terpisah) -->
-    ${renderNilaiAkhirBlock("IPA", naIPA)}
-    ${renderNilaiAkhirBlock("Informatika", naInformatika)}
+    <!-- Nilai Akhir Komposit — 1 tabel gabungan, kolom per mapel berdampingan (hemat kertas A4) -->
+    ${renderNilaiAkhirGabungan(mapelResults)}
 
     <!-- Catatan Guru -->
     <div class="section">
