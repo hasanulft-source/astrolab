@@ -1848,6 +1848,35 @@ function useStore() {
     return [...labels];
   };
 
+  // Bulk import dari hasil parse Excel — merge dengan data existing (additive, gak menimpa
+  // kolom lain yang gak ada di file import). Satu multi-path update untuk semua siswa sekaligus.
+  const bulkImportNilaiAkhir = async (rows, mapel, jenjang, periode) => {
+    const updates = {};
+    rows.forEach(r => {
+      const key = nilaiAkhirKey(r.siswaId, mapel, jenjang, periode);
+      const rec = getNilaiAkhirRecord(r.siswaId, mapel, jenjang, periode);
+      updates[`nilaiAkhir/${key}/siswaId`] = r.siswaId;
+      updates[`nilaiAkhir/${key}/mapel`] = mapel;
+      updates[`nilaiAkhir/${key}/jenjang`] = jenjang;
+      updates[`nilaiAkhir/${key}/periode`] = periode;
+      updates[`nilaiAkhir/${key}/updatedAt`] = Date.now();
+      const mergedSumatif = { ...rec.sumatif, ...r.sumatif };
+      Object.entries(mergedSumatif).forEach(([k, v]) => {
+        // PENTING: pakai "" bukan null/undefined — Firebase RTDB menghapus path kalau value null.
+        updates[`nilaiAkhir/${key}/sumatif/${k.replace(/[.#$/[\]]/g, "-")}`] = (v === null || v === undefined) ? "" : v;
+      });
+      const mergedKuis = { ...rec.kuis, ...r.kuis };
+      Object.entries(mergedKuis).forEach(([k, v]) => {
+        updates[`nilaiAkhir/${key}/kuis/${k.replace(/[.#$/[\]]/g, "-")}`] = (v === null || v === undefined) ? "" : v;
+      });
+      if (r.uts !== null) updates[`nilaiAkhir/${key}/uts`] = r.uts;
+      if (r.uas !== null) updates[`nilaiAkhir/${key}/uas`] = r.uas;
+      if (r.portofolio !== null) updates[`nilaiAkhir/${key}/portofolio`] = r.portofolio;
+    });
+    if (Object.keys(updates).length > 0) await update(ref(db), updates);
+    return rows.length;
+  };
+
   const [photos, setPhotos] = useState({});
 
   useEffect(() => {
@@ -1919,7 +1948,9 @@ function useStore() {
     return [...hardcoded, ...fbAccounts];
   };
   const getAllSiswa = (jenjang) => {
-    return getAllAccounts().filter(a => a.role === "siswa" && (!jenjang || a.jenjang === jenjang));
+    return getAllAccounts()
+      .filter(a => a.role === "siswa" && (!jenjang || a.jenjang === jenjang))
+      .sort((a, b) => (a.nama || "").localeCompare(b.nama || "", "id"));
   };
 
   // Generate ID otomatis: akronim 3 huruf + counter global 9XX
@@ -2066,7 +2097,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, getTugasAstrolabAvg, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -4884,6 +4915,181 @@ async function importSoalFromExcel(file) {
   });
 }
 
+// ─── TEMPLATE & IMPORT NILAI AKHIR ───
+// Template dinamis: kolom sesuai struktur BAB/Kuis yang AKTIF saat ini (bukan fixed),
+// pre-filled dengan nilai yang sudah ada, supaya guru tinggal edit di Excel lalu upload balik.
+async function downloadTemplateNilaiAkhir(store, mapel, jenjang, periode, siswaList, babKolom, kuisKolom) {
+  if (!window.ExcelJS) {
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const ExcelJS = window.ExcelJS;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Astrolab · Our Classroom";
+
+  const headerStyle = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF0D6B7A" } }, font: { name: "Arial", bold: true, color: { argb: "FFFFFFFF" }, size: 11 }, alignment: { horizontal: "center", vertical: "middle", wrapText: true } };
+
+  const ws = wb.addWorksheet("Nilai Akhir", { properties: { tabColor: { argb: "FF0D6B7A" } } });
+  const columns = [
+    { header: "ID Siswa", key: "id", width: 14 },
+    { header: "Nama", key: "nama", width: 24 },
+    ...babKolom.map((k, i) => ({ header: `[Sumatif] ${k}`, key: `bab_${i}`, width: 18 })),
+    { header: "UTS", key: "uts", width: 10 },
+    { header: "UAS", key: "uas", width: 10 },
+    ...kuisKolom.map((k, i) => ({ header: `[Kuis] ${k}`, key: `kuis_${i}`, width: 18 })),
+    { header: "Portofolio", key: "portofolio", width: 12 },
+  ];
+  ws.columns = columns;
+  ws.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws.getRow(1).height = 32;
+
+  siswaList.forEach(s => {
+    const rec = store.getNilaiAkhirRecord(s.id, mapel, jenjang, periode);
+    const row = { id: s.id, nama: s.nama, uts: rec.uts ?? "", uas: rec.uas ?? "", portofolio: rec.portofolio ?? "" };
+    babKolom.forEach((k, i) => { row[`bab_${i}`] = rec.sumatif?.[k] ?? ""; });
+    kuisKolom.forEach((k, i) => { row[`kuis_${i}`] = rec.kuis?.[k] ?? ""; });
+    ws.addRow(row);
+  });
+  ws.views = [{ state: "frozen", xSplit: 2, ySplit: 1 }];
+  ws.getColumn(1).font = { color: { argb: "FF888888" }, size: 9 }; // ID kolom kecil, cuma buat matching pas import
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Nilai_Akhir_${mapel}_${jenjang}_${periode.replace(/\s+/g, "_")}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Parse file Excel hasil edit guru — cocokkan kolom by header name (bukan posisi),
+// supaya tetap jalan walau guru re-order kolom di Excel.
+async function parseNilaiAkhirExcel(file) {
+  const XLSX = await loadXLSX();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "binary" });
+        const wsName = wb.SheetNames[0];
+        const ws = wb.Sheets[wsName];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        const result = rows.map(row => {
+          const siswaId = (row["ID Siswa"] || "").toString().trim();
+          if (!siswaId) return null;
+          const sumatif = {}, kuis = {};
+          let uts = null, uas = null, portofolio = null;
+          Object.keys(row).forEach(colName => {
+            const raw = row[colName];
+            if (raw === "" || raw === undefined || raw === null) return;
+            const num = Number(raw);
+            if (isNaN(num)) return; // skip non-numeric junk, jangan crash
+            if (colName.startsWith("[Sumatif] ")) sumatif[colName.replace("[Sumatif] ", "")] = num;
+            else if (colName.startsWith("[Kuis] ")) kuis[colName.replace("[Kuis] ", "")] = num;
+            else if (colName === "UTS") uts = num;
+            else if (colName === "UAS") uas = num;
+            else if (colName === "Portofolio") portofolio = num;
+          });
+          return { siswaId, sumatif, kuis, uts, uas, portofolio };
+        }).filter(Boolean);
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsBinaryString(file);
+  });
+}
+
+// ─── EXPORT REKAP NILAI AKHIR ───
+// 2 sheet: (1) Rekap ringkas — semua siswa, kolom avg per komponen + nilai akhir, siap cetak.
+// (2) Detail — breakdown lengkap tiap BAB/Kuis individual per siswa, untuk arsip guru.
+async function exportRekapNilaiAkhir(store, mapel, jenjang, periode, siswaList, babKolom, kuisKolom) {
+  if (!window.ExcelJS) {
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const ExcelJS = window.ExcelJS;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Astrolab · Our Classroom";
+
+  const headerStyle = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF0D6B7A" } }, font: { name: "Arial", bold: true, color: { argb: "FFFFFFFF" }, size: 11 }, alignment: { horizontal: "center", vertical: "middle", wrapText: true } };
+  const finalColStyle = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF4F3" } }, font: { name: "Arial", bold: true, color: { argb: "FF0D6B7A" }, size: 11 } };
+
+  // ── Sheet 1: Rekap ringkas ──
+  const ws1 = wb.addWorksheet("Rekap Nilai Akhir", { properties: { tabColor: { argb: "FF0D6B7A" } } });
+  ws1.columns = [
+    { header: "No", key: "no", width: 5 },
+    { header: "Nama", key: "nama", width: 26 },
+    { header: "Sumatif (10%)", key: "sumatif", width: 14 },
+    { header: "Tugas Astrolab (20%)", key: "tugas", width: 18 },
+    { header: "UTS (20%)", key: "uts", width: 12 },
+    { header: "UAS (20%)", key: "uas", width: 12 },
+    { header: "Kuis (10%)", key: "kuis", width: 12 },
+    { header: "Portofolio (20%)", key: "portofolio", width: 14 },
+    { header: "NILAI AKHIR", key: "final", width: 14 },
+    { header: "Status", key: "status", width: 14 },
+  ];
+  ws1.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws1.getRow(1).height = 34;
+
+  siswaList.forEach((s, i) => {
+    const result = store.computeNilaiAkhir(s.id, mapel, jenjang, periode);
+    const row = ws1.addRow({
+      no: i + 1,
+      nama: s.nama,
+      sumatif: result.sumatifAvg !== null ? Math.round(result.sumatifAvg) : "—",
+      tugas: result.tugasAvg !== null ? result.tugasAvg : "—",
+      uts: result.rec.uts ?? "—",
+      uas: result.rec.uas ?? "—",
+      kuis: result.kuisAvg !== null ? Math.round(result.kuisAvg) : "—",
+      portofolio: result.rec.portofolio ?? "—",
+      final: result.nilaiAkhir !== null ? result.nilaiAkhir : "—",
+      status: result.lengkap ? "Lengkap" : "Belum lengkap",
+    });
+    row.getCell("final").style = finalColStyle;
+  });
+  ws1.views = [{ state: "frozen", ySplit: 1 }];
+
+  // ── Sheet 2: Detail breakdown per BAB/Kuis ──
+  const ws2 = wb.addWorksheet("Detail Sumatif & Kuis", { properties: { tabColor: { argb: "FF088395" } } });
+  const detailColumns = [
+    { header: "Nama", key: "nama", width: 26 },
+    ...babKolom.map((k, i) => ({ header: `[Sumatif] ${k}`, key: `bab_${i}`, width: 18 })),
+    ...kuisKolom.map((k, i) => ({ header: `[Kuis] ${k}`, key: `kuis_${i}`, width: 18 })),
+  ];
+  ws2.columns = detailColumns;
+  ws2.getRow(1).eachCell(c => Object.assign(c, headerStyle));
+  ws2.getRow(1).height = 32;
+  siswaList.forEach(s => {
+    const rec = store.getNilaiAkhirRecord(s.id, mapel, jenjang, periode);
+    const row = { nama: s.nama };
+    babKolom.forEach((k, i) => { row[`bab_${i}`] = rec.sumatif?.[k] ?? "—"; });
+    kuisKolom.forEach((k, i) => { row[`kuis_${i}`] = rec.kuis?.[k] ?? "—"; });
+    ws2.addRow(row);
+  });
+  ws2.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }];
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Rekap_Nilai_Akhir_${mapel}_${jenjang}_${periode.replace(/\s+/g, "_")}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 
 // ─── BACKUP JSON ───
 async function downloadBackupJSON() {
@@ -6975,6 +7181,37 @@ const LAPORAN_CSS = `
   }
 `;
 
+// Helper: render 1 blok tabel breakdown Nilai Akhir untuk 1 mapel (dipakai di laporan siswa)
+function renderNilaiAkhirBlock(mapel, result) {
+  const rows = result.komponen.map(k => `
+    <tr>
+      <td style="font-weight:600">${k.label}</td>
+      <td style="text-align:center;color:#64748b">${Math.round(k.bobot * 100)}%</td>
+      <td style="text-align:center;font-weight:700;color:${typeof k.val === "number" ? getNilaiColor(k.val) : "#94a3b8"}">
+        ${typeof k.val === "number" ? Math.round(k.val * 100) / 100 : "Belum diisi"}
+      </td>
+    </tr>
+  `).join("");
+  return `
+    <div class="section">
+      <div class="section-title">Nilai Akhir Komposit — ${mapel}</div>
+      <table>
+        <thead><tr><th>Komponen</th><th style="text-align:center">Bobot</th><th style="text-align:center">Nilai</th></tr></thead>
+        <tbody>
+          ${rows}
+          <tr style="background:#f0fdfa">
+            <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
+            <td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
+              ${result.nilaiAkhir !== null ? result.nilaiAkhir : "—"}
+              ${!result.lengkap ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">belum lengkap</div>' : ""}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 // ─── LAPORAN PER SISWA ───
 function generateLaporanSiswa(s, store, jenjang, periode) {
   const stats = store.getStats(s.id);
@@ -6984,6 +7221,10 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
   const subs = store.getSubs().filter(sub => sub.siswaId === s.id);
   const now = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
   const nilaiRata = stats.nilaiRata || (subs.length ? Math.round(subs.reduce((a,b) => a+b.nilai,0)/subs.length) : 0);
+
+  // Nilai Akhir komposit — dihitung terpisah per mapel (IPA dan Informatika TIDAK dicampur)
+  const naIPA = store.computeNilaiAkhir(s.id, "IPA", jenjang, periode);
+  const naInformatika = store.computeNilaiAkhir(s.id, "Informatika", jenjang, periode);
 
   // Kelompokkan tugas per materi → hitung rata-rata, jumlah, range nilai
   const materiMap = {};
@@ -7092,6 +7333,10 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
           <tbody>${materiRows}</tbody>
         </table>`}
     </div>
+
+    <!-- Nilai Akhir Komposit (IPA & Informatika terpisah) -->
+    ${renderNilaiAkhirBlock("IPA", naIPA)}
+    ${renderNilaiAkhirBlock("Informatika", naInformatika)}
 
     <!-- Catatan Guru -->
     <div class="section">
@@ -8497,6 +8742,10 @@ function NilaiAkhirPage({ store }) {
   const periodeOptions = getPeriodeOptions();
   const [addModal, setAddModal] = useState(null); // "sumatif" | "kuis" | null
   const [deleteTarget, setDeleteTarget] = useState(null); // { tipe, label } | null
+  const [detailTarget, setDetailTarget] = useState(null); // siswa object | null
+  const [downloading, setDownloading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importPreview, setImportPreview] = useState(null); // rows hasil parse, nunggu konfirmasi
   const [toast, setToast] = useState("");
 
   const siswaList = store.getAllSiswa(jenjang);
@@ -8545,6 +8794,57 @@ function NilaiAkhirPage({ store }) {
     }
   }
 
+  async function handleDownloadTemplate() {
+    setDownloading(true);
+    try {
+      await downloadTemplateNilaiAkhir(store, mapel, jenjang, periode, siswaList, babKolom, kuisKolom);
+    } catch (e) {
+      showToast("Gagal membuat template: " + (e?.message || "coba lagi"));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleExportRekap() {
+    setExporting(true);
+    try {
+      await exportRekapNilaiAkhir(store, mapel, jenjang, periode, siswaList, babKolom, kuisKolom);
+    } catch (e) {
+      showToast("Gagal export rekap: " + (e?.message || "coba lagi"));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImportFile(file, resetInput) {
+    if (!file) return;
+    try {
+      const rows = await parseNilaiAkhirExcel(file);
+      // Cuma terima baris yang ID siswa-nya cocok dengan siswa di kelas ini (proteksi salah upload file kelas lain)
+      const validRows = rows.filter(r => siswaIds.includes(r.siswaId));
+      if (validRows.length === 0) {
+        showToast("Tidak ada baris valid. Pastikan kolom 'ID Siswa' cocok dengan siswa kelas ini.");
+        resetInput?.();
+        return;
+      }
+      setImportPreview({ rows: validRows, skipped: rows.length - validRows.length });
+    } catch (e) {
+      showToast("Gagal membaca file: " + (e?.message || "format tidak dikenali"));
+    }
+    resetInput?.();
+  }
+
+  async function handleConfirmImport() {
+    if (!importPreview) return;
+    try {
+      const count = await store.bulkImportNilaiAkhir(importPreview.rows, mapel, jenjang, periode);
+      setImportPreview(null);
+      showToast(`${count} siswa berhasil diimport.`);
+    } catch (e) {
+      showToast("Gagal import: " + (e?.message || "cek koneksi/izin akses"));
+    }
+  }
+
   return (
     <div className="page">
       <div className="dt">
@@ -8572,12 +8872,26 @@ function NilaiAkhirPage({ store }) {
       </div>
 
       {/* Toolbar tambah kolom */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <button className="btn btn-outline btn-sm" onClick={() => setAddModal("sumatif")}>
           <I n="plus" s={12} /> Tambah BAB (Sumatif)
         </button>
         <button className="btn btn-outline btn-sm" onClick={() => setAddModal("kuis")}>
           <I n="plus" s={12} /> Tambah Kuis
+        </button>
+      </div>
+
+      {/* Toolbar template & import */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <button className="btn btn-soft btn-sm" onClick={handleDownloadTemplate} disabled={downloading}>
+          <I n="download" s={12} /> {downloading ? "Menyiapkan..." : "Download Template"}
+        </button>
+        <label className="btn btn-soft btn-sm" style={{ cursor: "pointer", margin: 0 }}>
+          <I n="upload" s={12} /> Import Excel
+          <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => handleImportFile(e.target.files[0], () => { e.target.value = ""; })} />
+        </label>
+        <button className="btn btn-primary btn-sm" onClick={handleExportRekap} disabled={exporting} style={{ marginLeft: "auto" }}>
+          <I n="chartBar" s={12} /> {exporting ? "Menyiapkan..." : "Export Rekap"}
         </button>
       </div>
 
@@ -8623,7 +8937,7 @@ function NilaiAkhirPage({ store }) {
                   const rec = result.rec;
                   return (
                     <tr key={s.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
-                      <td style={{ ...tdStyle, position: "sticky", left: 0, background: "var(--surface)", zIndex: 1, textAlign: "left", fontWeight: 600 }}>{s.nama}</td>
+                      <td style={{ ...tdStyle, position: "sticky", left: 0, background: "var(--surface)", zIndex: 1, textAlign: "left", fontWeight: 600, cursor: "pointer", color: "var(--accent-2)" }} onClick={() => setDetailTarget(s)} title="Klik untuk lihat detail">{s.nama}</td>
                       {babKolom.map(k => (
                         <td key={k} style={tdStyle}>
                           <EditableCell value={rec.sumatif?.[k]} onSave={v => handleCellSave(s.id, "sumatif", k, v)} />
@@ -8658,6 +8972,8 @@ function NilaiAkhirPage({ store }) {
       </div>
 
       {addModal && <AddKolomModal tipe={addModal} onClose={() => setAddModal(null)} onSave={label => handleAddKolom(addModal, label)} />}
+      {detailTarget && <DetailSiswaNilaiModal siswa={detailTarget} store={store} mapel={mapel} jenjang={jenjang} periode={periode} onClose={() => setDetailTarget(null)} onSaveManual={handleManualSave} onSaveKolom={handleCellSave} />}
+      {importPreview && <ImportPreviewModal preview={importPreview} siswaList={siswaList} onClose={() => setImportPreview(null)} onConfirm={handleConfirmImport} />}
       {deleteTarget && <Confirm title="Hapus kolom?" desc={`Kolom "${deleteTarget.label}" akan dihapus dari SEMUA siswa. Nilai yang sudah diisi di kolom ini akan hilang permanen.`} onOk={handleDeleteKolom} onCancel={() => setDeleteTarget(null)} />}
       {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, boxShadow: "var(--shadow)" }}>{toast}</div>}
     </div>
@@ -8680,6 +8996,140 @@ function AddKolomModal({ tipe, onClose, onSave }) {
         <div className="modal-actions" style={{ marginTop: 16 }}>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>Batal</button>
           <button className="btn btn-primary btn-sm" disabled={!label.trim()} onClick={() => onSave(label)}>Tambah</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DETAIL NILAI SISWA (modal) ───
+// Klik nama siswa di grid → breakdown lengkap 6 komponen + semua nilai BAB/Kuis individual + Nilai Akhir.
+// Semua sel tetap editable di sini juga (reuse EditableCell + handler yang sama dari grid).
+function DetailSiswaNilaiModal({ siswa, store, mapel, jenjang, periode, onClose, onSaveManual, onSaveKolom }) {
+  const result = store.computeNilaiAkhir(siswa.id, mapel, jenjang, periode);
+  const rec = result.rec;
+  const babEntries = Object.entries(rec.sumatif || {});
+  const kuisEntries = Object.entries(rec.kuis || {});
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>{siswa.nama}</h3>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{mapel} · Kelas {jenjang} · {periode}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--ink-3)", padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Nilai Akhir besar */}
+        <div style={{ textAlign: "center", padding: "16px 0", background: "var(--accent-2)", borderRadius: 10, color: "#fff", margin: "10px 0 16px" }}>
+          <div style={{ fontSize: 11, opacity: .85, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase" }}>Nilai Akhir</div>
+          <div style={{ fontSize: 40, fontWeight: 800, fontFamily: "var(--mono)", lineHeight: 1.1 }}>{result.nilaiAkhir !== null ? result.nilaiAkhir : "—"}</div>
+          {!result.lengkap && <div style={{ fontSize: 11, opacity: .85, marginTop: 4 }}>⚠ Ada komponen yang belum diisi</div>}
+        </div>
+
+        <div style={{ overflowY: "auto", flex: 1, marginRight: -4, paddingRight: 4 }}>
+          {/* Breakdown 6 komponen */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Breakdown Komponen</div>
+            {result.komponen.map((k, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line-soft)", fontSize: 13 }}>
+                <div>{k.label} <span style={{ color: "var(--ink-3)", fontSize: 11 }}>({Math.round(k.bobot * 100)}%)</span></div>
+                <div style={{ fontFamily: "var(--mono)", fontWeight: 700, color: typeof k.val === "number" ? "var(--ink-1)" : "var(--ink-3)" }}>
+                  {typeof k.val === "number" ? Math.round(k.val * 100) / 100 : "belum diisi"}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Detail Sumatif per BAB */}
+          {babEntries.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Sumatif per BAB</div>
+              {babEntries.map(([label, val]) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line-soft)" }}>
+                  <div style={{ fontSize: 12, flex: 1, marginRight: 8 }}>{label}</div>
+                  <EditableCell value={val} onSave={v => onSaveKolom(siswa.id, "sumatif", label, v)} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Detail Kuis */}
+          {kuisEntries.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Kuis Harian</div>
+              {kuisEntries.map(([label, val]) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line-soft)" }}>
+                  <div style={{ fontSize: 12, flex: 1, marginRight: 8 }}>{label}</div>
+                  <EditableCell value={val} onSave={v => onSaveKolom(siswa.id, "kuis", label, v)} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* UTS / UAS / Portofolio */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Nilai Manual</div>
+            {[
+              { label: "UTS", field: "uts", val: rec.uts },
+              { label: "UAS", field: "uas", val: rec.uas },
+              { label: "Portofolio", field: "portofolio", val: rec.portofolio },
+            ].map(item => (
+              <div key={item.field} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line-soft)" }}>
+                <div style={{ fontSize: 12 }}>{item.label}</div>
+                <EditableCell value={item.val} onSave={v => onSaveManual(siswa.id, item.field, v)} />
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4, lineHeight: 1.5 }}>
+            💡 Tugas Astrolab: <b>{result.tugasAvg !== null ? result.tugasAvg : "—"}</b> — otomatis dari rata-rata nilai tugas {mapel} siswa di Astrolab, tidak bisa diedit manual.
+          </div>
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 14 }}>
+          <button className="btn btn-primary btn-sm" onClick={onClose}>Tutup</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal konfirmasi sebelum commit hasil import Excel ke database
+function ImportPreviewModal({ preview, siswaList, onClose, onConfirm }) {
+  const [saving, setSaving] = useState(false);
+  async function handleConfirm() {
+    setSaving(true);
+    try {
+      await onConfirm();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+        <h3>Konfirmasi Import</h3>
+        <p style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 14 }}>
+          <b>{preview.rows.length} siswa</b> siap diimport. Nilai yang sudah ada akan ditimpa dengan nilai baru dari file, kolom yang tidak ada di file tidak akan berubah.
+        </p>
+        {preview.skipped > 0 && (
+          <div style={{ padding: "8px 12px", background: "#fef3c7", borderRadius: 6, fontSize: 12, color: "#92400e", marginBottom: 14 }}>
+            ⚠ {preview.skipped} baris dilewati karena ID Siswa tidak cocok dengan kelas ini.
+          </div>
+        )}
+        <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px" }}>
+          {preview.rows.slice(0, 10).map(r => {
+            const s = siswaList.find(x => x.id === r.siswaId);
+            return <div key={r.siswaId} style={{ fontSize: 12, padding: "3px 0", color: "var(--ink-2)" }}>{s?.nama || r.siswaId}</div>;
+          })}
+          {preview.rows.length > 10 && <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>...dan {preview.rows.length - 10} siswa lainnya</div>}
+        </div>
+        <div className="modal-actions" style={{ marginTop: 16 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleConfirm} disabled={saving}>{saving ? "Mengimport..." : `Import ${preview.rows.length} Siswa`}</button>
         </div>
       </div>
     </div>
