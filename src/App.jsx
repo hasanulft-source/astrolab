@@ -1748,15 +1748,58 @@ function useStore() {
     return nilaiAkhirData[key] || { siswaId, mapel, jenjang, periode, sumatif: {}, kuis: {}, uts: null, uas: null, portofolio: null };
   };
 
-  // Hitung rata-rata "Tugas Astrolab" untuk siswa, STRICT filter by mapel (tidak boleh campur IPA/Informatika)
-  const getTugasAstrolabAvg = (siswaId, mapel) => {
-    const mySubs = subs.filter(s => {
-      if (s.siswaId !== siswaId || typeof s.nilai !== "number") return false;
-      const t = tugas.find(x => x.id === s.tugasId);
-      return t && t.mapel === mapel; // strict match, tugas tanpa match di-exclude
+  // ─── SUSULAN (akses submit personal setelah deadline utama lewat) ───
+  // Beda dari "Perpanjang" (class-wide, force majeure kayak mati lampu/bencana):
+  // susulan cuma buka akses untuk 1 siswa tertentu (misal sakit/izin lomba), siswa lain tetap tertutup.
+  // Key: `${tugasId}_${siswaId}`. Guru WAJIB set deadlineBaru + alasan.
+  const [susulanData, setSusulanData] = useState({});
+  useEffect(() => {
+    const suRef = ref(db, "susulan");
+    const u9 = onValue(suRef, snap => setSusulanData(snap.val() || {}));
+    return () => u9();
+  }, []);
+
+  const getSusulan = (tugasId, siswaId) => susulanData[`${tugasId}_${siswaId}`] || null;
+
+  // Susulan dianggap AKTIF kalau ada record-nya DAN deadlineBaru masih di masa depan.
+  // Kalau deadlineBaru juga udah lewat, susulan dianggap "sudah dipakai kesempatannya" (bukan aktif lagi).
+  const isSusulanAktif = (tugasId, siswaId) => {
+    const s = getSusulan(tugasId, siswaId);
+    if (!s) return false;
+    return new Date(s.deadlineBaru).getTime() > Date.now();
+  };
+
+  const addSusulan = async (tugasId, siswaId, deadlineBaru, alasan) => {
+    if (!alasan || alasan.trim().length < 5) throw new Error("Alasan wajib diisi (minimal 5 karakter)");
+    if (!deadlineBaru) throw new Error("Tanggal batas susulan wajib diisi");
+    const key = `${tugasId}_${siswaId}`;
+    await update(ref(db, `susulan/${key}`), { tugasId, siswaId, deadlineBaru, alasan: alasan.trim(), createdAt: Date.now() });
+  };
+  const removeSusulan = async (tugasId, siswaId) => {
+    await remove(ref(db, `susulan/${tugasId}_${siswaId}`));
+  };
+
+  // Hitung rata-rata "Tugas Astrolab" untuk siswa, STRICT filter by mapel+jenjang (tidak boleh campur IPA/Informatika).
+  // Tugas yang SUDAH LEWAT DEADLINE dan belum dikerjakan dihitung sebagai 0 dalam average —
+  // supaya siswa yang skip tugas gak diuntungkan (averagenya dulu cuma dari tugas yg dikerjain doang).
+  // Kecuali: kalau siswa punya susulan personal AKTIF untuk tugas itu, belum dihitung dulu
+  // (masih dikasih kesempatan, jangan divonis 0 sebelum window susulannya berakhir).
+  const getTugasAstrolabAvg = (siswaId, mapel, jenjang) => {
+    const relevantTugas = tugas.filter(t => t.mapel === mapel && t.jenjang === jenjang && t.status !== "scheduled");
+    const vals = [];
+    relevantTugas.forEach(t => {
+      const sub = subs.find(s => s.siswaId === siswaId && s.tugasId === t.id);
+      if (sub && typeof sub.nilai === "number") { vals.push(sub.nilai); return; }
+      // Belum submit — cek apakah tugas ini sudah lewat deadline utama
+      const lewatUtama = fmtDl(t.deadline).tone === "bad";
+      if (!lewatUtama) return; // tugas masih aktif untuk semua siswa, belum wajib dihitung
+      // Deadline utama lewat — cek apakah siswa ini punya susulan personal yang masih aktif
+      if (isSusulanAktif(t.id, siswaId)) return; // masih dalam window susulan, jangan hitung dulu
+      // Beneran lewat (termasuk susulan kalau ada dan sudah habis juga) dan belum submit → 0
+      vals.push(0);
     });
-    if (mySubs.length === 0) return null;
-    return Math.round(mySubs.reduce((sum, s) => sum + s.nilai, 0) / mySubs.length);
+    if (vals.length === 0) return null;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
   };
 
   // Hitung Nilai Akhir lengkap (breakdown + total weighted) untuk 1 siswa
@@ -1766,7 +1809,7 @@ function useStore() {
     const sumatifAvg = sumatifVals.length ? sumatifVals.reduce((a, b) => a + b, 0) / sumatifVals.length : null;
     const kuisVals = Object.values(rec.kuis || {}).filter(v => typeof v === "number");
     const kuisAvg = kuisVals.length ? kuisVals.reduce((a, b) => a + b, 0) / kuisVals.length : null;
-    const tugasAvg = getTugasAstrolabAvg(siswaId, mapel);
+    const tugasAvg = getTugasAstrolabAvg(siswaId, mapel, jenjang);
 
     const komponen = [
       { label: "Sumatif per BAB", val: sumatifAvg, bobot: 0.10 },
@@ -2097,7 +2140,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -2814,12 +2857,28 @@ function DetailTugas({ user, store, tugasId, navigate }) {
   const done = store.hasSub(user.id, t.id);
   const sub = store.getSubBy(user.id, t.id);
   const lewat = dl.tone === "bad";
-  const bisa = !done && t.status === "aktif" && t.soal?.length > 0 && !lewat;
+  const susulan = store.getSusulan(t.id, user.id);
+  const susulanAktif = store.isSusulanAktif(t.id, user.id);
+  // Bisa kerjakan kalau: normal (belum lewat), ATAU lewat tapi punya susulan personal yang masih aktif
+  const bisa = !done && t.status === "aktif" && t.soal?.length > 0 && (!lewat || susulanAktif);
 
   return <>
     <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas")}><I n="chevL" s={18} /></button><div className="topbar-title">Detail Tugas</div><div style={{ width: 36 }} /></div>
     <div className="page">
       <div className="dt"><div><h1>{t.judul}</h1><p>{t.mapel}</p></div></div>
+
+      {/* Banner susulan aktif — cuma keliatan untuk siswa yang dikasih akses ini */}
+      {!done && susulanAktif && (
+        <Card pad="md" style={{ marginBottom: 12, background: "var(--accent-tint)", border: "1.5px solid var(--accent)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="clock" s={16} /></div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>Kamu dapat kesempatan susulan!</div>
+              <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>Batas waktu baru: {new Date(susulan.deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card pad="lg" style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>{t.mapel}</div>
@@ -2829,7 +2888,8 @@ function DetailTugas({ user, store, tugasId, navigate }) {
           <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
           <span className="chip"><I n="target" s={10} />+{t.poinMax} pt maks</span>
           <span className="chip">{t.soal?.length || 0} soal</span>
-          {lewat && !done && <span className="chip chip-bad">Ditutup</span>}
+          {lewat && !done && !susulanAktif && <span className="chip chip-bad">Ditutup</span>}
+          {lewat && !done && susulanAktif && <span className="chip" style={{ background: "var(--accent-tint)", color: "var(--accent-2)" }}>Susulan Aktif</span>}
         </div>
       </Card>
 
@@ -5885,10 +5945,12 @@ function MateriManagerModal({ store, jenjang, onClose, onSuccess }) {
 // Auto: poin siswa recompute, streak reset kalau nilai = 0.
 function IntervensiNilaiModal({ tugas, store, onClose }) {
   const [editTarget, setEditTarget] = useState(null); // submission yg lagi diedit
+  const [susulanTarget, setSusulanTarget] = useState(null); // siswa yg lagi dikasih susulan
   const [toast, setToast] = useState("");
 
   const allSubs = store.getSubs().filter(s => s.tugasId === tugas.id);
-  const siswaList = store.getAllSiswa(tugas.jenjang);
+  const siswaList = store.getAllSiswa(tugas.jenjang); // sudah terurut alfabetis (fix sebelumnya)
+  const lewat = fmtDl(tugas.deadline).tone === "bad";
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
 
@@ -5904,32 +5966,80 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
         </div>
 
         <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 12, fontSize: 11, color: "var(--ink-2)", lineHeight: 1.55 }}>
-          <b>Kenapa mengubah nilai?</b> Untuk re-assess formatif (naikkan nilai setelah tes ulang) atau intervensi kecurangan (turunkan nilai). Alasan wajib diisi & tersimpan di riwayat.
+          <b>Kenapa mengubah nilai?</b> Untuk re-assess formatif atau intervensi kecurangan (alasan wajib). Siswa yang belum mengerjakan setelah deadline lewat otomatis dihitung <b>0</b> di Nilai Akhir — kasih <b>Susulan</b> kalau ada alasan personal (sakit, izin lomba, dll).
         </div>
 
         <div style={{ overflowY: "auto", flex: 1, marginRight: -4, paddingRight: 4 }}>
-          {allSubs.length === 0 ? (
-            <div className="empty" style={{ padding: "30px 20px" }}>Belum ada siswa yang mengerjakan tugas ini.</div>
+          {siswaList.length === 0 ? (
+            <div className="empty" style={{ padding: "30px 20px" }}>Belum ada siswa di kelas ini.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {allSubs.map(sub => {
-                const siswa = siswaList.find(s => s.id === sub.siswaId);
-                const nama = siswa?.nama || sub.siswaId;
-                const nilai = sub.nilai;
-                const nilaiColor = nilai >= 80 ? "var(--good)" : nilai >= 60 ? "var(--warn)" : "var(--bad)";
-                const hasIntervensi = (sub.riwayatIntervensi || []).length > 0;
-                return (
-                  <div key={sub.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nama}</div>
-                        {hasIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diintervensi ×{sub.riwayatIntervensi.length}</span>}
+              {siswaList.map(siswa => {
+                const sub = allSubs.find(s => s.siswaId === siswa.id) || null;
+                const susulan = store.getSusulan(tugas.id, siswa.id);
+                const susulanAktif = store.isSusulanAktif(tugas.id, siswa.id);
+
+                // ── Kasus 1: Sudah submit — behavior lama, bisa diubah nilainya
+                if (sub) {
+                  const nilaiColor = sub.nilai >= 80 ? "var(--good)" : sub.nilai >= 60 ? "var(--warn)" : "var(--bad)";
+                  const hasIntervensi = (sub.riwayatIntervensi || []).length > 0;
+                  return (
+                    <div key={siswa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{siswa.nama}</div>
+                          {hasIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diintervensi ×{sub.riwayatIntervensi.length}</span>}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Poin: +{sub.poinDapat || 0} · Submit: {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}</div>
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Poin: +{sub.poinDapat || 0} · Submit: {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}</div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: 20, fontWeight: 800, color: nilaiColor, minWidth: 40, textAlign: "center" }}>{sub.nilai}</div>
+                      <button className="btn btn-outline btn-sm" onClick={() => setEditTarget(sub)}>
+                        <I n="edit" s={12} /> Ubah
+                      </button>
                     </div>
-                    <div style={{ fontFamily: "var(--mono)", fontSize: 20, fontWeight: 800, color: nilaiColor, minWidth: 40, textAlign: "center" }}>{nilai}</div>
-                    <button className="btn btn-outline btn-sm" onClick={() => setEditTarget(sub)}>
-                      <I n="edit" s={12} /> Ubah
+                  );
+                }
+
+                // ── Kasus 2: Belum submit, tugas masih aktif (belum lewat) — masih ada waktu, jangan divonis
+                if (!lewat) {
+                  return (
+                    <div key={siswa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, opacity: 0.7 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>{siswa.nama}</div>
+                        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Belum dikerjakan · tugas masih aktif</div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ── Kasus 3: Belum submit, lewat, PUNYA susulan aktif — dikasih kesempatan, belum divonis 0
+                if (susulanAktif) {
+                  return (
+                    <div key={siswa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--accent-tint)", border: "1px solid var(--accent)", borderRadius: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>{siswa.nama}</div>
+                        <div style={{ fontSize: 11, color: "var(--accent-2)", marginTop: 2, fontWeight: 600 }}>
+                          Susulan aktif sampai {new Date(susulan.deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 1 }}>Alasan: {susulan.alasan}</div>
+                      </div>
+                      <button className="btn btn-ghost btn-sm" style={{ color: "var(--bad)" }} onClick={async () => { await store.removeSusulan(tugas.id, siswa.id); showToast(`Susulan ${siswa.nama} dibatalkan.`); }}>
+                        Batalkan
+                      </button>
+                    </div>
+                  );
+                }
+
+                // ── Kasus 4: Belum submit, lewat, TIDAK ada susulan aktif — dihitung 0 di average
+                return (
+                  <div key={siswa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>{siswa.nama}</div>
+                      <div style={{ fontSize: 11, color: "var(--bad)", marginTop: 2, fontWeight: 600 }}>Tidak mengerjakan · dihitung 0</div>
+                    </div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 20, fontWeight: 800, color: "var(--bad)", minWidth: 40, textAlign: "center" }}>0</div>
+                    <button className="btn btn-outline btn-sm" onClick={() => setSusulanTarget(siswa)}>
+                      Beri Susulan
                     </button>
                   </div>
                 );
@@ -5942,6 +6052,7 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
       </div>
 
       {editTarget && <UbahNilaiModal sub={editTarget} tugas={tugas} store={store} siswa={siswaList.find(s => s.id === editTarget.siswaId)} onClose={() => setEditTarget(null)} onSuccess={(msg) => { setEditTarget(null); showToast(msg); }} />}
+      {susulanTarget && <BeriSusulanModal siswa={susulanTarget} tugas={tugas} store={store} onClose={() => setSusulanTarget(null)} onSuccess={(msg) => { setSusulanTarget(null); showToast(msg); }} />}
     </div>
   );
 }
@@ -6002,6 +6113,59 @@ function UbahNilaiModal({ sub, tugas, store, siswa, onClose, onSuccess }) {
           <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Batal</button>
           <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit}>
             {saving ? "Menyimpan..." : "Simpan Perubahan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BERI SUSULAN MODAL ───
+// Guru kasih akses submit personal ke 1 siswa tertentu untuk tugas yang udah lewat deadline.
+// Beda dari "Perpanjang" (class-wide) — ini cuma buka akses buat siswa ini doang, siswa lain tetap tertutup.
+// Tanggal batas + alasan WAJIB diisi (accountability, sesuai keputusan Fata).
+function BeriSusulanModal({ siswa, tugas, store, onClose, onSuccess }) {
+  const [deadlineBaru, setDeadlineBaru] = useState("");
+  const [alasan, setAlasan] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const canSubmit = deadlineBaru && alasan.trim().length >= 5 && !saving;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await store.addSusulan(tugas.id, siswa.id, deadlineBaru, alasan.trim());
+      onSuccess(`Susulan untuk ${siswa.nama} diberikan sampai ${new Date(deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.`);
+    } catch (e) {
+      alert("Gagal memberi susulan: " + (e?.message || "coba lagi"));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1001 }}>
+      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <h3>Beri Susulan</h3>
+        <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 14, fontSize: 12, lineHeight: 1.6 }}>
+          <div><span style={{ color: "var(--ink-3)" }}>Siswa:</span> <b>{siswa.nama}</b></div>
+          <div><span style={{ color: "var(--ink-3)" }}>Tugas:</span> {tugas.judul}</div>
+        </div>
+        <p style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 14, lineHeight: 1.55 }}>
+          Susulan cuma buka akses submit untuk <b>{siswa.nama}</b> saja — siswa lain di kelas ini tetap tidak bisa mengerjakan tugas ini lagi. Gunakan untuk kasus personal (sakit, izin lomba, dll), bukan gangguan massal (pakai "Perpanjang" tugas untuk itu).
+        </p>
+
+        <label className="lbl">Batas Waktu Susulan <span style={{ color: "var(--bad)" }}>*wajib</span></label>
+        <input className="inp" type="datetime-local" value={deadlineBaru} onChange={e => setDeadlineBaru(e.target.value)} />
+
+        <label className="lbl" style={{ marginTop: 14 }}>Alasan <span style={{ color: "var(--ink-3)", fontWeight: 400 }}>(min 5 karakter, wajib)</span></label>
+        <textarea className="inp" rows={2} placeholder="Contoh: Sakit dengan surat dokter, Izin fokus lomba OSN Kabupaten" value={alasan} onChange={e => setAlasan(e.target.value)} maxLength={200} style={{ resize: "vertical" }} />
+        <div style={{ fontSize: 10, color: "var(--ink-3)", textAlign: "right", marginTop: 2, marginBottom: 12 }}>{alasan.length}/200</div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit}>
+            {saving ? "Menyimpan..." : "Beri Susulan"}
           </button>
         </div>
       </div>
@@ -7154,14 +7318,15 @@ const LAPORAN_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Plus Jakarta Sans',system-ui,sans-serif; color:#1a2332; font-size:12px; background:#fff; }
-  .page { padding:32px 36px; max-width:800px; margin:0 auto; }
+  .page { padding:32px 36px; max-width:800px; margin:0 auto; page-break-inside:avoid; break-inside:avoid; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:16px; border-bottom:3px solid #0d6b7a; margin-bottom:24px; }
   .logo { font-size:18px; font-weight:800; color:#0d6b7a; letter-spacing:-.02em; }
   .logo small { display:block; font-size:11px; font-weight:400; color:#7a8fa3; margin-top:2px; }
   .meta { text-align:right; font-size:11px; color:#7a8fa3; line-height:1.7; }
-  .section { margin-bottom:20px; }
+  .section { margin-bottom:20px; page-break-inside:avoid; break-inside:avoid; }
   .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#0d9488; margin-bottom:10px; padding-bottom:4px; border-bottom:1px solid #e2e8f0; }
   table { width:100%; border-collapse:collapse; }
+  tr { page-break-inside:avoid; break-inside:avoid; }
   th { background:#f0fdfa; color:#0d6b7a; padding:9px 10px; text-align:left; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; border-bottom:2px solid #0d9488; }
   td { padding:9px 10px; border-bottom:1px solid #f1f5f9; font-size:11px; vertical-align:middle; }
   tr:last-child td { border-bottom:none; }
@@ -7174,7 +7339,7 @@ const LAPORAN_CSS = `
   .footer { margin-top:24px; padding-top:12px; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; font-size:10px; color:#94a3b8; }
   .sign-box { text-align:center; }
   .sign-line { width:140px; border-bottom:1px solid #1a2332; margin:40px auto 4px; }
-  .page-break { page-break-after:always; }
+  .page-break { page-break-after:always; break-after:page; height:0; }
   @media print {
     body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .no-print { display:none; }
