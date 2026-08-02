@@ -1036,6 +1036,14 @@ function BadgeGlyph({ type, color }) {
     case "arrowup": return <g><polygon points="0,-15 11,-2 4,-2 4,14 -4,14 -4,-2 -11,-2" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /></g>;
     case "flag": return <g><line x1="-11" y1="-15" x2="-11" y2="16" {...s} /><path d="M-11 -14 L13 -14 L8 -7 L13 0 L-11 0 Z" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /></g>;
     case "heart": return <g><path d="M0 14 Q-14 4 -14 -5 Q-14 -13 -7 -13 Q-2 -13 0 -7 Q2 -13 7 -13 Q14 -13 14 -5 Q14 4 0 14 Z" {...f} stroke={color} strokeWidth="1" strokeLinejoin="round" /><ellipse cx="-5" cy="-6" rx="3" ry="2" fill="#fff" opacity="0.5" /></g>;
+    // Perilaku & Keaktifan
+    case "question": return <g><path d="M-6 -8 Q-6 -14 0 -14 Q7 -14 7 -8 Q7 -3 1 -1 L1 4" {...s} strokeWidth="2.6" /><circle cx="0" cy="11" r="2" {...f} stroke="none" /></g>;
+    case "eye": return <g><path d="M-15 0 Q0 -12 15 0 Q0 12 -15 0 Z" {...s} strokeWidth="2.2" /><circle cx="0" cy="0" r="5" {...f} stroke="none" /><circle cx="-1.5" cy="-1.5" r="1.6" fill="#fff" stroke="none" /></g>;
+    case "moonstar": return <g><path d="M6 -14 A11 11 0 100 14 A9 9 0 016 -14Z" {...f} stroke="none" /><polygon points="-9,-9 -8,-6 -5,-6 -7.5,-4.3 -6.5,-1.5 -9,-3.3 -11.5,-1.5 -10.5,-4.3 -13,-6 -10,-6" {...f} stroke="none" opacity="0.9" /></g>;
+    case "magnify": return <g {...s} strokeWidth="2.4"><circle cx="-2" cy="-2" r="9" /><line x1="5" y1="5" x2="14" y2="14" strokeLinecap="round" /></g>;
+    case "rocket": return <g><path d="M0 -16 Q8 -8 8 4 L8 10 L-8 10 L-8 4 Q-8 -8 0 -16Z" {...f} stroke={color} strokeWidth="1" /><circle cx="0" cy="-4" r="3" fill="#fff" opacity="0.6" /><path d="M-8 6 L-14 14 L-6 11 Z" {...f} stroke="none" /><path d="M8 6 L14 14 L6 11 Z" {...f} stroke="none" /><path d="M-3 10 L0 17 L3 10 Z" fill="#fbbf24" stroke="none" /></g>;
+    case "compass": return <g><circle r="13" {...s} strokeWidth="2" /><polygon points="0,-9 3,0 0,9 -3,0" {...f} stroke="none" /><circle r="1.5" fill="#fff" stroke="none" /></g>;
+    case "starorbit": return <g><ellipse rx="15" ry="6" {...s} strokeWidth="1.3" opacity="0.6" /><polygon points="0,-9 2,-2 9,-2 3.5,2 5.5,9 0,5 -5.5,9 -3.5,2 -9,-2 -2,-2" {...f} stroke="none" /></g>;
     default: return <circle r="10" {...f} stroke="none" />;
   }
 }
@@ -1068,48 +1076,57 @@ function BadgeIcon({ type, rim = "teal", size = 32, locked = false }) {
 // 'iconType' = type yang dipakai oleh BadgeIcon component.
 const AUTO_BADGES = [
   // === Prestasi (nilai/akurasi) ===
-  { id: "perfect",     icon: "bullseye",     rim: "amber",  name: "Perfect Score",  desc: "Nilai 100 di satu tugas",          color: "#b45309", bg: "#fef3c7", category: "Prestasi" },
-  { id: "perfect5",    icon: "rosette",      rim: "amber",  name: "Perfectionist",  desc: "5x nilai 100",                     color: "#92400e", bg: "#fef3c7", category: "Prestasi" },
-  { id: "perfect10",   icon: "crown",        rim: "amber",  name: "Master Mind",    desc: "10x nilai 100",                    color: "#78350f", bg: "#fde68a", category: "Prestasi" },
+  { id: "perfect",     icon: "bullseye",     rim: "amber",  name: "Perfect Score",  desc: "Nilai 100 di satu tugas",          color: "#b45309", bg: "#fef3c7", category: "Prestasi", poin: 50 },
+  { id: "perfect5",    icon: "rosette",      rim: "amber",  name: "Perfectionist",  desc: "5x nilai 100",                     color: "#92400e", bg: "#fef3c7", category: "Prestasi", poin: 50 },
+  { id: "perfect10",   icon: "crown",        rim: "amber",  name: "Master Mind",    desc: "10x nilai 100",                    color: "#78350f", bg: "#fde68a", category: "Prestasi", poin: 50 },
 
   // === Streak ===
-  { id: "onfire",      icon: "flame1",       rim: "red",    name: "On Fire",        desc: "Streak 5 hari berturut-turut",     color: "#dc2626", bg: "#fef2f2", category: "Streak" },
-  { id: "blazing",     icon: "flame2",       rim: "red",    name: "Blazing Hot",    desc: "Streak 10 hari berturut-turut",    color: "#b91c1c", bg: "#fee2e2", category: "Streak" },
-  { id: "inferno",     icon: "sun",          rim: "red",    name: "Inferno",        desc: "Streak 20 hari berturut-turut",    color: "#7f1d1d", bg: "#fecaca", category: "Streak" },
+  { id: "onfire",      icon: "flame1",       rim: "red",    name: "On Fire",        desc: "Streak 5 hari berturut-turut",     color: "#dc2626", bg: "#fef2f2", category: "Streak", poin: 50 },
+  { id: "blazing",     icon: "flame2",       rim: "red",    name: "Blazing Hot",    desc: "Streak 10 hari berturut-turut",    color: "#b91c1c", bg: "#fee2e2", category: "Streak", poin: 50 },
+  { id: "inferno",     icon: "sun",          rim: "red",    name: "Inferno",        desc: "Streak 20 hari berturut-turut",    color: "#7f1d1d", bg: "#fecaca", category: "Streak", poin: 50 },
 
   // === Tugas ===
-  { id: "firstblood",  icon: "footprint",    rim: "green",  name: "First Step",     desc: "Selesaikan tugas pertama",         color: "#16a34a", bg: "#f0fdf4", category: "Tugas" },
-  { id: "rajin",       icon: "book",         rim: "teal",   name: "Rajin Belajar",  desc: "Selesaikan 10 tugas",              color: "#0d6b7a", bg: "#eaf4f3", category: "Tugas" },
-  { id: "scholar",     icon: "gradcap",      rim: "teal",   name: "Scholar",        desc: "Selesaikan 25 tugas",              color: "#0e7490", bg: "#cffafe", category: "Tugas" },
-  { id: "veteran",     icon: "shield",       rim: "teal",   name: "Veteran",        desc: "Selesaikan 50 tugas",              color: "#155e75", bg: "#a5f3fc", category: "Tugas" },
+  { id: "firstblood",  icon: "footprint",    rim: "green",  name: "First Step",     desc: "Selesaikan tugas pertama",         color: "#16a34a", bg: "#f0fdf4", category: "Tugas", poin: 50 },
+  { id: "rajin",       icon: "book",         rim: "teal",   name: "Rajin Belajar",  desc: "Selesaikan 10 tugas",              color: "#0d6b7a", bg: "#eaf4f3", category: "Tugas", poin: 50 },
+  { id: "scholar",     icon: "gradcap",      rim: "teal",   name: "Scholar",        desc: "Selesaikan 25 tugas",              color: "#0e7490", bg: "#cffafe", category: "Tugas", poin: 50 },
+  { id: "veteran",     icon: "shield",       rim: "teal",   name: "Veteran",        desc: "Selesaikan 50 tugas",              color: "#155e75", bg: "#a5f3fc", category: "Tugas", poin: 50 },
 
   // === Speed ===
-  { id: "fast",        icon: "stopwatch",    rim: "violet", name: "Fast Finisher",  desc: "Submit < 3 jam setelah publish",   color: "#7c3aed", bg: "#f5f3ff", category: "Speed" },
-  { id: "lightning",   icon: "bolt",         rim: "violet", name: "Lightning",      desc: "5x submit di hari yang sama",      color: "#6d28d9", bg: "#ede9fe", category: "Speed" },
+  { id: "fast",        icon: "stopwatch",    rim: "violet", name: "Fast Finisher",  desc: "Submit < 3 jam setelah publish",   color: "#7c3aed", bg: "#f5f3ff", category: "Speed", poin: 50 },
+  { id: "lightning",   icon: "bolt",         rim: "violet", name: "Lightning",      desc: "5x submit di hari yang sama",      color: "#6d28d9", bg: "#ede9fe", category: "Speed", poin: 50 },
 
   // === Ranking ===
-  { id: "topclass",    icon: "trophy",       rim: "amber",  name: "Top of Class",   desc: "Rank #1 di leaderboard",           color: "#d97706", bg: "#fffbeb", category: "Ranking" },
-  { id: "podium",      icon: "podium",       rim: "amber",  name: "Podium",         desc: "Masuk Top 3 leaderboard",          color: "#ea580c", bg: "#fff7ed", category: "Ranking" },
+  { id: "topclass",    icon: "trophy",       rim: "amber",  name: "Top of Class",   desc: "Rank #1 di leaderboard",           color: "#d97706", bg: "#fffbeb", category: "Ranking", poin: 50 },
+  { id: "podium",      icon: "podium",       rim: "amber",  name: "Podium",         desc: "Masuk Top 3 leaderboard",          color: "#ea580c", bg: "#fff7ed", category: "Ranking", poin: 50 },
 
   // === Level ===
-  { id: "lv5",         icon: "star1",        rim: "amber",  name: "Rising Star",    desc: "Capai Level 5 (Bintang I)",        color: "#d97706", bg: "#fffbeb", category: "Level" },
-  { id: "lv10",        icon: "star2",        rim: "teal",   name: "Stellar",        desc: "Capai Level 10 (Planet II)",       color: "#0d6b7a", bg: "#eaf4f3", category: "Level" },
-  { id: "lv15",        icon: "constellation",rim: "blue",   name: "Celestial",      desc: "Capai Level 15 (Astronot III)",    color: "#1d4ed8", bg: "#eff6ff", category: "Level" },
-  { id: "lv20",        icon: "starcrown",    rim: "amber",  name: "Galactic",       desc: "Capai Level 20 (Commander IV)",    color: "#b45309", bg: "#fef3c7", category: "Level" },
+  { id: "lv5",         icon: "star1",        rim: "amber",  name: "Rising Star",    desc: "Capai Level 5 (Bintang I)",        color: "#d97706", bg: "#fffbeb", category: "Level", poin: 50 },
+  { id: "lv10",        icon: "star2",        rim: "teal",   name: "Stellar",        desc: "Capai Level 10 (Planet II)",       color: "#0d6b7a", bg: "#eaf4f3", category: "Level", poin: 50 },
+  { id: "lv15",        icon: "constellation",rim: "blue",   name: "Celestial",      desc: "Capai Level 15 (Astronot III)",    color: "#1d4ed8", bg: "#eff6ff", category: "Level", poin: 50 },
+  { id: "lv20",        icon: "starcrown",    rim: "amber",  name: "Galactic",       desc: "Capai Level 20 (Commander IV)",    color: "#b45309", bg: "#fef3c7", category: "Level", poin: 50 },
 
   // === XP ===
-  { id: "xp1k",        icon: "gem1",         rim: "teal",   name: "1K Club",        desc: "Total 1.000 XP",                   color: "#0d6b7a", bg: "#eaf4f3", category: "XP" },
-  { id: "xp5k",        icon: "gem2",         rim: "violet", name: "5K Club",        desc: "Total 5.000 XP",                   color: "#7c3aed", bg: "#f5f3ff", category: "XP" },
-  { id: "xp10k",       icon: "diamond",      rim: "amber",  name: "10K Elite",      desc: "Total 10.000 XP",                  color: "#b45309", bg: "#fef3c7", category: "XP" },
+  { id: "xp1k",        icon: "gem1",         rim: "teal",   name: "1K Club",        desc: "Total 1.000 XP",                   color: "#0d6b7a", bg: "#eaf4f3", category: "XP", poin: 50 },
+  { id: "xp5k",        icon: "gem2",         rim: "violet", name: "5K Club",        desc: "Total 5.000 XP",                   color: "#7c3aed", bg: "#f5f3ff", category: "XP", poin: 50 },
+  { id: "xp10k",       icon: "diamond",      rim: "amber",  name: "10K Elite",      desc: "Total 10.000 XP",                  color: "#b45309", bg: "#fef3c7", category: "XP", poin: 50 },
 ];
 
 const MANUAL_BADGES = [
-  { id: "guruspick",   icon: "ribbon",       rim: "teal",   name: "Guru's Pick",    desc: "Pilihan khusus dari guru",         color: "#0d6b7a", bg: "#eaf4f3", category: "Special" },
-  { id: "creative",    icon: "bulb",         rim: "violet", name: "Most Creative",  desc: "Kreativitas luar biasa",           color: "#7c3aed", bg: "#f5f3ff", category: "Special" },
-  { id: "teamplayer",  icon: "handshake",    rim: "blue",   name: "Team Player",    desc: "Kontribusi luar biasa di kelas",   color: "#1d4ed8", bg: "#eff6ff", category: "Special" },
-  { id: "improver",    icon: "arrowup",      rim: "green",  name: "Most Improved",  desc: "Peningkatan nilai terbaik",        color: "#16a34a", bg: "#f0fdf4", category: "Special" },
-  { id: "leader",      icon: "flag",         rim: "amber",  name: "Class Leader",   desc: "Memimpin diskusi & inspirasi",     color: "#d97706", bg: "#fffbeb", category: "Special" },
-  { id: "helper",      icon: "heart",        rim: "rose",   name: "Helper",         desc: "Selalu membantu teman sekelas",    color: "#dc2626", bg: "#fef2f2", category: "Special" },
+  { id: "guruspick",   icon: "ribbon",       rim: "teal",   name: "Guru's Pick",    desc: "Pilihan khusus dari guru",         color: "#0d6b7a", bg: "#eaf4f3", category: "Special", poin: 15 },
+  { id: "creative",    icon: "bulb",         rim: "violet", name: "Most Creative",  desc: "Kreativitas luar biasa",           color: "#7c3aed", bg: "#f5f3ff", category: "Special", poin: 15 },
+  { id: "teamplayer",  icon: "handshake",    rim: "blue",   name: "Team Player",    desc: "Kontribusi luar biasa di kelas",   color: "#1d4ed8", bg: "#eff6ff", category: "Special", poin: 15 },
+  { id: "improver",    icon: "arrowup",      rim: "green",  name: "Most Improved",  desc: "Peningkatan nilai terbaik",        color: "#16a34a", bg: "#f0fdf4", category: "Special", poin: 15 },
+  { id: "leader",      icon: "flag",         rim: "amber",  name: "Class Leader",   desc: "Memimpin diskusi & inspirasi",     color: "#d97706", bg: "#fffbeb", category: "Special", poin: 15 },
+  { id: "helper",      icon: "heart",        rim: "rose",   name: "Helper",         desc: "Selalu membantu teman sekelas",    color: "#dc2626", bg: "#fef2f2", category: "Special", poin: 15 },
+
+  // === Perilaku & Keaktifan (guru-awarded, observasi manual) ===
+  { id: "curious",     icon: "question",     rim: "blue",   name: "Si Penasaran",   desc: "Rajin bertanya untuk memperdalam pemahaman",         color: "#1d4ed8", bg: "#eff6ff", category: "Perilaku", poin: 15 },
+  { id: "monitor",     icon: "eye",          rim: "teal",   name: "Pemantau Setia", desc: "Rutin memantau progress & nilai lewat aplikasi",     color: "#0d6b7a", bg: "#eaf4f3", category: "Perilaku", poin: 15 },
+  { id: "nightowl",    icon: "moonstar",     rim: "violet", name: "Night Explorer", desc: "Aktif belajar mandiri di luar jam sekolah",          color: "#7c3aed", bg: "#f5f3ff", category: "Perilaku", poin: 15 },
+  { id: "researcher",  icon: "magnify",      rim: "green",  name: "Peneliti Kecil", desc: "Sering menggali materi lebih dalam dari yang diajarkan", color: "#16a34a", bg: "#f0fdf4", category: "Perilaku", poin: 15 },
+  { id: "spiritrocket",icon: "rocket",       rim: "amber",  name: "Roket Semangat", desc: "Semangat & antusias tinggi meski hasil belum sempurna", color: "#d97706", bg: "#fffbeb", category: "Perilaku", poin: 15 },
+  { id: "navigator",   icon: "compass",      rim: "rose",   name: "Navigator Kelas",desc: "Aktif memberi masukan membangun untuk kelas",        color: "#be123c", bg: "#fff1f3", category: "Perilaku", poin: 15 },
+  { id: "steadystar",  icon: "starorbit",    rim: "blue",   name: "Konsisten Bintang", desc: "Hadir & aktif di aplikasi secara rutin tiap minggu", color: "#1d4ed8", bg: "#eff6ff", category: "Perilaku", poin: 15 },
 ];
 const ALL_BADGES = [...AUTO_BADGES, ...MANUAL_BADGES];
 
@@ -2111,13 +2128,33 @@ function useStore() {
     return () => u7();
   }, []);
   const getBadges = (sid) => Object.keys(badgesData[sid] || {});
+  // Kasih badge + otomatis nambah poin ke stats siswa (poin diambil dari ALL_BADGES.poin).
+  // Auto badges = 50 poin (murni skill), manual badges = 15 poin (subjektif guru, porsi lebih kecil
+  // biar leaderboard akademik gak terlalu goyah cuma dari badge behavioral).
   const awardBadge = async (sid, badgeId) => {
     const current = badgesData[sid] || {};
-    if (current[badgeId]) return;
+    if (current[badgeId]) return; // udah punya, jangan dobel poin
+    const badgeDef = ALL_BADGES.find(b => b.id === badgeId);
+    const poinBadge = badgeDef?.poin || 0;
     await update(ref(db, `badges/${sid}`), { [badgeId]: true });
+    if (poinBadge > 0) {
+      const s = getStats(sid);
+      const newPoin = (s.poin || 0) + poinBadge;
+      const newHistory = [...(s.poinHistory || []), { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: Date.now() }];
+      await update(ref(db, `stats/${sid}`), { poin: newPoin, poinHistory: newHistory });
+    }
   };
   const removeBadge = async (sid, badgeId) => {
+    const current = badgesData[sid] || {};
+    if (!current[badgeId]) return; // gak punya badge ini, gak ada apa-apa buat direvert
+    const badgeDef = ALL_BADGES.find(b => b.id === badgeId);
+    const poinBadge = badgeDef?.poin || 0;
     await remove(ref(db, `badges/${sid}/${badgeId}`));
+    if (poinBadge > 0) {
+      const s = getStats(sid);
+      const newPoin = Math.max(0, (s.poin || 0) - poinBadge); // gak boleh minus
+      await update(ref(db, `stats/${sid}`), { poin: newPoin });
+    }
   };
 
   // IMPORT MASSAL
