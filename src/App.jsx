@@ -2989,9 +2989,11 @@ function ReviewTugas({ user, store, tugasId, navigate }) {
   const sub = store.getSubBy(user.id, t.id);
   if (!sub) return <div className="empty">Kamu belum mengerjakan tugas ini.</div>;
 
-  // Bangun map jawaban siswa per origIdx
+  // Bangun map jawaban siswa — soalId (stabil) diutamakan, origIdx sebagai fallback untuk
+  // submission lama yang belum punya soalId (sebelum fix ini dibuat).
   const resultByIdx = {};
-  (sub.soalResults || []).forEach(r => { resultByIdx[r.origIdx] = r; });
+  const resultById = {};
+  (sub.soalResults || []).forEach(r => { resultByIdx[r.origIdx] = r; if (r.soalId) resultById[r.soalId] = r; });
 
   return <>
     <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas-detail", { tugasId: t.id })}><I n="chevL" s={18} /></button><div className="topbar-title">Review Jawaban</div><div style={{ width: 36 }} /></div>
@@ -3007,7 +3009,7 @@ function ReviewTugas({ user, store, tugasId, navigate }) {
       {/* Per soal */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {(t.soal || []).map((soal, idx) => {
-          const r = resultByIdx[idx];
+          const r = resultById[soal.id] || resultByIdx[idx];
           const isEssay = soal.type === "essay";
           const isRefleksi = soal.type === "refleksi";
           const isManual = isEssay || isRefleksi;
@@ -3372,7 +3374,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       else if (s.type === "essay") { correct = null; /* perlu penilaian manual */ }
       else if (s.type === "refleksi") { correct = null; /* perlu penilaian manual */ }
       if (correct === true) { totalPoin += poinSoal; correctCount++; }
-      const resultItem = { origIdx: s._origIdx ?? i, correct, poinSoal };
+      const resultItem = { origIdx: s._origIdx ?? i, soalId: s.id, correct, poinSoal };
       // Simpan jawaban siswa untuk review (kecuali essay yang pakai jawabanEssay)
       if (s.type === "pg" || s.type === "tf" || s.type === "excel") {
         resultItem.pickedAnswer = ans ?? null;
@@ -5250,7 +5252,7 @@ function DashboardTugasAnalisis({ tugas, subs, siswaList, navigate }) {
   // Analisis per soal (ringkas)
   const soalStats = (tugas.soal || []).map((s, i) => {
     const correctCount = subs.filter(sub => {
-      const r = sub.soalResults?.find(x => x.origIdx === i);
+      const r = sub.soalResults?.find(x => (x.soalId && x.soalId === s.id) || (!x.soalId && x.origIdx === i));
       if (!r) return false;
       if (s.type === "essay") return r.statusNilai === "dinilai" && (r.nilaiEssay || 0) >= 60;
       return r.correct === true;
@@ -5539,12 +5541,13 @@ function NilaiEssayModal({ tugas, store, onClose }) {
   const currentSub = subsWithEssay[activeSubIdx];
   const siswa = siswaList.find(s => s.id === currentSub?.siswaId);
 
-  async function nilaiEssay(soalIdx, nilaiEssay, komentar) {
-    setSavingFor(soalIdx);
+  // Shared save logic — dipakai baik untuk soal yang masih match normal, maupun jawaban orphan
+  async function saveResultUpdate(matchFn, savingKey, nilaiEssayVal, komentar) {
+    setSavingFor(savingKey);
     try {
       const newResults = currentSub.soalResults.map(r => {
-        if (r.origIdx === soalIdx && r.statusNilai === "perlu_dinilai") {
-          return { ...r, statusNilai: "dinilai", nilaiEssay: Number(nilaiEssay), komentarGuru: komentar || "" };
+        if (matchFn(r) && r.statusNilai === "perlu_dinilai") {
+          return { ...r, statusNilai: "dinilai", nilaiEssay: Number(nilaiEssayVal), komentarGuru: komentar || "" };
         }
         return r;
       });
@@ -5588,6 +5591,20 @@ function NilaiEssayModal({ tugas, store, onClose }) {
     }
   }
 
+  // Nilai soal yang masih ketemu normal — cocokkan by soalId (stabil), fallback origIdx untuk data lama
+  async function nilaiEssay(soal, nilaiEssayVal, komentar) {
+    const matchFn = r => (r.soalId && soal.id && r.soalId === soal.id) || (!r.soalId && r.origIdx === soal.idx);
+    await saveResultUpdate(matchFn, soal.idx, nilaiEssayVal, komentar);
+  }
+
+  // Nilai jawaban ORPHAN — soal aslinya sudah gak ketemu (biasanya karena soal lain dihapus
+  // setelah siswa submit, bikin index bergeser). Cocokkan langsung by origIdx si jawaban itu sendiri,
+  // karena origIdx dalam 1 submission itu unik walau gak nyambung lagi ke tugas.soal sekarang.
+  async function nilaiOrphan(origIdx, nilaiEssayVal, komentar) {
+    const matchFn = r => r.origIdx === origIdx;
+    await saveResultUpdate(matchFn, `orphan-${origIdx}`, nilaiEssayVal, komentar);
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 600, maxHeight: "92vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
@@ -5627,12 +5644,35 @@ function NilaiEssayModal({ tugas, store, onClose }) {
           </div>
 
           {essaySoals.map(s => {
-            const result = currentSub.soalResults?.find(r => r.origIdx === s.idx);
+            const result = currentSub.soalResults?.find(r => (r.soalId && r.soalId === s.id) || (!r.soalId && r.origIdx === s.idx));
             const isDinilai = result?.statusNilai === "dinilai";
             return (
-              <EssayCard key={s.idx} soal={s} result={result} isDinilai={isDinilai} saving={savingFor === s.idx} onNilai={(n, k) => nilaiEssay(s.idx, n, k)} />
+              <EssayCard key={s.idx} soal={s} result={result} isDinilai={isDinilai} saving={savingFor === s.idx} onNilai={(n, k) => nilaiEssay(s, n, k)} />
             );
           })}
+
+          {/* Jawaban orphan — soal aslinya udah gak match (biasanya soal lain dihapus setelah siswa
+              submit, index bergeser). Jawaban TETAP ADA di database, cuma gak ke-link otomatis lagi.
+              Ditampilkan di sini biar gurunya tetap bisa lihat & nilai manual. */}
+          {(() => {
+            const orphaned = (currentSub.soalResults || []).filter(r =>
+              r.statusNilai && !essaySoals.some(s => (r.soalId && s.id && r.soalId === s.id) || (!r.soalId && r.origIdx === s.idx))
+            );
+            if (orphaned.length === 0) return null;
+            return (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ padding: "10px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, marginBottom: 10 }}>
+                  <div style={{ fontWeight: 700, color: "#92400e", fontSize: 12 }}>⚠ {orphaned.length} jawaban tidak terhubung ke soal manapun</div>
+                  <div style={{ fontSize: 11, color: "#78350f", marginTop: 4, lineHeight: 1.5 }}>
+                    Biasanya terjadi karena ada soal lain yang dihapus/diedit setelah siswa submit, sehingga urutan soal bergeser. Jawaban di bawah ini <b>masih tersimpan utuh</b> — tidak hilang — tapi perlu dinilai manual di sini karena sistem gak bisa cocokkan otomatis ke soal yang sekarang.
+                  </div>
+                </div>
+                {orphaned.map(r => (
+                  <OrphanEssayCard key={r.origIdx} result={r} saving={savingFor === `orphan-${r.origIdx}`} onNilai={(n, k) => nilaiOrphan(r.origIdx, n, k)} />
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="modal-actions" style={{ marginTop: 14 }}>
@@ -5712,6 +5752,61 @@ function EssayCard({ soal, result, isDinilai, saving, onNilai }) {
   );
 }
 
+// Kartu jawaban orphan — soal aslinya udah gak ke-link (biasanya soal lain dihapus setelah
+// siswa submit). Gak punya akses ke object `soal` (pertanyaan, kata kunci, dll) karena mapping-nya
+// putus — cuma tampilin jawaban mentah dari soalResults biar guru tetap bisa baca & nilai manual.
+function OrphanEssayCard({ result, saving, onNilai }) {
+  const [nilai, setNilai] = useState(result?.nilaiEssay ?? "");
+  const [komentar, setKomentar] = useState(result?.komentarGuru || "");
+  const isDinilai = result?.statusNilai === "dinilai";
+  const isRefleksi = !!result?.jawabanRefleksi;
+
+  return (
+    <Card pad="md" style={{ marginBottom: 10, border: isDinilai ? "1.5px solid var(--good)" : "1.5px solid #f59e0b" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>SOAL KE-{(result.origIdx ?? 0) + 1} (posisi lama) · {isRefleksi ? "REFLEKSI" : "ESSAY"}</span>
+        {isDinilai ? <span className="chip chip-good" style={{ fontSize: 10 }}>✓ Dinilai · {result.nilaiEssay}/100</span> : <span style={{ fontSize: 10, padding: "1px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: 600 }}>Perlu dinilai</span>}
+      </div>
+
+      <div style={{ fontSize: 11, color: "var(--ink-3)", fontStyle: "italic", marginBottom: 8 }}>Pertanyaan asli tidak bisa ditampilkan (soal sudah berubah), tapi jawaban siswa berikut ini asli & utuh:</div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4, fontWeight: 600 }}>Jawaban Siswa:</div>
+        {isRefleksi ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {["k1", "k2", "k3", "k4"].map((key, i) => {
+              const val = result?.jawabanRefleksi?.[key] || "";
+              return (
+                <div key={key} style={{ padding: "6px 10px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                  {val || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(kosong)</span>}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+            {result?.jawabanEssay || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(tidak menjawab)</span>}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <div style={{ width: 90 }}>
+          <label className="lbl" style={{ fontSize: 11 }}>Nilai (0-100)</label>
+          <input className="inp" type="number" min={0} max={100} value={nilai} onChange={e => setNilai(e.target.value)} style={{ fontFamily: "var(--mono)" }} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label className="lbl" style={{ fontSize: 11 }}>Komentar (opsional)</label>
+          <input className="inp" value={komentar} onChange={e => setKomentar(e.target.value)} placeholder="Feedback untuk siswa..." />
+        </div>
+        <button className="btn btn-primary btn-sm" disabled={saving || nilai === "" || nilai < 0 || nilai > 100} onClick={() => onNilai(nilai, komentar)}>
+          {saving ? "..." : isDinilai ? "Update" : "Simpan"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
   const t = store.getTugas().find(x => x.id === tugasId);
   if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
@@ -5733,7 +5828,7 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
   // Hitung akurasi per soal dari soalResults
   const soalStats = (t.soal || []).map((s, i) => {
     const correctCount = subs.filter(sub => {
-      const r = sub.soalResults?.find(x => x.origIdx === i);
+      const r = sub.soalResults?.find(x => (x.soalId && x.soalId === s.id) || (!x.soalId && x.origIdx === i));
       if (!r) return false;
       if (s.type === "essay") {
         // Essay: dianggap "benar" kalau nilai >= 60
