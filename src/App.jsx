@@ -1786,11 +1786,12 @@ function useStore() {
     return new Date(s.deadlineBaru).getTime() > Date.now();
   };
 
-  const addSusulan = async (tugasId, siswaId, deadlineBaru, alasan) => {
+  const addSusulan = async (tugasId, siswaId, deadlineBaru, alasan, nilaiMaks = null) => {
     if (!alasan || alasan.trim().length < 5) throw new Error("Alasan wajib diisi (minimal 5 karakter)");
     if (!deadlineBaru) throw new Error("Tanggal batas susulan wajib diisi");
+    if (nilaiMaks !== null && (nilaiMaks < 1 || nilaiMaks > 100)) throw new Error("Nilai maksimal harus 1-100");
     const key = `${tugasId}_${siswaId}`;
-    await update(ref(db, `susulan/${key}`), { tugasId, siswaId, deadlineBaru, alasan: alasan.trim(), createdAt: Date.now() });
+    await update(ref(db, `susulan/${key}`), { tugasId, siswaId, deadlineBaru, alasan: alasan.trim(), nilaiMaks: nilaiMaks === null ? null : Number(nilaiMaks), createdAt: Date.now() });
   };
   const removeSusulan = async (tugasId, siswaId) => {
     await remove(ref(db, `susulan/${tugasId}_${siswaId}`));
@@ -2912,6 +2913,7 @@ function DetailTugas({ user, store, tugasId, navigate }) {
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>Kamu dapat kesempatan susulan!</div>
               <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>Batas waktu baru: {new Date(susulan.deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</div>
+              {typeof susulan.nilaiMaks === "number" && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>⚠ Nilai untuk tugas ini dibatasi maksimal <b>{susulan.nilaiMaks}</b>, meski semua jawaban benar.</div>}
             </div>
           </div>
         </Card>
@@ -3399,7 +3401,18 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     });
     // Hitung nilai hanya dari soal auto-graded (essay & refleksi menyusul setelah dinilai guru)
     const nonEssayTotal = t.soal.filter(s => s.type !== "essay" && s.type !== "refleksi").length || 1;
-    const nilai = Math.round((correctCount / nonEssayTotal) * 100);
+    let nilai = Math.round((correctCount / nonEssayTotal) * 100);
+
+    // Cek apakah siswa submit lewat window susulan personal dengan nilai maksimal dibatasi.
+    // Kalau ada & nilai asli melebihi cap-nya, nilai (dan poin, proporsional) diturunkan paksa —
+    // meski semua jawaban benar, gak akan pernah melebihi batas yang guru set saat kasih susulan.
+    const susulanInfo = store.getSusulan(t.id, user.id);
+    if (susulanInfo && typeof susulanInfo.nilaiMaks === "number" && nilai > susulanInfo.nilaiMaks) {
+      const rasio = nilai > 0 ? susulanInfo.nilaiMaks / nilai : 0;
+      totalPoin = Math.round(totalPoin * rasio);
+      nilai = susulanInfo.nilaiMaks;
+    }
+
     const hasEssay = t.soal.some(s => s.type === "essay" || s.type === "refleksi");
     const dl = fmtDl(t.deadline);
     const ontime = dl.tone !== "bad";
@@ -5567,7 +5580,16 @@ function NilaiEssayModal({ tugas, store, onClose }) {
       // Kalau guru edit tugas (tambah/hapus soal) setelah siswa submit, nilai siswa tidak boleh berubah
       // gara-gara denominator berubah. Fallback ke tugas.soal.length kalau snapshot tidak ada (data lama).
       const totalSoal = currentSub.total || (tugas.soal || []).length || 1;
-      const nilaiBaru = Math.round((correctCountBaru / totalSoal) * 100);
+      let nilaiBaru = Math.round((correctCountBaru / totalSoal) * 100);
+
+      // Cap susulan — kalau siswa ini submit lewat susulan personal dengan nilai maksimal dibatasi,
+      // nilai essay yang baru dinilai gak boleh bikin nilai akhir naik ngelewatin cap itu lagi.
+      const susulanInfo = store.getSusulan(tugas.id, currentSub.siswaId);
+      if (susulanInfo && typeof susulanInfo.nilaiMaks === "number" && nilaiBaru > susulanInfo.nilaiMaks) {
+        const rasio = nilaiBaru > 0 ? susulanInfo.nilaiMaks / nilaiBaru : 0;
+        totalPoinBaru = Math.round(totalPoinBaru * rasio);
+        nilaiBaru = susulanInfo.nilaiMaks;
+      }
 
       await update(ref(db, `submissions/${currentSub.id}`), {
         soalResults: newResults,
@@ -6152,6 +6174,7 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
                         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>{siswa.nama}</div>
                         <div style={{ fontSize: 11, color: "var(--accent-2)", marginTop: 2, fontWeight: 600 }}>
                           Susulan aktif sampai {new Date(susulan.deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                          {typeof susulan.nilaiMaks === "number" && <span> · nilai maks {susulan.nilaiMaks}</span>}
                         </div>
                         <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 1 }}>Alasan: {susulan.alasan}</div>
                       </div>
@@ -6259,16 +6282,21 @@ function UbahNilaiModal({ sub, tugas, store, siswa, onClose, onSuccess }) {
 function BeriSusulanModal({ siswa, tugas, store, onClose, onSuccess }) {
   const [deadlineBaru, setDeadlineBaru] = useState("");
   const [alasan, setAlasan] = useState("");
+  const [pakaiCap, setPakaiCap] = useState(false);
+  const [nilaiMaks, setNilaiMaks] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const canSubmit = deadlineBaru && alasan.trim().length >= 5 && !saving;
+  const capValid = !pakaiCap || (nilaiMaks !== "" && Number(nilaiMaks) >= 1 && Number(nilaiMaks) <= 100);
+  const canSubmit = deadlineBaru && alasan.trim().length >= 5 && capValid && !saving;
 
   async function handleSubmit() {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await store.addSusulan(tugas.id, siswa.id, deadlineBaru, alasan.trim());
-      onSuccess(`Susulan untuk ${siswa.nama} diberikan sampai ${new Date(deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.`);
+      const cap = pakaiCap ? Number(nilaiMaks) : null;
+      await store.addSusulan(tugas.id, siswa.id, deadlineBaru, alasan.trim(), cap);
+      const capMsg = cap ? ` (nilai dibatasi maks ${cap})` : "";
+      onSuccess(`Susulan untuk ${siswa.nama} diberikan sampai ${new Date(deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}${capMsg}.`);
     } catch (e) {
       alert("Gagal memberi susulan: " + (e?.message || "coba lagi"));
       setSaving(false);
@@ -6294,7 +6322,20 @@ function BeriSusulanModal({ siswa, tugas, store, onClose, onSuccess }) {
         <textarea className="inp" rows={2} placeholder="Contoh: Sakit dengan surat dokter, Izin fokus lomba OSN Kabupaten" value={alasan} onChange={e => setAlasan(e.target.value)} maxLength={200} style={{ resize: "vertical" }} />
         <div style={{ fontSize: 10, color: "var(--ink-3)", textAlign: "right", marginTop: 2, marginBottom: 12 }}>{alasan.length}/200</div>
 
-        <div className="modal-actions">
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, cursor: "pointer" }}>
+          <input type="checkbox" checked={pakaiCap} onChange={e => setPakaiCap(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>Batasi nilai maksimal untuk susulan ini</span>
+        </label>
+        <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2, marginLeft: 24, lineHeight: 1.5 }}>
+          Opsional. Kalau diaktifkan, nilai siswa untuk tugas ini gak akan pernah melebihi angka yang kamu set — meski semua jawaban benar. Cocok kalau kebijakanmu: susulan tetap ada konsekuensi, gak disamakan penuh dengan yang tepat waktu.
+        </div>
+        {pakaiCap && (
+          <div style={{ marginTop: 8 }}>
+            <input className="inp" type="number" min={1} max={100} placeholder="Contoh: 80" value={nilaiMaks} onChange={e => setNilaiMaks(e.target.value)} style={{ fontFamily: "var(--mono)", maxWidth: 120 }} />
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: 16 }}>
           <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Batal</button>
           <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit}>
             {saving ? "Menyimpan..." : "Beri Susulan"}
