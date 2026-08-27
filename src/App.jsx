@@ -6097,9 +6097,143 @@ function MateriManagerModal({ store, jenjang, onClose, onSuccess }) {
 // Modal 2-level: (1) list semua submission untuk 1 tugas, (2) sub-modal ubah nilai per siswa.
 // Guru bisa naikkan nilai (re-assess formatif) atau turunkan (kecurangan). Alasan wajib 10+ char.
 // Auto: poin siswa recompute, streak reset kalau nilai = 0.
+// Ringkasan per-soal untuk 1 submission — expand inline di IntervensiNilaiModal.
+// Default filter: hanya soal yang salah + belum dinilai (sesuai use case "cek soal mana yg salah").
+// Toggle "Tampilkan semua" muncul kalau ada soal benar yg lagi di-hide.
+function SoalBreakdown({ sub, tugas }) {
+  const [showAll, setShowAll] = useState(false);
+
+  // Lookup jawaban siswa — soalId dulu (stabil), origIdx fallback untuk submission lama
+  const resultByIdx = {};
+  const resultById = {};
+  (sub.soalResults || []).forEach(r => { resultByIdx[r.origIdx] = r; if (r.soalId) resultById[r.soalId] = r; });
+
+  const rows = (tugas.soal || []).map((soal, idx) => {
+    const r = resultById[soal.id] || resultByIdx[idx];
+    const isManual = soal.type === "essay" || soal.type === "refleksi";
+    let status; // "correct" | "wrong" | "pending"
+    if (isManual) {
+      if (r?.statusNilai === "dinilai") status = (r.nilaiEssay || 0) >= 60 ? "correct" : "wrong";
+      else status = "pending";
+    } else {
+      status = r?.correct === true ? "correct" : "wrong";
+    }
+    return { soal, r, idx, status };
+  });
+
+  if (rows.length === 0) {
+    return <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--ink-3)", fontStyle: "italic" }}>Tugas tidak punya soal.</div>;
+  }
+
+  const nCorrect = rows.filter(x => x.status === "correct").length;
+  const nWrong = rows.filter(x => x.status === "wrong").length;
+  const nPending = rows.filter(x => x.status === "pending").length;
+  const displayRows = showAll ? rows : rows.filter(x => x.status !== "correct");
+
+  const truncate = (s, n) => { const str = String(s || ""); return str.length > n ? str.slice(0, n) + "…" : str; };
+  const typeLabel = { pg: "PG", tf: "B/S", komplex: "Kompleks", pasang: "Pasangan", excel: "Excel", essay: "Essay", pseudocode: "Pseudocode", debug: "Debug", refleksi: "Refleksi" };
+
+  function renderAnswerLine(soal, r, status) {
+    if (status === "pending") return "Belum dinilai guru";
+    if (soal.type === "essay" || soal.type === "refleksi") return `Nilai: ${r?.nilaiEssay ?? 0}/100`;
+    if (soal.type === "pg" || soal.type === "excel") {
+      const picked = r?.pickedAnswer;
+      const kunci = soal.jawaban;
+      const pL = typeof picked === "number" ? String.fromCharCode(65 + picked) : "—";
+      const kL = typeof kunci === "number" ? String.fromCharCode(65 + kunci) : "—";
+      return status === "correct" ? `Pilih: ${pL} ✓` : `Pilih: ${pL} · Kunci: ${kL}`;
+    }
+    if (soal.type === "tf") {
+      const lbl = i => i === 0 ? "Benar" : i === 1 ? "Salah" : "—";
+      return status === "correct" ? `Pilih: ${lbl(r?.pickedAnswer)} ✓` : `Pilih: ${lbl(r?.pickedAnswer)} · Kunci: ${lbl(soal.jawaban)}`;
+    }
+    if (soal.type === "komplex") {
+      const picked = (r?.pickedMulti || []).map(i => String.fromCharCode(65 + i)).join(",") || "—";
+      const kunci = (soal.jawaban || []).map(i => String.fromCharCode(65 + i)).join(",") || "—";
+      return status === "correct" ? `Pilih: ${picked} ✓` : `Pilih: ${picked} · Kunci: ${kunci}`;
+    }
+    if (soal.type === "pasang") {
+      if (status === "correct") return "Semua pasangan benar ✓";
+      // Hitung berapa pasangan yg salah biar lebih informatif
+      const pp = r?.pickedPasang || {};
+      const wrongCount = (soal.jawaban || []).filter((j, ki) => pp[ki] !== j).length;
+      const total = (soal.jawaban || []).length;
+      return `${total - wrongCount}/${total} pasangan benar`;
+    }
+    if (soal.type === "pseudocode") {
+      const picked = r?.pickedText || "(kosong)";
+      const kunci = soal.jawabanBenar || "—";
+      return status === "correct" ? `Jawab: "${truncate(picked, 20)}" ✓` : `Jawab: "${truncate(picked, 20)}" · Kunci: "${truncate(kunci, 20)}"`;
+    }
+    if (soal.type === "debug") {
+      const pd = r?.pickedDebug || {};
+      const baris = pd.baris ?? "—";
+      const perbaikan = pd.perbaikan || "(kosong)";
+      if (status === "correct") return `Baris ${baris} ✓`;
+      return `Baris ${baris}: "${truncate(perbaikan, 15)}" · Kunci br. ${soal.barisBug}: "${truncate(soal.perbaikanBenar || "", 15)}"`;
+    }
+    return "—";
+  }
+
+  return (
+    <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8, border: "1px solid var(--line-soft)" }}>
+      {/* Summary + toggle */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, fontSize: 11, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, color: "var(--ink-3)", alignItems: "center" }}>
+          <span><b style={{ color: "var(--good)" }}>{nCorrect}</b> benar</span>
+          <span style={{ opacity: .5 }}>·</span>
+          <span><b style={{ color: "var(--bad)" }}>{nWrong}</b> salah</span>
+          {nPending > 0 && <>
+            <span style={{ opacity: .5 }}>·</span>
+            <span><b style={{ color: "var(--warn)" }}>{nPending}</b> belum dinilai</span>
+          </>}
+        </div>
+        {nCorrect > 0 && (
+          <button onClick={() => setShowAll(!showAll)} style={{ background: "none", border: "none", color: "var(--accent-2)", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>
+            {showAll ? "Sembunyikan yang benar" : "Tampilkan semua"}
+          </button>
+        )}
+      </div>
+
+      {displayRows.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "10px 0", fontSize: 11, color: "var(--good)", fontWeight: 600 }}>
+          Semua soal auto-graded dijawab dengan benar 🎉
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {displayRows.map(({ soal, r, idx, status }) => {
+            const statusIcon = status === "correct" ? "✓" : status === "wrong" ? "✗" : "…";
+            const statusColor = status === "correct" ? "var(--good)" : status === "wrong" ? "var(--bad)" : "var(--warn)";
+            const statusBg = status === "correct" ? "var(--good-bg)" : status === "wrong" ? "var(--bad-bg)" : "#fef3c7";
+            const borderColor = status === "correct" ? "#86efac" : status === "wrong" ? "#fca5a5" : "#fde68a";
+            return (
+              <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 8px", background: "var(--surface)", borderRadius: 6, border: `1px solid ${borderColor}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, paddingTop: 1 }}>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-3)", minWidth: 22, textAlign: "right" }}>#{idx + 1}</span>
+                  <span style={{ width: 18, height: 18, borderRadius: 4, background: statusBg, color: statusColor, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{statusIcon}</span>
+                  <span style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "2px 5px", borderRadius: 3, fontWeight: 700, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{typeLabel[soal.type] || soal.type}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: "var(--ink-1)", fontWeight: 500, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}>
+                    {truncate(soal.pertanyaan, 60) || <span style={{ fontStyle: "italic", color: "var(--ink-3)" }}>(tanpa teks)</span>}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 2, fontFamily: "var(--mono)" }}>
+                    {renderAnswerLine(soal, r, status)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IntervensiNilaiModal({ tugas, store, onClose }) {
   const [editTarget, setEditTarget] = useState(null); // submission yg lagi diedit
   const [susulanTarget, setSusulanTarget] = useState(null); // siswa yg lagi dikasih susulan
+  const [expandedId, setExpandedId] = useState(null); // siswa yg row-nya lagi di-expand untuk lihat breakdown per soal
   const [toast, setToast] = useState("");
 
   const allSubs = store.getSubs().filter(s => s.tugasId === tugas.id);
@@ -6133,23 +6267,47 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
                 const susulan = store.getSusulan(tugas.id, siswa.id);
                 const susulanAktif = store.isSusulanAktif(tugas.id, siswa.id);
 
-                // ── Kasus 1: Sudah submit — behavior lama, bisa diubah nilainya
+                // ── Kasus 1: Sudah submit — bisa diubah nilainya + expand untuk lihat breakdown per soal
                 if (sub) {
                   const nilaiColor = sub.nilai >= 80 ? "var(--good)" : sub.nilai >= 60 ? "var(--warn)" : "var(--bad)";
                   const hasIntervensi = (sub.riwayatIntervensi || []).length > 0;
+                  const isExpanded = expandedId === siswa.id;
+                  // Preview count wrong+pending buat hint di tombol chevron (biar guru langsung tau ada yg salah tanpa expand)
+                  const nWrongPending = (sub.soalResults || []).filter(r => {
+                    const soal = (tugas.soal || []).find(s => s.id === r.soalId) || (tugas.soal || [])[r.origIdx];
+                    if (!soal) return false;
+                    const isManual = soal.type === "essay" || soal.type === "refleksi";
+                    if (isManual) return r.statusNilai !== "dinilai" || (r.nilaiEssay || 0) < 60;
+                    return r.correct !== true;
+                  }).length;
                   return (
-                    <div key={siswa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{siswa.nama}</div>
-                          {hasIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diintervensi ×{sub.riwayatIntervensi.length}</span>}
+                    <div key={siswa.id} style={{ background: "var(--surface)", border: `1px solid ${isExpanded ? "var(--accent)" : "var(--line)"}`, borderRadius: 8, overflow: "hidden", transition: "border-color .15s" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : siswa.id)}
+                          title={isExpanded ? "Sembunyikan detail soal" : "Lihat detail soal"}
+                          style={{ background: isExpanded ? "var(--accent-tint)" : "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 4, display: "grid", placeItems: "center", color: isExpanded ? "var(--accent-2)" : "var(--ink-3)", flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform .15s, background .15s" }}
+                        >
+                          <I n="chevR" s={14} />
+                        </button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{siswa.nama}</div>
+                            {hasIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diintervensi ×{sub.riwayatIntervensi.length}</span>}
+                            {nWrongPending > 0 && <span className="chip" style={{ fontSize: 9, background: "var(--bad-bg)", color: "var(--bad)", padding: "1px 6px", fontWeight: 700 }}>{nWrongPending} soal ✗</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Poin: +{sub.poinDapat || 0} · Submit: {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}</div>
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Poin: +{sub.poinDapat || 0} · Submit: {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}</div>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 20, fontWeight: 800, color: nilaiColor, minWidth: 40, textAlign: "center" }}>{sub.nilai}</div>
+                        <button className="btn btn-outline btn-sm" onClick={() => setEditTarget(sub)}>
+                          <I n="edit" s={12} /> Ubah
+                        </button>
                       </div>
-                      <div style={{ fontFamily: "var(--mono)", fontSize: 20, fontWeight: 800, color: nilaiColor, minWidth: 40, textAlign: "center" }}>{sub.nilai}</div>
-                      <button className="btn btn-outline btn-sm" onClick={() => setEditTarget(sub)}>
-                        <I n="edit" s={12} /> Ubah
-                      </button>
+                      {isExpanded && (
+                        <div style={{ padding: "0 12px 10px 12px", borderTop: "1px solid var(--line-soft)" }}>
+                          <SoalBreakdown sub={sub} tugas={tugas} />
+                        </div>
+                      )}
                     </div>
                   );
                 }
