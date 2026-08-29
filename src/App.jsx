@@ -1797,13 +1797,75 @@ function useStore() {
     await remove(ref(db, `susulan/${tugasId}_${siswaId}`));
   };
 
+  // ═══ NILAI BOOST (Bonus Nilai Manual) ═══
+  // Guru bisa nambah bonus nilai per komponen (Sumatif/Tugas Astrolab/UTS/UAS/Kuis/Portofolio)
+  // Contoh use case: siswa nyelesain "Latihan Khusus" (tugas personal remedial) → guru kasih +5 di komponen tertentu.
+  // Firebase struct: nilaiBoost/{siswaId_mapel_jenjang_periode}/{boostId} = { komponen, nilai, alasan, tugasRefId?, createdAt, updatedAt }
+  // Cap total (base + Σboost) diterapkan saat compute nilai akhir, bukan saat store — biar historis boost tetap kesimpen walau ternyata over-cap.
+  const [nilaiBoostData, setNilaiBoostData] = useState({});
+  useEffect(() => {
+    const nbRef = ref(db, "nilaiBoost");
+    const u10 = onValue(nbRef, snap => setNilaiBoostData(snap.val() || {}));
+    return () => u10();
+  }, []);
+
+  const boostGroupKey = (siswaId, mapel, jenjang, periode) => `${siswaId}_${mapel}_${jenjang}_${periode}`;
+
+  // Return array of boost untuk 1 siswa+mapel+jenjang+periode (semua komponen, atau filtered by komponen kalau dikasih)
+  const getBoosts = (siswaId, mapel, jenjang, periode, komponen = null) => {
+    const grp = nilaiBoostData[boostGroupKey(siswaId, mapel, jenjang, periode)] || {};
+    const arr = Object.entries(grp).map(([id, v]) => ({ ...v, id }));
+    return komponen ? arr.filter(b => b.komponen === komponen) : arr;
+  };
+
+  // Total boost untuk 1 komponen — dipake di computeNilaiAkhir
+  const getBoostTotal = (siswaId, mapel, jenjang, periode, komponen) => {
+    return getBoosts(siswaId, mapel, jenjang, periode, komponen).reduce((sum, b) => sum + (Number(b.nilai) || 0), 0);
+  };
+
+  const addBoost = async (siswaId, mapel, jenjang, periode, komponen, nilai, alasan, tugasRefId = null) => {
+    if (!komponen) throw new Error("Komponen wajib dipilih");
+    if (typeof nilai !== "number" || nilai <= 0 || nilai > 100) throw new Error("Nilai bonus harus 1-100");
+    if (!alasan || alasan.trim().length < 5) throw new Error("Alasan wajib diisi (minimal 5 karakter)");
+    const grp = boostGroupKey(siswaId, mapel, jenjang, periode);
+    const newRef = push(ref(db, `nilaiBoost/${grp}`));
+    await set(newRef, {
+      komponen, nilai: Number(nilai), alasan: alasan.trim(),
+      tugasRefId: tugasRefId || null,
+      siswaId, mapel, jenjang, periode,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    });
+  };
+
+  const updateBoost = async (siswaId, mapel, jenjang, periode, boostId, patch) => {
+    if (patch.nilai !== undefined && (typeof patch.nilai !== "number" || patch.nilai <= 0 || patch.nilai > 100)) throw new Error("Nilai bonus harus 1-100");
+    if (patch.alasan !== undefined && (!patch.alasan || patch.alasan.trim().length < 5)) throw new Error("Alasan wajib diisi (minimal 5 karakter)");
+    const grp = boostGroupKey(siswaId, mapel, jenjang, periode);
+    await update(ref(db, `nilaiBoost/${grp}/${boostId}`), { ...patch, updatedAt: Date.now() });
+  };
+
+  const removeBoost = async (siswaId, mapel, jenjang, periode, boostId) => {
+    const grp = boostGroupKey(siswaId, mapel, jenjang, periode);
+    await remove(ref(db, `nilaiBoost/${grp}/${boostId}`));
+  };
+
   // Hitung rata-rata "Tugas Astrolab" untuk siswa, STRICT filter by mapel+jenjang (tidak boleh campur IPA/Informatika).
   // Tugas yang SUDAH LEWAT DEADLINE dan belum dikerjakan dihitung sebagai 0 dalam average —
   // supaya siswa yang skip tugas gak diuntungkan (averagenya dulu cuma dari tugas yg dikerjain doang).
   // Kecuali: kalau siswa punya susulan personal AKTIF untuk tugas itu, belum dihitung dulu
   // (masih dikasih kesempatan, jangan divonis 0 sebelum window susulannya berakhir).
+  // TUGAS PERSONAL (Latihan Khusus): tugas dengan `graded: false` di-exclude total dari avg.
+  //   Kalau `graded: true` tapi `assignedTo` array, hanya siswa yg di-assign yang dihitung —
+  //   siswa lain gak di-vonis 0 karena tugas emang bukan buat mereka.
   const getTugasAstrolabAvg = (siswaId, mapel, jenjang) => {
-    const relevantTugas = tugas.filter(t => t.mapel === mapel && t.jenjang === jenjang && t.status !== "scheduled");
+    const relevantTugas = tugas.filter(t => {
+      if (t.mapel !== mapel || t.jenjang !== jenjang || t.status === "scheduled") return false;
+      // Tugas dengan graded: false gak masuk avg (biasanya tugas personal "Latihan Khusus")
+      if (t.graded === false) return false;
+      // Tugas personal (assignedTo array): cuma siswa yg di-assign yang dihitung
+      if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(siswaId)) return false;
+      return true;
+    });
     const vals = [];
     relevantTugas.forEach(t => {
       const sub = subs.find(s => s.siswaId === siswaId && s.tugasId === t.id);
@@ -1829,13 +1891,30 @@ function useStore() {
     const kuisAvg = kuisVals.length ? kuisVals.reduce((a, b) => a + b, 0) / kuisVals.length : null;
     const tugasAvg = getTugasAstrolabAvg(siswaId, mapel, jenjang);
 
+    // Helper: apply boost ke komponen. Cap final di 100 supaya gak weird.
+    // Kalau base null (belum diisi) tapi ada boost → tetep gak dihitung supaya guru harus isi base dulu.
+    // Logic ini biar boost gak "ngerjain" kosongnya komponen (misal siswa sama sekali gak dapat sumatif tapi tiba² dapat bonus 50 di sumatif — nanti keliatan aneh).
+    const applyBoost = (baseVal, komponenKey) => {
+      const boostTotal = getBoostTotal(siswaId, mapel, jenjang, periode, komponenKey);
+      if (typeof baseVal !== "number") return { finalVal: baseVal, base: baseVal, boost: boostTotal };
+      const finalVal = Math.min(100, baseVal + boostTotal);
+      return { finalVal, base: baseVal, boost: boostTotal };
+    };
+
+    const sBoost = applyBoost(sumatifAvg, "sumatif");
+    const tBoost = applyBoost(tugasAvg, "tugasAstrolab");
+    const utsBoost = applyBoost(rec.uts, "uts");
+    const uasBoost = applyBoost(rec.uas, "uas");
+    const kBoost = applyBoost(kuisAvg, "kuis");
+    const pBoost = applyBoost(rec.portofolio, "portofolio");
+
     const komponen = [
-      { label: "Sumatif per BAB", val: sumatifAvg, bobot: 0.10 },
-      { label: "Tugas Astrolab", val: tugasAvg, bobot: 0.20 },
-      { label: "UTS", val: rec.uts, bobot: 0.20 },
-      { label: "UAS", val: rec.uas, bobot: 0.20 },
-      { label: "Kuis Harian", val: kuisAvg, bobot: 0.10 },
-      { label: "Portofolio", val: rec.portofolio, bobot: 0.20 },
+      { label: "Sumatif per BAB", key: "sumatif", val: sBoost.finalVal, base: sBoost.base, boost: sBoost.boost, bobot: 0.10 },
+      { label: "Tugas Astrolab", key: "tugasAstrolab", val: tBoost.finalVal, base: tBoost.base, boost: tBoost.boost, bobot: 0.20 },
+      { label: "UTS", key: "uts", val: utsBoost.finalVal, base: utsBoost.base, boost: utsBoost.boost, bobot: 0.20 },
+      { label: "UAS", key: "uas", val: uasBoost.finalVal, base: uasBoost.base, boost: uasBoost.boost, bobot: 0.20 },
+      { label: "Kuis Harian", key: "kuis", val: kBoost.finalVal, base: kBoost.base, boost: kBoost.boost, bobot: 0.10 },
+      { label: "Portofolio", key: "portofolio", val: pBoost.finalVal, base: pBoost.base, boost: pBoost.boost, bobot: 0.20 },
     ];
 
     // Nilai akhir = jumlah (val × bobot) untuk komponen yang punya nilai.
@@ -2178,7 +2257,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -2784,7 +2863,12 @@ function DaftarTugas({ user, store, navigate }) {
   const [mapel, setMapel] = useState("IPA");
   const [showArsip, setShowArsip] = useState(false);
 
-  const semua = store.getTugas().filter(t => t.jenjang === user.jenjang && t.mapel === mapel);
+  // Filter: (1) mapel & jenjang match, (2) kalau tugas personal (assignedTo array), siswa harus di-assign
+  const semua = store.getTugas().filter(t => {
+    if (t.jenjang !== user.jenjang || t.mapel !== mapel) return false;
+    if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(user.id)) return false;
+    return true;
+  });
   // Sort by newest first (createdAt desc)
   const byNewest = (a, b) => {
     const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -2808,18 +2892,22 @@ function DaftarTugas({ user, store, navigate }) {
     const dl = fmtDl(t.deadline);
     const done = store.hasSub(user.id, t.id);
     const lewat = dl.tone === "bad";
+    const isPersonal = Array.isArray(t.assignedTo);
     return (
       <button onClick={() => navigate("tugas-detail", { tugasId: t.id })}
         style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none" }}>
-        <Card style={{ opacity: lewat ? 0.6 : 1 }}>
+        <Card style={{ opacity: lewat ? 0.6 : 1, borderLeft: isPersonal ? "3px solid var(--accent-2)" : "none" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
             <div style={{ width: 42, height: 42, borderRadius: "var(--r-sm)", flexShrink: 0, display: "grid", placeItems: "center",
-              background: done ? "var(--good-bg)" : lewat ? "var(--surface-alt)" : "var(--accent-soft)",
+              background: done ? "var(--good-bg)" : lewat ? "var(--surface-alt)" : isPersonal ? "var(--accent-tint)" : "var(--accent-soft)",
               color: done ? "var(--good)" : lewat ? "var(--ink-3)" : "var(--accent-2)" }}>
-              <I n={done ? "check" : lewat ? "clock" : "book"} s={18} />
+              <I n={done ? "check" : lewat ? "clock" : isPersonal ? "star" : "book"} s={18} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 2 }}>{t.mapel}</div>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span>{t.mapel}</span>
+                {isPersonal && <span style={{ background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", borderRadius: 3, fontWeight: 700, textTransform: "none", fontSize: 9, letterSpacing: 0 }}>✨ Latihan Khusus</span>}
+              </div>
               <div style={{ fontSize: 15, fontWeight: 600, color: lewat && !done ? "var(--ink-2)" : "var(--ink)" }}>{t.judul}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 {done
@@ -2904,6 +2992,19 @@ function DetailTugas({ user, store, tugasId, navigate }) {
     <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas")}><I n="chevL" s={18} /></button><div className="topbar-title">Detail Tugas</div><div style={{ width: 36 }} /></div>
     <div className="page">
       <div className="dt"><div><h1>{t.judul}</h1><p>{t.mapel}</p></div></div>
+
+      {/* Banner Latihan Khusus — cuma muncul untuk tugas personal */}
+      {Array.isArray(t.assignedTo) && (
+        <Card pad="md" style={{ marginBottom: 12, background: "var(--accent-tint)", border: "1.5px solid var(--accent)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-2)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="star" s={16} /></div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>✨ Latihan Khusus untukmu</div>
+              <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2, lineHeight: 1.5 }}>Tugas ini dibuat khusus untukmu oleh guru — tetap kerjakan dengan serius, tetap dapat poin & badge!</div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Banner susulan aktif — cuma keliatan untuk siswa yang dikasih akses ini */}
       {!done && susulanAktif && (
@@ -4274,13 +4375,64 @@ function BuatTugas({ store, navigate, editId = null }) {
     jenjang: existing?.jenjang || "VII", deadline: existing?.deadline || "",
     poinMax: existing?.poinMax || 100, deskripsi: existing?.deskripsi || "",
     materi: existing?.materi || "",
+    // Tugas Personal ("Latihan Khusus"): assignedTo = array siswaId, atau null = class-wide
+    assignedTo: existing?.assignedTo || null,
+    // graded: false = tidak masuk avg Tugas Astrolab (default untuk Latihan Khusus, tapi bisa di-override)
+    graded: existing?.graded !== false,
   });
   const [soal, setSoal] = useState(existing?.soal || []);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState("");
   const [showBank, setShowBank] = useState(false);
+  const [siswaPicker, setSiswaPicker] = useState(""); // search filter di picker
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const totalPoin = soal.reduce((s, q) => s + (q.poin || 0), 0);
+
+  // Untuk tugas personal: kalau edit, siswa yg udah submit tidak boleh di-unassign
+  // (nilai/poin/badge mereka nanti orphan kalau di-unassign)
+  const existingSubs = editId ? store.getSubs().filter(s => s.tugasId === editId) : [];
+  const submittedSiswaIds = new Set(existingSubs.map(s => s.siswaId));
+
+  const semuaSiswaJenjang = store.getAllSiswa(form.jenjang);
+  const isPersonal = Array.isArray(form.assignedTo);
+
+  // Toggle personal — kalau ON, init assignedTo = [] & graded = false. Kalau OFF, null keduanya.
+  function togglePersonal(on) {
+    if (on) {
+      setForm(f => ({ ...f, assignedTo: f.assignedTo || [], graded: false }));
+    } else {
+      // Kalau ada siswa yg udah submit, gak boleh matiin toggle (nilai jadi masuk avg tiba²)
+      if (editId && submittedSiswaIds.size > 0) {
+        setErr("Tidak bisa mematikan mode Personal: sudah ada siswa yang mengumpulkan.");
+        return;
+      }
+      setForm(f => ({ ...f, assignedTo: null, graded: true }));
+    }
+  }
+
+  function toggleSiswaAssigned(siswaId) {
+    setForm(f => {
+      const cur = f.assignedTo || [];
+      if (cur.includes(siswaId)) {
+        // Cek submit lock
+        if (submittedSiswaIds.has(siswaId)) {
+          setErr(`Siswa ini sudah mengumpulkan, tidak bisa dikeluarkan dari daftar.`);
+          return f;
+        }
+        return { ...f, assignedTo: cur.filter(x => x !== siswaId) };
+      }
+      return { ...f, assignedTo: [...cur, siswaId] };
+    });
+    setErr("");
+  }
+
+  function selectAllSiswa() {
+    setForm(f => ({ ...f, assignedTo: semuaSiswaJenjang.map(s => s.id) }));
+  }
+  function clearAllSiswa() {
+    // Preserve siswa yg udah submit
+    setForm(f => ({ ...f, assignedTo: (f.assignedTo || []).filter(id => submittedSiswaIds.has(id)) }));
+  }
 
   function handleBankSelect(picked) {
     // Convert bank soal format ke tugas soal format
@@ -4309,6 +4461,11 @@ function BuatTugas({ store, navigate, editId = null }) {
     if (!form.judul.trim()) { setErr("Judul tugas wajib diisi."); return; }
     if (!form.deadline) { setErr("Deadline wajib diisi."); return; }
     if (soal.length === 0) { setErr("Tambahkan minimal 1 soal."); return; }
+    // Validasi tugas personal: harus ada minimal 1 siswa di-assign
+    if (isPersonal && (form.assignedTo || []).length === 0) {
+      setErr("Tugas Personal harus di-assign ke minimal 1 siswa. Pilih siswa di bawah atau matikan mode Personal.");
+      return;
+    }
     // Validasi tiap soal
     for (let i = 0; i < soal.length; i++) {
       const q = soal[i], num = i + 1;
@@ -4332,7 +4489,15 @@ function BuatTugas({ store, navigate, editId = null }) {
         if (q.jawaban === undefined || q.jawaban === null) { setErr(`Soal ${num}: pilih jawaban PG yang benar.`); return; }
       }
     }
-    const data = { ...form, soal, poinMax: totalPoin || Number(form.poinMax) };
+    const data = {
+      ...form,
+      soal,
+      poinMax: totalPoin || Number(form.poinMax),
+      // Firebase RTDB: null value = delete path. Kalau assignedTo null (class-wide), gak perlu simpan field-nya di record.
+      // Kalau array (personal), simpan array-nya.
+      assignedTo: isPersonal ? form.assignedTo : null,
+      graded: form.graded,
+    };
     if (editId) store.updateTugas(editId, data); else store.addTugas(data);
     setSaved(true); setTimeout(() => navigate("home-guru"), 1200);
   }
@@ -4417,6 +4582,95 @@ function BuatTugas({ store, navigate, editId = null }) {
                 <label className="lbl">Deskripsi (opsional)</label>
                 <textarea className="inp" value={form.deskripsi} onChange={e => set("deskripsi", e.target.value)} placeholder="Instruksi tambahan untuk siswa..." rows={2} />
               </div>
+
+              {/* ═══ TUGAS PERSONAL ("Latihan Khusus") ═══ */}
+              <div style={{ padding: "12px 14px", background: isPersonal ? "var(--accent-tint)" : "var(--surface-alt)", borderRadius: 8, border: `1px solid ${isPersonal ? "var(--accent)" : "var(--line)"}`, transition: "background .15s" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-1)", display: "flex", alignItems: "center", gap: 6 }}>
+                      <I n="users" s={14} /> Tugas Personal (Latihan Khusus)
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3, lineHeight: 1.5 }}>
+                      Assign hanya ke siswa tertentu (remedial atau pengayaan). Tugas tidak masuk rata-rata Tugas Astrolab. Siswa lain tidak melihat tugas ini.
+                    </div>
+                  </div>
+                  <label style={{ position: "relative", display: "inline-block", width: 42, height: 24, flexShrink: 0 }}>
+                    <input type="checkbox" checked={isPersonal} onChange={e => togglePersonal(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+                    <span style={{ position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, background: isPersonal ? "var(--accent-2)" : "var(--line)", borderRadius: 12, transition: ".2s" }}>
+                      <span style={{ position: "absolute", height: 18, width: 18, left: isPersonal ? 21 : 3, top: 3, background: "#fff", borderRadius: "50%", transition: ".2s" }} />
+                    </span>
+                  </label>
+                </div>
+
+                {isPersonal && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--accent)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>
+                        Siswa yang di-assign: <span style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>{(form.assignedTo || []).length}</span> / {semuaSiswaJenjang.length}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: "4px 8px" }} onClick={selectAllSiswa}>Semua</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: "4px 8px" }} onClick={clearAllSiswa}>Kosongkan</button>
+                      </div>
+                    </div>
+
+                    <input
+                      className="inp"
+                      placeholder="Cari siswa..."
+                      value={siswaPicker}
+                      onChange={e => setSiswaPicker(e.target.value)}
+                      style={{ marginBottom: 8, fontSize: 12, padding: "6px 10px" }}
+                    />
+
+                    <div style={{ maxHeight: 220, overflowY: "auto", background: "var(--surface)", borderRadius: 6, border: "1px solid var(--line)" }}>
+                      {semuaSiswaJenjang.length === 0 ? (
+                        <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>Belum ada siswa di Kelas {form.jenjang}</div>
+                      ) : (
+                        semuaSiswaJenjang
+                          .filter(s => !siswaPicker.trim() || s.nama.toLowerCase().includes(siswaPicker.toLowerCase()))
+                          .map(s => {
+                            const checked = (form.assignedTo || []).includes(s.id);
+                            const locked = submittedSiswaIds.has(s.id);
+                            return (
+                              <label
+                                key={s.id}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
+                                  cursor: locked ? "not-allowed" : "pointer",
+                                  borderBottom: "1px solid var(--line-soft)",
+                                  background: checked ? "var(--accent-tint)" : "transparent",
+                                  opacity: locked ? 0.7 : 1,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={locked}
+                                  onChange={() => toggleSiswaAssigned(s.id)}
+                                  style={{ margin: 0 }}
+                                />
+                                <div style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "var(--ink-1)" }}>{s.nama}</div>
+                                {locked && <span className="chip" style={{ fontSize: 9, background: "var(--good-bg)", color: "var(--good)", padding: "1px 6px", fontWeight: 700 }}>Sudah submit</span>}
+                              </label>
+                            );
+                          })
+                      )}
+                    </div>
+
+                    {/* Toggle graded (default: false untuk Personal) */}
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, cursor: "pointer", fontSize: 11, color: "var(--ink-2)" }}>
+                      <input type="checkbox" checked={form.graded} onChange={e => set("graded", e.target.checked)} style={{ margin: 0 }} />
+                      <span>Masukkan nilai tugas ini ke rata-rata Tugas Astrolab <span style={{ color: "var(--ink-3)" }}>(default OFF untuk Latihan Khusus)</span></span>
+                    </label>
+
+                    {editId && submittedSiswaIds.size > 0 && (
+                      <div style={{ marginTop: 8, padding: "6px 10px", background: "#fef3c7", borderRadius: 6, fontSize: 10.5, color: "#92400e", lineHeight: 1.5 }}>
+                        <b>ℹ️ Info:</b> {submittedSiswaIds.size} siswa sudah mengumpulkan — mereka tidak bisa dikeluarkan dari daftar. Kamu masih bisa tambah siswa baru.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
 
@@ -4474,13 +4728,23 @@ function BuatTugas({ store, navigate, editId = null }) {
             </div>
             <div className="target-card" style={{ marginTop: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 10 }}>Akan terkirim ke</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div className="target-kelas-badge">{form.jenjang}</div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>Kelas {form.jenjang}</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{store.getAllSiswa(form.jenjang).length} siswa</div>
+              {isPersonal ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div className="target-kelas-badge" style={{ background: "var(--accent-2)" }}><I n="users" s={16} style={{ color: "#fff" }} /></div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{(form.assignedTo || []).length} siswa terpilih</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Latihan Khusus · Kelas {form.jenjang}</div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div className="target-kelas-badge">{form.jenjang}</div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>Kelas {form.jenjang}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{semuaSiswaJenjang.length} siswa</div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -5362,8 +5626,11 @@ function DashboardGuru({ store, navigate }) {
   const totalSubs = subs.filter(s => { const t = store.getTugas().find(x => x.id === s.tugasId); return t && t.jenjang === jenjang; }).length;
   const tugasAktif = tugasAll.filter(t => fmtDl(t.deadline).tone !== "bad");
   const tugasLewat = tugasAll.filter(t => fmtDl(t.deadline).tone === "bad");
-  const pctNgerjain = tugasAll.length === 0 ? "—"
-    : `${Math.min(100, Math.round((totalSubs / (tugasAll.length * (siswa.length || 1))) * 100))}%`;
+  // Hitung pctNgerjain: denominator disesuaikan per tugas — tugas personal cuma dihitung berdasar siswa yg di-assign,
+  // bukan total kelas. Tanpa fix ini, banyak tugas personal ke 2-3 anak bikin pct anjlok gak proporsional.
+  const totalKesempatan = tugasAll.reduce((sum, t) => sum + (Array.isArray(t.assignedTo) ? t.assignedTo.length : siswa.length), 0);
+  const pctNgerjain = tugasAll.length === 0 || totalKesempatan === 0 ? "—"
+    : `${Math.min(100, Math.round((totalSubs / totalKesempatan) * 100))}%`;
 
   // 5 tugas terbaru (newest first) — sort by createdAt desc
   const tugasTerbaru = [...tugasAll].sort((a, b) => {
@@ -5474,7 +5741,12 @@ function DashboardGuru({ store, navigate }) {
                     {subCount === 0 ? (
                       <div style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "center", padding: "12px 0" }}>Belum ada siswa yang mengerjakan tugas ini.</div>
                     ) : (
-                      <DashboardTugasAnalisis tugas={t} subs={tugasSubs} siswaList={siswa} navigate={navigate} />
+                      <DashboardTugasAnalisis
+                        tugas={t}
+                        subs={tugasSubs}
+                        siswaList={Array.isArray(t.assignedTo) ? siswa.filter(s => t.assignedTo.includes(s.id)) : siswa}
+                        navigate={navigate}
+                      />
                     )}
                   </div>
                 )}
@@ -6237,7 +6509,12 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
   const [toast, setToast] = useState("");
 
   const allSubs = store.getSubs().filter(s => s.tugasId === tugas.id);
-  const siswaList = store.getAllSiswa(tugas.jenjang); // sudah terurut alfabetis (fix sebelumnya)
+  // Untuk tugas personal (assignedTo array), siswaList cuma yg di-assign.
+  // Class-wide → semua siswa jenjang tsb.
+  const allSiswa = store.getAllSiswa(tugas.jenjang);
+  const siswaList = Array.isArray(tugas.assignedTo)
+    ? allSiswa.filter(s => tugas.assignedTo.includes(s.id))
+    : allSiswa;
   const lewat = fmtDl(tugas.deadline).tone === "bad";
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
@@ -6248,7 +6525,10 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
           <div>
             <h3 style={{ margin: 0 }}>Kelola Nilai</h3>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{tugas.judul}</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
+              {tugas.judul}
+              {Array.isArray(tugas.assignedTo) && <span style={{ marginLeft: 6, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", borderRadius: 3, fontWeight: 700, fontSize: 10 }}>✨ Latihan Khusus · {siswaList.length} siswa{tugas.graded === false ? " · tidak masuk avg" : ""}</span>}
+            </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--ink-3)", padding: 0, lineHeight: 1 }}>×</button>
         </div>
@@ -6508,6 +6788,7 @@ function TugasGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const [confirm, setConfirm] = useState(null);
   const [filter, setFilter] = useState("aktif");
+  const [personalOnly, setPersonalOnly] = useState(false);
   const [toast, setToast] = useState("");
   const [showMateriManager, setShowMateriManager] = useState(false);
   const [intervensiTarget, setIntervensiTarget] = useState(null);
@@ -6518,7 +6799,9 @@ function TugasGuru({ store, navigate }) {
 
   const aktifList = tugasAll.filter(t => fmtDl(t.deadline).tone !== "bad");
   const lewatList = tugasAll.filter(t => fmtDl(t.deadline).tone === "bad");
-  const displayed = filter === "aktif" ? aktifList : filter === "lewat" ? lewatList : tugasAll;
+  const personalCount = tugasAll.filter(t => Array.isArray(t.assignedTo)).length;
+  let displayed = filter === "aktif" ? aktifList : filter === "lewat" ? lewatList : tugasAll;
+  if (personalOnly) displayed = displayed.filter(t => Array.isArray(t.assignedTo));
 
   return <>
     {confirm && <Confirm title="Hapus tugas?" desc="Tugas dihapus permanen. Poin siswa yang sudah mengerjakan tidak berubah." onOk={() => { store.deleteTugas(confirm); setConfirm(null); }} onCancel={() => setConfirm(null)} />}
@@ -6540,8 +6823,8 @@ function TugasGuru({ store, navigate }) {
         <button className={`tab ${jenjang === "VIII" ? "active" : ""}`} onClick={() => setJenjang("VIII")}>Kelas VIII</button>
       </div>
 
-      {/* Filter tabs + counter lewat deadline */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+      {/* Filter tabs + counter lewat deadline + toggle Personal saja */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         <div className="tabs">
           {[["aktif", `Aktif (${aktifList.length})`], ["lewat", `Lewat (${lewatList.length})`], ["semua", "Semua"]].map(([v, l]) =>
             <button key={v} className={`tab ${filter === v ? "active" : ""}`} onClick={() => setFilter(v)}>{l}</button>
@@ -6550,27 +6833,52 @@ function TugasGuru({ store, navigate }) {
         {lewatList.length > 0 && filter !== "lewat" && (
           <span className="chip chip-bad" style={{ fontSize: 11 }}><I n="clock" s={10} />{lewatList.length} lewat</span>
         )}
+        {personalCount > 0 && (
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", cursor: "pointer", fontSize: 12, color: personalOnly ? "var(--accent-2)" : "var(--ink-3)", fontWeight: personalOnly ? 700 : 500, padding: "5px 10px", borderRadius: 6, background: personalOnly ? "var(--accent-tint)" : "transparent", transition: "all .15s" }}>
+            <input type="checkbox" checked={personalOnly} onChange={e => setPersonalOnly(e.target.checked)} style={{ margin: 0 }} />
+            <I n="users" s={12} /> Personal saja ({personalCount})
+          </label>
+        )}
       </div>
 
       {displayed.length === 0 ? (
-        <Card><div className="empty empty-box"><I n="book" s={32} /><h3>{filter === "lewat" ? "Tidak ada tugas lewat deadline" : "Belum ada tugas"}</h3><p>{filter === "lewat" ? "Semua tugas masih dalam batas waktu." : `Buat tugas pertama untuk Kelas ${jenjang}!`}</p>{filter !== "lewat" && <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Buat Tugas Pertama</button>}</div></Card>
+        <Card><div className="empty empty-box"><I n="book" s={32} /><h3>{personalOnly ? "Tidak ada tugas personal" : filter === "lewat" ? "Tidak ada tugas lewat deadline" : "Belum ada tugas"}</h3><p>{personalOnly ? "Belum ada Tugas Personal untuk kelas ini." : filter === "lewat" ? "Semua tugas masih dalam batas waktu." : `Buat tugas pertama untuk Kelas ${jenjang}!`}</p>{!personalOnly && filter !== "lewat" && <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Buat Tugas Pertama</button>}</div></Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {displayed.map(t => {
             const dl = fmtDl(t.deadline);
             const lewat = dl.tone === "bad";
-            const subCount = subs.filter(s => s.tugasId === t.id).length;
-            const pct = siswa.length ? Math.round((subCount / siswa.length) * 100) : 0;
-            const belumKerjain = siswa.length - subCount;
+            const isPersonal = Array.isArray(t.assignedTo);
+            // Untuk tugas personal, denominator adalah jumlah siswa yg di-assign, bukan total kelas
+            const targetSiswa = isPersonal
+              ? siswa.filter(s => t.assignedTo.includes(s.id))
+              : siswa;
+            const targetIds = new Set(targetSiswa.map(s => s.id));
+            const subCount = subs.filter(s => s.tugasId === t.id && targetIds.has(s.siswaId)).length;
+            const totalTarget = targetSiswa.length;
+            const pct = totalTarget ? Math.round((subCount / totalTarget) * 100) : 0;
+            const belumKerjain = totalTarget - subCount;
+            // Nama-nama siswa target untuk display (personal only)
+            const namaAssigned = isPersonal ? targetSiswa.map(s => s.nama.split(" ")[0]) : [];
+            const namaPreview = namaAssigned.length <= 3
+              ? namaAssigned.join(", ")
+              : `${namaAssigned.slice(0, 3).join(", ")} +${namaAssigned.length - 3} lainnya`;
             return (
-              <Card key={t.id} style={{ borderLeft: lewat ? "3px solid var(--bad)" : "none", opacity: lewat ? 0.85 : 1 }}>
+              <Card key={t.id} style={{ borderLeft: isPersonal ? "3px solid var(--accent-2)" : lewat ? "3px solid var(--bad)" : "none", opacity: lewat ? 0.85 : 1 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".05em" }}>{t.mapel}</span>
+                      {isPersonal && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", fontWeight: 700, padding: "1px 6px" }}><I n="users" s={9} /> {targetSiswa.length} siswa · Latihan Khusus</span>}
+                      {t.graded === false && !isPersonal && <span className="chip" style={{ fontSize: 9, background: "var(--surface-alt)", color: "var(--ink-3)", padding: "1px 6px" }}>Tidak dinilai</span>}
                       {lewat && <span className="chip chip-bad" style={{ fontSize: 9 }}>Ditutup</span>}
                     </div>
                     <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-.01em" }}>{t.judul}</div>
+                    {isPersonal && namaAssigned.length > 0 && (
+                      <div style={{ fontSize: 11, color: "var(--accent-2)", marginTop: 4, fontWeight: 500 }}>
+                        Untuk: {namaPreview}
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                       <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
                       <span className="chip">{t.soal?.length || 0} soal</span>
@@ -6593,7 +6901,7 @@ function TugasGuru({ store, navigate }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1 }}><div className="progress"><div style={{ width: `${pct}%`, background: pct < 30 ? "var(--bad)" : pct < 70 ? "var(--warn)" : "var(--good)" }} /></div></div>
-                  <div className="stat-num" style={{ fontSize: 12, fontWeight: 600 }}>{subCount}/{siswa.length}</div>
+                  <div className="stat-num" style={{ fontSize: 12, fontWeight: 600 }}>{subCount}/{totalTarget}</div>
                 </div>
                 <div style={{ fontSize: 11, color: lewat && belumKerjain > 0 ? "var(--bad)" : "var(--ink-3)", marginTop: 6, fontWeight: lewat && belumKerjain > 0 ? 600 : 400 }}>
                   {lewat && belumKerjain > 0
@@ -9539,10 +9847,24 @@ function DetailSiswaNilaiModal({ siswa, store, mapel, jenjang, periode, onClose,
   const rec = result.rec;
   const babEntries = Object.entries(rec.sumatif || {});
   const kuisEntries = Object.entries(rec.kuis || {});
+  const boosts = store.getBoosts(siswa.id, mapel, jenjang, periode);
+  const [boostModal, setBoostModal] = useState(null); // { mode: "add"|"edit", boost?: ... }
+  const [toast, setToast] = useState("");
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
+
+  const komponenLabels = { sumatif: "Sumatif per BAB", tugasAstrolab: "Tugas Astrolab", uts: "UTS", uas: "UAS", kuis: "Kuis Harian", portofolio: "Portofolio" };
+
+  async function handleDeleteBoost(boostId) {
+    if (!confirm("Hapus bonus nilai ini? Nilai akhir akan diperbarui otomatis.")) return;
+    try {
+      await store.removeBoost(siswa.id, mapel, jenjang, periode, boostId);
+      showToast("Bonus dihapus.");
+    } catch (e) { showToast("Gagal hapus: " + (e?.message || "error")); }
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 620, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
           <div>
             <h3 style={{ margin: 0 }}>{siswa.nama}</h3>
@@ -9556,20 +9878,78 @@ function DetailSiswaNilaiModal({ siswa, store, mapel, jenjang, periode, onClose,
           <div style={{ fontSize: 11, opacity: .85, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase" }}>Nilai Akhir</div>
           <div style={{ fontSize: 40, fontWeight: 800, fontFamily: "var(--mono)", lineHeight: 1.1 }}>{result.nilaiAkhir !== null ? result.nilaiAkhir : "—"}</div>
           {!result.lengkap && <div style={{ fontSize: 11, opacity: .85, marginTop: 4 }}>⚠ Ada komponen yang belum diisi</div>}
+          {boosts.length > 0 && <div style={{ fontSize: 11, opacity: .85, marginTop: 4 }}>✨ {boosts.length} bonus nilai aktif</div>}
         </div>
 
         <div style={{ overflowY: "auto", flex: 1, marginRight: -4, paddingRight: 4 }}>
-          {/* Breakdown 6 komponen */}
+          {/* Breakdown 6 komponen — tampilin base + boost kalau ada */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Breakdown Komponen</div>
-            {result.komponen.map((k, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line-soft)", fontSize: 13 }}>
-                <div>{k.label} <span style={{ color: "var(--ink-3)", fontSize: 11 }}>({Math.round(k.bobot * 100)}%)</span></div>
-                <div style={{ fontFamily: "var(--mono)", fontWeight: 700, color: typeof k.val === "number" ? "var(--ink-1)" : "var(--ink-3)" }}>
-                  {typeof k.val === "number" ? Math.round(k.val * 100) / 100 : "belum diisi"}
+            {result.komponen.map((k, i) => {
+              const hasBoost = k.boost > 0 && typeof k.base === "number";
+              return (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line-soft)", fontSize: 13 }}>
+                  <div>{k.label} <span style={{ color: "var(--ink-3)", fontSize: 11 }}>({Math.round(k.bobot * 100)}%)</span></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {hasBoost && (
+                      <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>
+                        {Math.round(k.base * 100) / 100} + <span style={{ color: "var(--accent-2)", fontWeight: 700 }}>{k.boost}</span> =
+                      </span>
+                    )}
+                    <div style={{ fontFamily: "var(--mono)", fontWeight: 700, color: typeof k.val === "number" ? (hasBoost ? "var(--accent-2)" : "var(--ink-1)") : "var(--ink-3)" }}>
+                      {typeof k.val === "number" ? Math.round(k.val * 100) / 100 : "belum diisi"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ═══ SECTION BONUS NILAI ═══ */}
+          <div style={{ marginBottom: 16, padding: "12px 14px", background: "var(--accent-tint)", borderRadius: 10, border: "1px solid var(--accent)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-2)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <I n="star" s={13} /> Bonus Nilai ({boosts.length})
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 }}>
+                  Intervensi manual: tambah nilai ke komponen tertentu (cap total: 100).
                 </div>
               </div>
-            ))}
+              <button className="btn btn-primary btn-sm" onClick={() => setBoostModal({ mode: "add" })}>
+                <I n="plus" s={12} /> Tambah
+              </button>
+            </div>
+
+            {boosts.length === 0 ? (
+              <div style={{ padding: "10px 0", textAlign: "center", fontSize: 11, color: "var(--ink-3)", fontStyle: "italic" }}>
+                Belum ada bonus nilai untuk siswa ini.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {boosts.map(b => {
+                  const tugasSrc = b.tugasRefId ? store.getTugas().find(t => t.id === b.tugasRefId) : null;
+                  return (
+                    <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "var(--surface)", borderRadius: 6, border: "1px solid var(--line-soft)" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 6, background: "var(--accent-tint)", color: "var(--accent-2)", display: "grid", placeItems: "center", fontFamily: "var(--mono)", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+                        +{b.nilai}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>{komponenLabels[b.komponen] || b.komponen}</div>
+                        <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.alasan}</div>
+                        {tugasSrc && <div style={{ fontSize: 9.5, color: "var(--accent-2)", marginTop: 1, fontWeight: 600 }}>↳ dari: {tugasSrc.judul}</div>}
+                      </div>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: "3px 6px", fontSize: 10 }} onClick={() => setBoostModal({ mode: "edit", boost: b })} title="Edit">
+                        <I n="edit" s={11} />
+                      </button>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: "3px 6px", color: "var(--bad)", fontSize: 10 }} onClick={() => handleDeleteBoost(b.id)} title="Hapus">
+                        <I n="trash" s={11} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Detail Sumatif per BAB */}
@@ -9620,6 +10000,128 @@ function DetailSiswaNilaiModal({ siswa, store, mapel, jenjang, periode, onClose,
 
         <div className="modal-actions" style={{ marginTop: 14 }}>
           <button className="btn btn-primary btn-sm" onClick={onClose}>Tutup</button>
+        </div>
+
+        {toast && <div style={{ position: "fixed", bottom: 30, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 999 }}>{toast}</div>}
+      </div>
+
+      {boostModal && (
+        <BoostModal
+          mode={boostModal.mode}
+          boost={boostModal.boost}
+          siswa={siswa}
+          mapel={mapel}
+          jenjang={jenjang}
+          periode={periode}
+          store={store}
+          onClose={() => setBoostModal(null)}
+          onSuccess={(msg) => { setBoostModal(null); showToast(msg); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal input/edit bonus nilai
+function BoostModal({ mode, boost, siswa, mapel, jenjang, periode, store, onClose, onSuccess }) {
+  const [komponen, setKomponen] = useState(boost?.komponen || "");
+  const [nilai, setNilai] = useState(boost?.nilai || "");
+  const [alasan, setAlasan] = useState(boost?.alasan || "");
+  const [tugasRefId, setTugasRefId] = useState(boost?.tugasRefId || "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Ambil daftar tugas personal untuk siswa ini di mapel+jenjang tsb (bisa jadi source)
+  const tugasSources = store.getTugas().filter(t =>
+    t.mapel === mapel &&
+    t.jenjang === jenjang &&
+    Array.isArray(t.assignedTo) &&
+    t.assignedTo.includes(siswa.id)
+  );
+
+  const komponenOpts = [
+    { value: "sumatif", label: "Sumatif per BAB" },
+    { value: "tugasAstrolab", label: "Tugas Astrolab" },
+    { value: "uts", label: "UTS" },
+    { value: "uas", label: "UAS" },
+    { value: "kuis", label: "Kuis Harian" },
+    { value: "portofolio", label: "Portofolio" },
+  ];
+
+  async function handleSave() {
+    setErr("");
+    const nilaiNum = Number(nilai);
+    if (!komponen) { setErr("Pilih komponen dulu."); return; }
+    if (!nilaiNum || nilaiNum <= 0 || nilaiNum > 100) { setErr("Nilai bonus harus 1-100."); return; }
+    if (!alasan || alasan.trim().length < 5) { setErr("Alasan wajib diisi (minimal 5 karakter)."); return; }
+    setSaving(true);
+    try {
+      if (mode === "add") {
+        await store.addBoost(siswa.id, mapel, jenjang, periode, komponen, nilaiNum, alasan.trim(), tugasRefId || null);
+        onSuccess(`Bonus +${nilaiNum} ditambahkan ke ${komponenOpts.find(k => k.value === komponen)?.label || komponen}.`);
+      } else {
+        await store.updateBoost(siswa.id, mapel, jenjang, periode, boost.id, {
+          komponen, nilai: nilaiNum, alasan: alasan.trim(), tugasRefId: tugasRefId || null,
+        });
+        onSuccess(`Bonus diperbarui.`);
+      }
+    } catch (e) { setErr(e?.message || "Gagal simpan."); setSaving(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1100 }}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>{mode === "add" ? "Tambah Bonus Nilai" : "Edit Bonus Nilai"}</h3>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{siswa.nama} · {mapel}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--ink-3)", padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="fg">
+            <label className="lbl">Komponen yang dinaikkan</label>
+            <select className="inp" value={komponen} onChange={e => setKomponen(e.target.value)}>
+              <option value="">— Pilih komponen —</option>
+              {komponenOpts.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+            </select>
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Jumlah bonus (1-100)</label>
+            <input className="inp" type="number" min={1} max={100} value={nilai} onChange={e => setNilai(e.target.value)} placeholder="Misal: 5" />
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+              Total (base + bonus) akan di-cap maksimal 100.
+            </div>
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Alasan (wajib, min 5 karakter)</label>
+            <textarea className="inp" value={alasan} onChange={e => setAlasan(e.target.value)} rows={2} placeholder="Misal: Menyelesaikan Latihan Khusus BAB 2 dengan baik." />
+          </div>
+
+          {tugasSources.length > 0 && (
+            <div className="fg">
+              <label className="lbl">Kaitkan dengan tugas (opsional)</label>
+              <select className="inp" value={tugasRefId} onChange={e => setTugasRefId(e.target.value)}>
+                <option value="">— Tidak terkait tugas spesifik —</option>
+                {tugasSources.map(t => <option key={t.id} value={t.id}>{t.judul}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+                Hanya tugas Latihan Khusus yang bisa dipilih di sini.
+              </div>
+            </div>
+          )}
+
+          {err && <div style={{ color: "var(--bad)", fontSize: 12, padding: "8px 12px", background: "var(--bad-bg)", borderRadius: 6, border: "1px solid #fca5a5" }}>{err}</div>}
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 16, gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+            {saving ? "Menyimpan..." : (mode === "add" ? "Tambah Bonus" : "Simpan Perubahan")}
+          </button>
         </div>
       </div>
     </div>
