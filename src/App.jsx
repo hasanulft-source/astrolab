@@ -462,6 +462,7 @@ const IC = {
   flag: "M4 22V4a2 2 0 012-2h11l-3 5 3 5H6M4 22h4",
   heart: "M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z",
   award: "M12 15a7 7 0 100-14 7 7 0 000 14zM8.21 13.89L7 23l5-3 5 3-1.21-9.12",
+  rotate: "M1 4v6h6 M3.51 15a9 9 0 102.13-9.36L1 10",
 };
 function I({ n, s = 16, style, cls = "" }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={style} className={cls}><path d={IC[n] || ""} /></svg>;
@@ -1797,6 +1798,79 @@ function useStore() {
     await remove(ref(db, `susulan/${tugasId}_${siswaId}`));
   };
 
+  // ═══ RESET SUBMISSION ═══
+  // Hapus submission siswa untuk 1 tugas dan revert dampaknya di stats — supaya siswa bisa retake tugas yang sama dari nol.
+  // Use case tipikal: siswa kena miskonsepsi fatal di attempt 1, guru kasih Latihan Khusus untuk address miskonsepsi,
+  //   lalu buka kesempatan retake tugas asli. Nilai attempt 1 dianggap invalid (bukan cerminan pemahaman siswa).
+  //
+  // Yang dilakukan:
+  //   1. Delete submission dari `submissions/{siswaId}_{tugasId}`
+  //   2. Revert poin: kurangi stats.poin sebesar sub.poinDapat (floor 0), append entry poinHistory
+  //   3. Revert nilai stats: hapus 1 occurrence sub.nilai dari nilaiList, recompute rata & tugasSelesai
+  //   4. Kalau deadline utama sudah lewat: auto tambah susulan 72 jam untuk siswa ini supaya bisa retake
+  //   5. Badge & streak: TIDAK di-revert (badge = milestone, streak berhubungan dgn ontime completion — bukan urusan reset)
+  //
+  // Non-atomic (Firebase RTDB gak support multi-path transaction gampang). Kalau salah satu step fail,
+  // ada risk partial state — tapi urutan sudah diatur supaya failure paling harmless dulu (susulan gagal = paling ringan).
+  const resetSubmission = async (tugasId, siswaId) => {
+    const subKey = `${siswaId}_${tugasId}`;
+    const sub = subs.find(s => s.tugasId === tugasId && s.siswaId === siswaId);
+    if (!sub) throw new Error("Submission tidak ditemukan.");
+
+    const t = tugas.find(x => x.id === tugasId);
+    const s = getStats(siswaId);
+
+    // 1. Delete submission
+    await remove(ref(db, `submissions/${subKey}`));
+
+    // 2. Revert stats
+    const poinDapat = Number(sub.poinDapat) || 0;
+    const nilaiLama = Number(sub.nilai) || 0;
+    const newPoin = Math.max(0, (s.poin || 0) - poinDapat);
+    const now = Date.now();
+    const newHistory = [
+      ...(s.poinHistory || []),
+      { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "reset", tugasId },
+    ];
+    // Hapus 1 occurrence nilai lama dari nilaiList (first match)
+    const nlIdx = (s.nilaiList || []).indexOf(nilaiLama);
+    const newNilaiList = nlIdx >= 0
+      ? [...(s.nilaiList || []).slice(0, nlIdx), ...(s.nilaiList || []).slice(nlIdx + 1)]
+      : (s.nilaiList || []);
+    const newRata = newNilaiList.length ? Math.round(newNilaiList.reduce((a, b) => a + b, 0) / newNilaiList.length) : 0;
+    await update(ref(db, `stats/${siswaId}`), {
+      poin: newPoin,
+      poinHistory: newHistory,
+      tugasSelesai: Math.max(0, (s.tugasSelesai || 0) - 1),
+      nilaiList: newNilaiList,
+      nilaiRata: newRata,
+    });
+
+    // 3. Kalau deadline utama lewat, auto-buka akses via susulan 72 jam
+    let extendedSusulan = false;
+    if (t) {
+      const lewatUtama = fmtDl(t.deadline).tone === "bad";
+      if (lewatUtama) {
+        const dlBaru = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+        try {
+          await update(ref(db, `susulan/${subKey}`), {
+            tugasId, siswaId,
+            deadlineBaru: dlBaru,
+            alasan: "Reset tugas: buka akses retake",
+            nilaiMaks: null, // tidak ada cap — retake full potential
+            createdAt: Date.now(),
+            fromReset: true,
+          });
+          extendedSusulan = true;
+        } catch (e) {
+          console.warn("Reset: gagal auto-buka susulan", e);
+        }
+      }
+    }
+
+    return { poinReverted: poinDapat, extendedSusulan };
+  };
+
   // ═══ NILAI BOOST (Bonus Nilai Manual) ═══
   // Guru bisa nambah bonus nilai per komponen (Sumatif/Tugas Astrolab/UTS/UAS/Kuis/Portofolio)
   // Contoh use case: siswa nyelesain "Latihan Khusus" (tugas personal remedial) → guru kasih +5 di komponen tertentu.
@@ -2257,7 +2331,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -4647,7 +4721,7 @@ function BuatTugas({ store, navigate, editId = null }) {
                                   checked={checked}
                                   disabled={locked}
                                   onChange={() => toggleSiswaAssigned(s.id)}
-                                  style={{ margin: 0 }}
+                                  style={{ margin: 0, accentColor: "var(--accent-2)", width: 16, height: 16, cursor: locked ? "not-allowed" : "pointer" }}
                                 />
                                 <div style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "var(--ink-1)" }}>{s.nama}</div>
                                 {locked && <span className="chip" style={{ fontSize: 9, background: "var(--good-bg)", color: "var(--good)", padding: "1px 6px", fontWeight: 700 }}>Sudah submit</span>}
@@ -4657,11 +4731,19 @@ function BuatTugas({ store, navigate, editId = null }) {
                       )}
                     </div>
 
-                    {/* Toggle graded (default: false untuk Personal) */}
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, cursor: "pointer", fontSize: 11, color: "var(--ink-2)" }}>
-                      <input type="checkbox" checked={form.graded} onChange={e => set("graded", e.target.checked)} style={{ margin: 0 }} />
-                      <span>Masukkan nilai tugas ini ke rata-rata Tugas Astrolab <span style={{ color: "var(--ink-3)" }}>(default OFF untuk Latihan Khusus)</span></span>
-                    </label>
+                    {/* Toggle graded (default: false untuk Personal) — mini switch style konsisten dgn toggle parent */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, padding: "8px 10px", background: "var(--surface)", borderRadius: 6, border: "1px solid var(--line-soft)" }}>
+                      <div style={{ fontSize: 11, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                        Masukkan nilai tugas ini ke rata-rata Tugas Astrolab
+                        <div style={{ color: "var(--ink-3)", fontSize: 10 }}>Default OFF untuk Latihan Khusus</div>
+                      </div>
+                      <label style={{ position: "relative", display: "inline-block", width: 34, height: 20, flexShrink: 0, cursor: "pointer" }}>
+                        <input type="checkbox" checked={form.graded} onChange={e => set("graded", e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+                        <span style={{ position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, background: form.graded ? "var(--accent-2)" : "var(--line)", borderRadius: 10, transition: ".2s" }}>
+                          <span style={{ position: "absolute", height: 14, width: 14, left: form.graded ? 17 : 3, top: 3, background: "#fff", borderRadius: "50%", transition: ".2s" }} />
+                        </span>
+                      </label>
+                    </div>
 
                     {editId && submittedSiswaIds.size > 0 && (
                       <div style={{ marginTop: 8, padding: "6px 10px", background: "#fef3c7", borderRadius: 6, fontSize: 10.5, color: "#92400e", lineHeight: 1.5 }}>
@@ -6505,6 +6587,7 @@ function SoalBreakdown({ sub, tugas }) {
 function IntervensiNilaiModal({ tugas, store, onClose }) {
   const [editTarget, setEditTarget] = useState(null); // submission yg lagi diedit
   const [susulanTarget, setSusulanTarget] = useState(null); // siswa yg lagi dikasih susulan
+  const [resetTarget, setResetTarget] = useState(null); // { sub, siswa } — konfirmasi reset
   const [expandedId, setExpandedId] = useState(null); // siswa yg row-nya lagi di-expand untuk lihat breakdown per soal
   const [toast, setToast] = useState("");
 
@@ -6582,6 +6665,14 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
                         <button className="btn btn-outline btn-sm" onClick={() => setEditTarget(sub)}>
                           <I n="edit" s={12} /> Ubah
                         </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: "var(--bad)", padding: "5px 8px" }}
+                          title="Reset tugas — siswa dapat kesempatan mengulang"
+                          onClick={() => setResetTarget({ sub, siswa })}
+                        >
+                          <I n="rotate" s={12} />
+                        </button>
                       </div>
                       {isExpanded && (
                         <div style={{ padding: "0 12px 10px 12px", borderTop: "1px solid var(--line-soft)" }}>
@@ -6646,6 +6737,76 @@ function IntervensiNilaiModal({ tugas, store, onClose }) {
 
       {editTarget && <UbahNilaiModal sub={editTarget} tugas={tugas} store={store} siswa={siswaList.find(s => s.id === editTarget.siswaId)} onClose={() => setEditTarget(null)} onSuccess={(msg) => { setEditTarget(null); showToast(msg); }} />}
       {susulanTarget && <BeriSusulanModal siswa={susulanTarget} tugas={tugas} store={store} onClose={() => setSusulanTarget(null)} onSuccess={(msg) => { setSusulanTarget(null); showToast(msg); }} />}
+      {resetTarget && <ResetSubmissionModal sub={resetTarget.sub} siswa={resetTarget.siswa} tugas={tugas} store={store} onClose={() => setResetTarget(null)} onSuccess={(msg) => { setResetTarget(null); showToast(msg); }} />}
+    </div>
+  );
+}
+
+// Sub-modal untuk konfirmasi reset submission.
+// Reset = hapus nilai & jawaban attempt 1 supaya siswa bisa retake tugas yang sama dari nol.
+// Efek: poin di-revert dari total, tugasSelesai turun 1, nilai lama dihapus dari nilaiList.
+// Kalau deadline utama sudah lewat, otomatis buka susulan 72 jam supaya siswa bisa akses ulang.
+function ResetSubmissionModal({ sub, siswa, tugas, store, onClose, onSuccess }) {
+  const [processing, setProcessing] = useState(false);
+  const [err, setErr] = useState("");
+  const deadlineLewat = fmtDl(tugas.deadline).tone === "bad";
+  const poinDapat = Number(sub.poinDapat) || 0;
+
+  async function handleReset() {
+    setErr("");
+    setProcessing(true);
+    try {
+      const result = await store.resetSubmission(tugas.id, siswa.id);
+      let msg = `${siswa.nama}: nilai direset, ${result.poinReverted} poin dikembalikan.`;
+      if (result.extendedSusulan) msg += " Susulan 72 jam dibuka.";
+      onSuccess(msg);
+    } catch (e) {
+      setErr(e?.message || "Gagal mereset.");
+      setProcessing(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1100 }}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+          <div>
+            <h3 style={{ margin: 0, color: "var(--bad)" }}>Reset Tugas Siswa</h3>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{siswa.nama} · {tugas.judul}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--ink-3)", padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: "12px 14px", background: "var(--bad-bg)", borderRadius: 8, border: "1px solid #fca5a5", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--bad)", marginBottom: 8 }}>⚠ Yang akan terjadi:</div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--ink-1)", lineHeight: 1.7 }}>
+            <li>Nilai <b>{sub.nilai}</b> dan semua jawaban attempt 1 <b>dihapus permanen</b></li>
+            <li><b>{poinDapat} poin</b> di-revert dari total poin siswa</li>
+            <li>Tugas kembali ke status "belum dikerjakan" untuk siswa ini</li>
+            {deadlineLewat && <li>Deadline sudah lewat → <b>susulan 72 jam</b> otomatis dibuka untuk siswa ini</li>}
+            {!deadlineLewat && <li>Deadline masih aktif → siswa bisa langsung mengerjakan ulang</li>}
+          </ul>
+        </div>
+
+        <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8, marginBottom: 12, fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          <b>💡 Catatan:</b> Badge & streak <b>tidak</b> di-revert (sudah menjadi milestone). Kalau siswa udah dapet badge dari attempt 1, badge tetap milik dia.
+        </div>
+
+        {deadlineLewat && (
+          <div style={{ padding: "10px 12px", background: "#fef3c7", borderRadius: 8, border: "1px solid #fde68a", marginBottom: 12, fontSize: 11.5, color: "#92400e", lineHeight: 1.5 }}>
+            <b>⚠ Peringatan:</b> Kalau siswa <b>tidak</b> mengerjakan ulang dalam 72 jam, tugas ini dihitung <b>0</b> di rata-rata Tugas Astrolab (bukan {sub.nilai} seperti sebelum reset). Pastikan siswa tahu ada window ini.
+          </div>
+        )}
+
+        {err && <div style={{ color: "var(--bad)", fontSize: 12, padding: "8px 12px", background: "var(--bad-bg)", borderRadius: 6, border: "1px solid #fca5a5", marginBottom: 12 }}>{err}</div>}
+
+        <div className="modal-actions" style={{ gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={processing}>Batal</button>
+          <button className="btn btn-danger btn-sm" onClick={handleReset} disabled={processing}>
+            {processing ? "Mereset..." : "Ya, Reset & Buka Akses"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -6835,7 +6996,7 @@ function TugasGuru({ store, navigate }) {
         )}
         {personalCount > 0 && (
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", cursor: "pointer", fontSize: 12, color: personalOnly ? "var(--accent-2)" : "var(--ink-3)", fontWeight: personalOnly ? 700 : 500, padding: "5px 10px", borderRadius: 6, background: personalOnly ? "var(--accent-tint)" : "transparent", transition: "all .15s" }}>
-            <input type="checkbox" checked={personalOnly} onChange={e => setPersonalOnly(e.target.checked)} style={{ margin: 0 }} />
+            <input type="checkbox" checked={personalOnly} onChange={e => setPersonalOnly(e.target.checked)} style={{ margin: 0, accentColor: "var(--accent-2)", cursor: "pointer" }} />
             <I n="users" s={12} /> Personal saja ({personalCount})
           </label>
         )}
