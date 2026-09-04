@@ -1838,12 +1838,16 @@ function useStore() {
       ? [...(s.nilaiList || []).slice(0, nlIdx), ...(s.nilaiList || []).slice(nlIdx + 1)]
       : (s.nilaiList || []);
     const newRata = newNilaiList.length ? Math.round(newNilaiList.reduce((a, b) => a + b, 0) / newNilaiList.length) : 0;
+    // STREAK: decrement 1 (min 0) — revert kontribusi attempt 1. Nanti retake akan naikin lagi via updateStats
+    // kalau on-time, atau reset ke 0 kalau telat. Net effect: streak reflect "tugas ontime yang benar² terhitung".
+    const newStreak = Math.max(0, (s.streak || 0) - 1);
     await update(ref(db, `stats/${siswaId}`), {
       poin: newPoin,
       poinHistory: newHistory,
       tugasSelesai: Math.max(0, (s.tugasSelesai || 0) - 1),
       nilaiList: newNilaiList,
       nilaiRata: newRata,
+      streak: newStreak,
     });
 
     // 3. Kalau deadline utama lewat, auto-buka akses via susulan 72 jam
@@ -2004,20 +2008,51 @@ function useStore() {
   };
 
   // Update 1 kolom dinamis (sumatif atau kuis) — dipanggil dari grid inline edit
+  // ═══ REWARD POIN DARI NILAI MANUAL ═══
+  // Setiap input nilai Kuis/Sumatif/UTS/UAS/Portofolio kasih poin ke siswa senilai 10% dari nilai
+  // (reward konsistensi — asumsi semua siswa mengikuti asesmen; yg absen wajib susulan).
+  // Contoh: Kuis BAB 1 = 80 → +8 poin ke stats.poin siswa.
+  //   Edit jadi 90 → poin lama (8) di-revoke, poin baru (9) di-kasih → net +1.
+  //   Hapus nilai → poin (8) di-revoke → net -8. Floor di 0 (gak pernah minus).
+  // Poin ini SEPARATE dari poin tugas Astrolab — cuma additive di stats.poin total.
+  const applyNilaiPoinDelta = async (siswaId, nilaiLama, nilaiBaru, reasonLabel = "nilai-manual") => {
+    const num = (v) => typeof v === "number" && !isNaN(v) ? v : 0;
+    const poinLama = Math.round(num(nilaiLama) * 0.1);
+    const poinBaru = Math.round(num(nilaiBaru) * 0.1);
+    const delta = poinBaru - poinLama;
+    if (delta === 0) return;
+    const s = getStats(siswaId);
+    const newPoin = Math.max(0, (s.poin || 0) + delta);
+    const now = Date.now();
+    const newHistory = [
+      ...(s.poinHistory || []),
+      { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: reasonLabel, delta },
+    ];
+    await update(ref(db, `stats/${siswaId}`), { poin: newPoin, poinHistory: newHistory });
+  };
+
   const updateNilaiKolom = async (siswaId, mapel, jenjang, periode, tipe, kolomKey, nilai) => {
     const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
     const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
+    const nilaiLama = (rec[tipe] || {})[kolomKey]; // bisa "", number, undefined
     // PENTING: Firebase RTDB menganggap value `null` sebagai perintah HAPUS path itu,
     // bukan "buat kosong". Makanya pakai "" (empty string) sebagai placeholder kolom-kosong,
     // supaya kolom tetap persist/kebaca walau nilainya belum diisi guru.
-    const updated = { ...rec[tipe], [kolomKey]: nilai === "" || nilai === null ? "" : Number(nilai) };
+    const nilaiBaru = nilai === "" || nilai === null ? "" : Number(nilai);
+    const updated = { ...rec[tipe], [kolomKey]: nilaiBaru };
     await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [tipe]: updated, updatedAt: Date.now() });
+    // Apply poin: nilaiLama/nilaiBaru non-number (kolom kosong "") dianggap 0 poin
+    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0);
   };
 
   // Update field manual (uts/uas/portofolio) — 1 angka langsung
   const updateNilaiManual = async (siswaId, mapel, jenjang, periode, field, nilai) => {
     const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
-    await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [field]: nilai === "" || nilai === null ? null : Number(nilai), updatedAt: Date.now() });
+    const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
+    const nilaiLama = rec[field]; // bisa null, number, undefined
+    const nilaiBaru = nilai === "" || nilai === null ? null : Number(nilai);
+    await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [field]: nilaiBaru, updatedAt: Date.now() });
+    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0);
   };
 
   // Tambah kolom dinamis baru (BAB atau Kuis) — apply ke SEMUA siswa di kelas+mapel+periode itu sekaligus
@@ -2041,15 +2076,24 @@ function useStore() {
     if (Object.keys(updates).length > 0) await update(ref(db), updates);
   };
 
-  // Hapus kolom dinamis dari SEMUA siswa sekaligus
+  // Hapus kolom dinamis dari SEMUA siswa sekaligus. Poin yang dulu diberi dari nilai di kolom ini
+  // OTOMATIS di-revoke (biar siswa gak "menang gratis" poin dari kolom yang gak ada nilainya lagi).
   const hapusKolomDinamis = async (siswaIds, mapel, jenjang, periode, tipe, kolomLabel) => {
     const updates = {};
     const safeKey = kolomLabel.replace(/[.#$/[\]]/g, "-");
+    const revertList = []; // { siswaId, nilaiLama } — buat revoke poin nanti
     siswaIds.forEach(siswaId => {
       const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
+      const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
+      const nilaiLama = (rec[tipe] || {})[safeKey];
+      if (typeof nilaiLama === "number") revertList.push({ siswaId, nilaiLama });
       updates[`nilaiAkhir/${key}/${tipe}/${safeKey}`] = null;
     });
     await update(ref(db), updates);
+    // Revoke poin per siswa yg punya nilai di kolom ini (sequential biar stats gak race)
+    for (const { siswaId, nilaiLama } of revertList) {
+      await applyNilaiPoinDelta(siswaId, nilaiLama, 0, "hapus-kolom-nilai");
+    }
   };
 
   // Ambil daftar semua kolom dinamis (union dari semua siswa) — dipakai buat render header grid
@@ -2064,8 +2108,16 @@ function useStore() {
 
   // Bulk import dari hasil parse Excel — merge dengan data existing (additive, gak menimpa
   // kolom lain yang gak ada di file import). Satu multi-path update untuk semua siswa sekaligus.
+  // Poin per siswa DIAKUMULASI dulu di JS sebelum apply — mencegah race condition kalau
+  // banyak nilai berubah untuk siswa yg sama (misal 6 kuis + 3 sumatif = 9 update stats sequential).
   const bulkImportNilaiAkhir = async (rows, mapel, jenjang, periode) => {
     const updates = {};
+    const poinDeltas = {}; // siswaId -> accumulated delta poin dari semua kolom yg berubah
+    const computeDelta = (lama, baru) => {
+      const l = typeof lama === "number" ? lama : 0;
+      const b = typeof baru === "number" ? baru : 0;
+      return Math.round(b * 0.1) - Math.round(l * 0.1);
+    };
     rows.forEach(r => {
       const key = nilaiAkhirKey(r.siswaId, mapel, jenjang, periode);
       const rec = getNilaiAkhirRecord(r.siswaId, mapel, jenjang, periode);
@@ -2074,20 +2126,47 @@ function useStore() {
       updates[`nilaiAkhir/${key}/jenjang`] = jenjang;
       updates[`nilaiAkhir/${key}/periode`] = periode;
       updates[`nilaiAkhir/${key}/updatedAt`] = Date.now();
+      let totalDelta = 0;
       const mergedSumatif = { ...rec.sumatif, ...r.sumatif };
       Object.entries(mergedSumatif).forEach(([k, v]) => {
-        // PENTING: pakai "" bukan null/undefined — Firebase RTDB menghapus path kalau value null.
-        updates[`nilaiAkhir/${key}/sumatif/${k.replace(/[.#$/[\]]/g, "-")}`] = (v === null || v === undefined) ? "" : v;
+        const safe = k.replace(/[.#$/[\]]/g, "-");
+        updates[`nilaiAkhir/${key}/sumatif/${safe}`] = (v === null || v === undefined) ? "" : v;
+        // Hitung delta hanya untuk key yg di-import (ada di r.sumatif) — key yg cuma dari rec.sumatif = no change
+        if (r.sumatif && k in r.sumatif) totalDelta += computeDelta((rec.sumatif || {})[safe], typeof v === "number" ? v : 0);
       });
       const mergedKuis = { ...rec.kuis, ...r.kuis };
       Object.entries(mergedKuis).forEach(([k, v]) => {
-        updates[`nilaiAkhir/${key}/kuis/${k.replace(/[.#$/[\]]/g, "-")}`] = (v === null || v === undefined) ? "" : v;
+        const safe = k.replace(/[.#$/[\]]/g, "-");
+        updates[`nilaiAkhir/${key}/kuis/${safe}`] = (v === null || v === undefined) ? "" : v;
+        if (r.kuis && k in r.kuis) totalDelta += computeDelta((rec.kuis || {})[safe], typeof v === "number" ? v : 0);
       });
-      if (r.uts !== null) updates[`nilaiAkhir/${key}/uts`] = r.uts;
-      if (r.uas !== null) updates[`nilaiAkhir/${key}/uas`] = r.uas;
-      if (r.portofolio !== null) updates[`nilaiAkhir/${key}/portofolio`] = r.portofolio;
+      if (r.uts !== null) {
+        updates[`nilaiAkhir/${key}/uts`] = r.uts;
+        totalDelta += computeDelta(rec.uts, r.uts);
+      }
+      if (r.uas !== null) {
+        updates[`nilaiAkhir/${key}/uas`] = r.uas;
+        totalDelta += computeDelta(rec.uas, r.uas);
+      }
+      if (r.portofolio !== null) {
+        updates[`nilaiAkhir/${key}/portofolio`] = r.portofolio;
+        totalDelta += computeDelta(rec.portofolio, r.portofolio);
+      }
+      if (totalDelta !== 0) poinDeltas[r.siswaId] = (poinDeltas[r.siswaId] || 0) + totalDelta;
     });
     if (Object.keys(updates).length > 0) await update(ref(db), updates);
+    // Apply akumulasi delta per siswa (1 write per siswa, bukan 1 write per kolom → aman dari race)
+    for (const [siswaId, delta] of Object.entries(poinDeltas)) {
+      if (delta === 0) continue;
+      const s = getStats(siswaId);
+      const newPoin = Math.max(0, (s.poin || 0) + delta);
+      const now = Date.now();
+      const newHistory = [
+        ...(s.poinHistory || []),
+        { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "bulk-import-nilai", delta },
+      ];
+      await update(ref(db, `stats/${siswaId}`), { poin: newPoin, poinHistory: newHistory });
+    }
     return rows.length;
   };
 
@@ -6789,7 +6868,7 @@ function ResetSubmissionModal({ sub, siswa, tugas, store, onClose, onSuccess }) 
         </div>
 
         <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8, marginBottom: 12, fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-          <b>💡 Catatan:</b> Badge & streak <b>tidak</b> di-revert (sudah menjadi milestone). Kalau siswa udah dapet badge dari attempt 1, badge tetap milik dia.
+          <b>💡 Catatan:</b> Streak siswa <b>turun 1</b> (revert attempt 1). Kalau retake ontime, streak naik lagi = net 0. Badge <b>tidak</b> di-revert (milestone yang sudah tercapai).
         </div>
 
         {deadlineLewat && (
@@ -9846,7 +9925,7 @@ function NilaiAkhirPage({ store }) {
   return (
     <div className="page">
       <div className="dt">
-        <div><h1>Nilai Akhir</h1><p>Komposit 6 komponen · Sumatif 10% · Tugas Astrolab 20% · UTS 20% · UAS 20% · Kuis 10% · Portofolio 20%</p></div>
+        <div><h1>Nilai Akhir</h1><p>Komposit 6 komponen · Sumatif 10% · Tugas Astrolab 20% · UTS 20% · UAS 20% · Kuis 10% · Portofolio 20%</p><p style={{ marginTop: 4, fontSize: 11, color: "var(--accent-2)", fontWeight: 600 }}><I n="zap" s={11} /> Setiap input/edit nilai otomatis kasih siswa <b>+10% poin</b> (reward konsistensi)</p></div>
       </div>
       <div className="topbar">
         <div style={{ width: 36 }} />
