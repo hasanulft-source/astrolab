@@ -1135,7 +1135,10 @@ function checkAutoBadges(stats, submission, isTopClass = false, isTopThree = fal
   const earned = [];
   const nilai = submission.nilai || 0;
   const tugasSelesai = (stats.tugasSelesai || 0) + 1; // setelah submission ini
-  const newStreak = (stats.streak || 0) + 1;
+  // Harus persis mengikuti aturan streak di updateStats: naik kalau ontime, reset ke 0 kalau telat.
+  // Tanpa cek ontime, siswa dengan streak 4 yang submit TELAT tetap dapat badge "On Fire" (streak 5)
+  // padahal streak aslinya barusan direset jadi 0.
+  const newStreak = submission.ontime ? (stats.streak || 0) + 1 : 0;
   const totalPerfectBefore = stats.perfectCount || 0;
   const totalPerfect = totalPerfectBefore + (nilai === 100 ? 1 : 0);
   const newPoin = (stats.poin || 0) + (submission.poinDapat || 0);
