@@ -1566,6 +1566,20 @@ function useStore() {
     await update(ref(db, `stats/${sid}`), patch);
   };
 
+  // Rebuild nilaiList & nilaiRata siswa dari SELURUH submission-nya.
+  // Source of truth = submissions, bukan akumulasi incremental yang gampang melenceng.
+  // `override` dipakai kalau pemanggil baru saja menulis nilai baru untuk 1 submission dan
+  // state lokal `subs` belum ter-sync dari listener Firebase.
+  const recomputeNilaiStats = (siswaId, override = null) => {
+    const list = subs
+      .filter(s => s.siswaId === siswaId)
+      .map(s => (override && s.id === override.subId ? { ...s, nilai: override.nilai } : s))
+      .filter(s => typeof s.nilai === "number")
+      .map(s => s.nilai);
+    const rata = list.length ? Math.round(list.reduce((a, b) => a + b, 0) / list.length) : 0;
+    return { nilaiList: list, nilaiRata: rata };
+  };
+
   // ─── INTERVENSI NILAI (guru only) ───
   // Guru ubah nilai submission siswa. Auto-recompute poin di submission + stats siswa.
   // Kalau nilai baru = 0 (misal kecurangan), streak siswa auto-reset.
@@ -1609,13 +1623,8 @@ function useStore() {
     // Update stats siswa — adjust total poin & recompute nilaiList/nilaiRata
     const st = getStats(sub.siswaId);
     const newPoin = (st.poin || 0) + deltaPoin;
-    // Ganti nilai lama dengan nilai baru di nilaiList (find by index)
-    const nilaiList = [...(st.nilaiList || [])];
-    // Cari index nilai lama yg match subId — kalau gak match sub tertentu, ganti nilai lama pertama yg cocok
-    // Approach: rebuild nilaiList dari semua sub siswa yang sudah dinilai
-    const allSiswaSubs = subs.filter(s => s.siswaId === sub.siswaId).map(s => s.id === subId ? { ...s, nilai: nilaiBaru } : s);
-    const newNilaiList = allSiswaSubs.filter(s => typeof s.nilai === "number").map(s => s.nilai);
-    const newNilaiRata = newNilaiList.length ? Math.round(newNilaiList.reduce((a, b) => a + b, 0) / newNilaiList.length) : 0;
+    const { nilaiList: newNilaiList, nilaiRata: newNilaiRata } =
+      recomputeNilaiStats(sub.siswaId, { subId, nilai: nilaiBaru });
 
     const statsUpdate = { poin: newPoin, nilaiList: newNilaiList, nilaiRata: newNilaiRata };
     // Kalau nilai baru = 0, reset streak (asumsi kecurangan)
@@ -2466,7 +2475,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -6108,14 +6117,19 @@ function NilaiEssayModal({ tugas, store, onClose }) {
         correctCount: correctCountBaru,
       });
 
-      // Update stats siswa (selisih poin)
+      // Update stats siswa: selisih poin + rebuild nilaiList/nilaiRata.
+      // nilaiList WAJIB ikut di-rebuild — submission.nilai baru saja berubah, dan tanpa ini
+      // rata-rata nilai siswa selamanya memakai nilai saat submit (sering 0 untuk tugas yang
+      // isinya essay semua, karena essay belum terhitung waktu auto-grading).
       const selisihPoin = totalPoinBaru - (currentSub.poinDapat || 0);
-      if (selisihPoin !== 0) {
-        const stats = store.getStats(currentSub.siswaId);
-        await update(ref(db, `stats/${currentSub.siswaId}`), {
-          poin: (stats.poin || 0) + selisihPoin,
-        });
-      }
+      const stats = store.getStats(currentSub.siswaId);
+      const { nilaiList, nilaiRata } = store.recomputeNilaiStats(currentSub.siswaId, {
+        subId: currentSub.id,
+        nilai: nilaiBaru,
+      });
+      const statsPatch = { nilaiList, nilaiRata };
+      if (selisihPoin !== 0) statsPatch.poin = (stats.poin || 0) + selisihPoin;
+      await update(ref(db, `stats/${currentSub.siswaId}`), statsPatch);
     } catch (e) {
       alert("Gagal menyimpan nilai: " + e.message);
     } finally {
