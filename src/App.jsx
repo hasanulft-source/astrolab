@@ -4602,17 +4602,18 @@ function MateriSelect({ store, value, mapel, jenjang, onChange }) {
   );
 }
 
-function BuatTugas({ store, navigate, editId = null }) {
+function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, presetJenjang = null }) {
   const existing = editId ? store.getTugas().find(t => t.id === editId) : null;
   const [form, setForm] = useState({
     judul: existing?.judul || "", mapel: existing?.mapel || "IPA",
-    jenjang: existing?.jenjang || "VII", deadline: existing?.deadline || "",
+    jenjang: existing?.jenjang || presetJenjang || "VII", deadline: existing?.deadline || "",
     poinMax: existing?.poinMax || 100, deskripsi: existing?.deskripsi || "",
     materi: existing?.materi || "",
     // Tugas Personal ("Latihan Khusus"): assignedTo = array siswaId, atau null = class-wide
-    assignedTo: existing?.assignedTo || null,
+    // Preset dari quick action Perlu Perhatian: langsung set assignedTo & switch ke mode personal
+    assignedTo: existing?.assignedTo || (Array.isArray(presetAssignedTo) && presetAssignedTo.length > 0 ? presetAssignedTo : null),
     // graded: false = tidak masuk avg Tugas Astrolab (default untuk Latihan Khusus, tapi bisa di-override)
-    graded: existing?.graded !== false,
+    graded: existing?.graded !== false && !presetAssignedTo,
   });
   const [soal, setSoal] = useState(existing?.soal || []);
   const [saved, setSaved] = useState(false);
@@ -5857,10 +5858,90 @@ function DashboardTugasAnalisis({ tugas, subs, siswaList, navigate }) {
   );
 }
 
+// ═══ PERLU PERHATIAN — kompute list siswa yang butuh intervensi minggu ini ═══
+// 4 trigger evaluated per siswa:
+//   1. tren_turun: 3 nilai terakhir menurun berturut per mapel (n1 terbaru < n2 < n3)
+//   2. absen_berturut: 2+ tugas dengan deadline lewat, belum submit, gak ada susulan aktif
+//   3. streak_drop: dulu produktif (tugasSelesai ≥5) + sudah miss ≥3 tugas (streakResetFor) + streak sekarang 0
+//   4. login_lama: lastSeen > 7 hari yang lalu
+// Return sorted by severity (jumlah trigger) desc.
+function computePerluPerhatian(store, jenjang) {
+  const siswaList = store.getAllSiswa(jenjang);
+  const subs = store.getSubs();
+  const tugasKelas = store.getTugas().filter(t => t.jenjang === jenjang && t.status !== "scheduled");
+  const now = Date.now();
+  const results = [];
+
+  siswaList.forEach(s => {
+    const triggers = [];
+    const stats = store.getStats(s.id);
+    const mapels = jenjang === "VII" ? ["IPA", "Informatika"] : ["IPA"];
+
+    // Trigger 1: Tren nilai turun 3x per mapel
+    mapels.forEach(mapel => {
+      const subsPerMapel = subs
+        .filter(sub => sub.siswaId === s.id && typeof sub.nilai === "number")
+        .map(sub => ({ ...sub, tugas: tugasKelas.find(t => t.id === sub.tugasId) }))
+        .filter(sub => sub.tugas && sub.tugas.mapel === mapel && sub.tugas.graded !== false)
+        .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+      if (subsPerMapel.length >= 3) {
+        const [n1, n2, n3] = subsPerMapel.slice(0, 3).map(x => x.nilai);
+        if (n1 < n2 && n2 < n3) {
+          triggers.push({ type: "tren_turun", label: `Tren turun ${mapel} (${n3}→${n2}→${n1})` });
+        }
+      }
+    });
+
+    // Trigger 2: Absen 2+ tugas berturut (deadline sorted desc, cek dari terbaru)
+    const tugasLewat = tugasKelas
+      .filter(t => fmtDl(t.deadline).tone === "bad")
+      // Filter tugas personal: kalau ada assignedTo, siswa harus ter-assign
+      .filter(t => !Array.isArray(t.assignedTo) || t.assignedTo.includes(s.id))
+      .sort((a, b) => new Date(b.deadline).getTime() - new Date(a.deadline).getTime());
+    let absenBerturut = 0;
+    for (const t of tugasLewat) {
+      const submitted = subs.some(sub => sub.siswaId === s.id && sub.tugasId === t.id);
+      const susulanAktif = store.isSusulanAktif(t.id, s.id);
+      if (submitted || susulanAktif) break;
+      absenBerturut++;
+      if (absenBerturut >= 3) break; // cap at 3 buat tampilan
+    }
+    if (absenBerturut >= 2) {
+      triggers.push({ type: "absen_berturut", label: `Absen ${absenBerturut}${absenBerturut >= 3 ? "+" : ""} tugas berturut` });
+    }
+
+    // Trigger 3: Streak drop (dulu produktif, sekarang stagnan)
+    const streakResetCount = Object.keys(stats.streakResetFor || {}).length;
+    if ((stats.tugasSelesai || 0) >= 5 && streakResetCount >= 3 && (stats.streak || 0) === 0) {
+      triggers.push({ type: "streak_drop", label: "Streak drop mendadak" });
+    }
+
+    // Trigger 4: Login lama > 7 hari
+    const lastSeen = store.getLastSeen(s.id);
+    if (lastSeen) {
+      const daysSince = Math.floor((now - lastSeen) / (24 * 60 * 60 * 1000));
+      if (daysSince > 7) {
+        triggers.push({ type: "login_lama", label: `Tidak login ${daysSince} hari` });
+      }
+    }
+
+    if (triggers.length > 0) {
+      results.push({ siswa: s, triggers, severity: triggers.length });
+    }
+  });
+
+  // Sort by severity desc, lalu nama alfabetis
+  return results.sort((a, b) => {
+    if (b.severity !== a.severity) return b.severity - a.severity;
+    return a.siswa.nama.localeCompare(b.siswa.nama);
+  });
+}
+
 function DashboardGuru({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const [showLaporan, setShowLaporan] = useState(false);
   const [expandedTugas, setExpandedTugas] = useState(null);
+  const [showAllPerhatian, setShowAllPerhatian] = useState(false);
   const tugasAll = store.getTugas().filter(t => t.jenjang === jenjang);
   const lb = store.getLeaderboard(jenjang);
   const siswa = store.getAllSiswa(jenjang);
@@ -5884,8 +5965,8 @@ function DashboardGuru({ store, navigate }) {
   // Rata poin kelas
   const rataPoin = lb.length ? Math.round(lb.reduce((a,s) => a + (s.poin||0), 0) / lb.length) : 0;
 
-  // Perlu perhatian: siswa dengan tugas paling sedikit
-  const perluPerhatian = [...lb].sort((a,b) => (a.tugasSelesai||0) - (b.tugasSelesai||0)).slice(0, 3).filter(s => (s.tugasSelesai||0) < tugasAktif.length);
+  // Perlu perhatian: rich analysis via helper (4 trigger types, sorted by severity)
+  const perluPerhatianList = computePerluPerhatian(store, jenjang);
 
   // Dynamic greeting
   const hour = new Date().getHours();
@@ -5998,41 +6079,101 @@ function DashboardGuru({ store, navigate }) {
         </div>
       )}
 
-      {/* Top performer + Perlu perhatian */}
-      <div className="g2" style={{ marginBottom: 20 }}>
-        <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}><I n="trophy" s={14} style={{ color: "#b45309" }} /> Top performer</div>
-          {lb.length === 0 ? <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Belum ada data</div> :
-            lb.slice(0, 3).map((s, i) => (
-              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i < 2 ? "1px solid var(--line-soft)" : "none" }}>
-                <div className={`lb-rank ${i === 0 ? "top1" : i === 1 ? "top2" : "top3"}`} style={{ fontSize: 11 }}>{i + 1}</div>
-                <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
+      {/* ═══ PERLU PERHATIAN (full-width, rich, actionable) ═══ */}
+      <Card pad="none" style={{ marginBottom: 14, overflow: "hidden" }}>
+        <div style={{ padding: "14px 16px", borderBottom: perluPerhatianList.length > 0 ? "1px solid var(--line)" : "none", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 8, background: perluPerhatianList.length > 0 ? "#fef3c7" : "var(--good-bg)", color: perluPerhatianList.length > 0 ? "#92400e" : "var(--good)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <I n="alert" s={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                Perlu Perhatian
+                {perluPerhatianList.length > 0 && (
+                  <span className="chip" style={{ fontSize: 10, background: "var(--bad-bg)", color: "var(--bad)", padding: "1px 7px", fontWeight: 700 }}>{perluPerhatianList.length}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>
+                {perluPerhatianList.length === 0 ? "Semua siswa dalam kondisi baik" : "Siswa Kelas " + jenjang + " yang butuh follow-up minggu ini"}
+              </div>
+            </div>
+          </div>
+          {perluPerhatianList.length > 5 && (
+            <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }} onClick={() => setShowAllPerhatian(!showAllPerhatian)}>
+              {showAllPerhatian ? "Sembunyikan" : `Lihat semua (${perluPerhatianList.length})`}
+            </button>
+          )}
+        </div>
+
+        {perluPerhatianList.length === 0 ? (
+          <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>
+            ✨ Tidak ada siswa yang terflag. Semua siswa aktif dan on-track.
+          </div>
+        ) : (
+          <div>
+            {perluPerhatianList.slice(0, showAllPerhatian ? perluPerhatianList.length : 5).map((item, i, arr) => (
+              <div key={item.siswa.id} style={{
+                padding: "11px 16px",
+                borderTop: i > 0 ? "1px solid var(--line-soft)" : "none",
+                display: "flex", alignItems: "center", gap: 12,
+                background: item.severity >= 3 ? "rgba(220, 38, 38, 0.03)" : "transparent",
+              }}>
+                <UserAvatar userId={item.siswa.id} name={item.siswa.nama} size="md" store={store} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nama}</div>
-                  <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{s.tugasSelesai || 0} tugas</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.siswa.nama}</div>
+                    {item.severity >= 2 && (
+                      <span className="chip" style={{
+                        fontSize: 9,
+                        background: item.severity >= 3 ? "var(--bad)" : "var(--warn)",
+                        color: "#fff",
+                        padding: "1px 7px", fontWeight: 700, letterSpacing: ".02em",
+                      }}>
+                        {item.severity} indikator
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {item.triggers.map((t, idx) => (
+                      <span key={idx} className="chip" style={{
+                        fontSize: 10, background: "var(--surface-alt)", color: "var(--ink-2)",
+                        padding: "2px 7px", border: "1px solid var(--line-soft)",
+                      }}>
+                        {t.label}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="stat-num" style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-2)" }}>{s.poin.toLocaleString("id-ID")}</div>
+                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px" }} title="Kirim pesan" onClick={() => navigate("chat", { openChat: item.siswa.id })}>
+                    <I n="chat" s={13} />
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px", color: "var(--accent-2)" }} title="Buat Latihan Khusus untuk siswa ini" onClick={() => navigate("buat-tugas", { presetAssignedTo: [item.siswa.id], presetJenjang: jenjang })}>
+                    <I n="star" s={13} />
+                  </button>
+                </div>
               </div>
             ))}
-        </Card>
-        <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}><I n="alert" s={14} style={{ color: "var(--warn)" }} /> Perlu perhatian</div>
-          {perluPerhatian.length === 0 ? <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Semua siswa aktif</div> :
-            perluPerhatian.map((s, i) => (
-              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i < perluPerhatian.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
-                <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nama}</div>
-                  <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{s.tugasSelesai || 0}/{tugasAktif.length} tugas · streak {s.streak || 0}</div>
-                </div>
-                <button className="btn btn-warn btn-sm" style={{ fontSize: 10, padding: "4px 10px" }}
-                  onClick={() => navigate("chat", { openChat: s.id })}>
-                  Follow up
-                </button>
+          </div>
+        )}
+      </Card>
+
+      {/* Top performer card */}
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}><I n="trophy" s={14} style={{ color: "#b45309" }} /> Top performer</div>
+        {lb.length === 0 ? <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Belum ada data</div> :
+          lb.slice(0, 3).map((s, i) => (
+            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i < 2 ? "1px solid var(--line-soft)" : "none" }}>
+              <div className={`lb-rank ${i === 0 ? "top1" : i === 1 ? "top2" : "top3"}`} style={{ fontSize: 11 }}>{i + 1}</div>
+              <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nama}</div>
+                <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{s.tugasSelesai || 0} tugas</div>
               </div>
-            ))}
-        </Card>
-      </div>
+              <div className="stat-num" style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-2)" }}>{s.poin.toLocaleString("id-ID")}</div>
+            </div>
+          ))}
+      </Card>
 
     </div>
   </>;
@@ -11060,7 +11201,7 @@ function AppInner() {
     if (isGuru) {
       if (route === "home-guru") screen = <DashboardGuru store={store} navigate={navigate} />;
       else if (route === "tugas-guru") screen = <TugasGuru store={store} navigate={navigate} />;
-      else if (route === "buat-tugas") screen = <BuatTugas store={store} navigate={navigate} />;
+      else if (route === "buat-tugas") screen = <BuatTugas store={store} navigate={navigate} presetAssignedTo={params.presetAssignedTo} presetJenjang={params.presetJenjang} />;
       else if (route === "edit-tugas") screen = <BuatTugas store={store} navigate={navigate} editId={params.tugasId} />;
       else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
