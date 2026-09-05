@@ -1813,7 +1813,12 @@ function useStore() {
   // Non-atomic (Firebase RTDB gak support multi-path transaction gampang). Kalau salah satu step fail,
   // ada risk partial state — tapi urutan sudah diatur supaya failure paling harmless dulu (susulan gagal = paling ringan).
   const resetSubmission = async (tugasId, siswaId) => {
+    // HATI-HATI: dua namespace ini pakai urutan key yang BERBEDA.
+    //   submissions/{siswaId}_{tugasId}   (lihat addSub)
+    //   susulan/{tugasId}_{siswaId}       (lihat getSusulan/addSusulan/removeSusulan)
+    // Jangan pakai satu variabel untuk keduanya.
     const subKey = `${siswaId}_${tugasId}`;
+    const susulanKey = `${tugasId}_${siswaId}`;
     const sub = subs.find(s => s.tugasId === tugasId && s.siswaId === siswaId);
     if (!sub) throw new Error("Submission tidak ditemukan.");
 
@@ -1857,7 +1862,7 @@ function useStore() {
       if (lewatUtama) {
         const dlBaru = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
         try {
-          await update(ref(db, `susulan/${subKey}`), {
+          await update(ref(db, `susulan/${susulanKey}`), {
             tugasId, siswaId,
             deadlineBaru: dlBaru,
             alasan: "Reset tugas: buka akses retake",
