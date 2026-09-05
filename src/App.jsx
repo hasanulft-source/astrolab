@@ -425,8 +425,6 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 // ─── ICONS ───
 const IC = {
   home: "M3 12l9-9 9 9M5 10v9a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-9",
-  trophy: "M8 21h8m-4-4v4M5 7H3a2 2 0 000 4c0 1.7 1 3.2 2.5 3.9M19 7h2a2 2 0 010 4c0 1.7-1 3.2-2.5 3.9M5 7V4h14v3M5 7a7 7 0 0014 0",
-  book: "M12 6.5A8.5 8.5 0 006 4.5C4.3 4.5 2.7 4.9 1.5 5.5v14c1.2-.6 2.8-1 4.5-1 2.4 0 4.6.8 6 2 1.4-1.2 3.6-2 6-2 1.7 0 3.3.4 4.5 1v-14c-1.2-.6-2.8-1-4.5-1A8.5 8.5 0 0012 6.5z",
   user: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z",
   layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
   plus: "M12 5v14M5 12h14",
@@ -435,7 +433,7 @@ const IC = {
   chevL: "M15 18l-6-6 6-6", chevR: "M9 18l6-6-6-6", chevD: "M6 9l6 6 6-6",
   check: "M20 6L9 17l-5-5", x: "M18 6L6 18M6 6l12 12",
   clock: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
-  target: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
+  target: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 18a6 6 0 100-12 6 6 0 000 12zM12 14a2 2 0 100-4 2 2 0 000 4z",
   list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
   link2: "M15 7h3a5 5 0 015 5 5 5 0 01-5 5h-3m-6 0H6a5 5 0 01-5-5 5 5 0 015-5h3m-1 5h8",
   sortDesc: "M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12",
@@ -6940,7 +6938,7 @@ function ResetSubmissionModal({ sub, siswa, tugas, store, onClose, onSuccess }) 
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1100 }}>
+    <div className="modal-overlay" onClick={e => { e.stopPropagation(); onClose(); }} style={{ zIndex: 1100 }}>
       <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
@@ -7010,7 +7008,7 @@ function UbahNilaiModal({ sub, tugas, store, siswa, onClose, onSuccess }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1001 }}>
+    <div className="modal-overlay" onClick={e => { e.stopPropagation(); onClose(); }} style={{ zIndex: 1001 }}>
       <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
         <h3>Ubah Nilai Siswa</h3>
         <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 14, fontSize: 12, lineHeight: 1.6 }}>
@@ -7076,7 +7074,7 @@ function BeriSusulanModal({ siswa, tugas, store, onClose, onSuccess }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1001 }}>
+    <div className="modal-overlay" onClick={e => { e.stopPropagation(); onClose(); }} style={{ zIndex: 1001 }}>
       <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
         <h3>Beri Susulan</h3>
         <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 6, marginBottom: 14, fontSize: 12, lineHeight: 1.6 }}>
@@ -9129,6 +9127,19 @@ function ResetSemesterModal({ store, onClose }) {
       // 5. Hapus semua broadcasts (parent-level rule guru sudah allow remove parent)
       await remove(ref(db, "broadcasts"));
 
+      // 5b. Hapus semua susulan — record ini terikat ke submission yang barusan dihapus.
+      // Kalau ditinggal, siswa masih punya "jatah susulan" untuk tugas semester lalu dan
+      // isSusulanAktif bisa bikin tugas lama gak dihitung 0 di rata-rata semester baru.
+      const susulanSnap = await get(ref(db, "susulan"));
+      const susulanKeys = susulanSnap.exists() ? Object.keys(susulanSnap.val()) : [];
+      const susulanResults = await Promise.allSettled(
+        susulanKeys.map(key => remove(ref(db, `susulan/${key}`)))
+      );
+      const failedSusulan = susulanResults.filter(r => r.status === "rejected").length;
+      if (failedSusulan > 0) {
+        throw new Error(`${failedSusulan} dari ${susulanKeys.length} susulan gagal dihapus`);
+      }
+
       // 6. Hapus semua messages per-thread (clean slate untuk chat)
       const msgsSnap = await get(ref(db, "messages"));
       const threadKeys = msgsSnap.exists() ? Object.keys(msgsSnap.val()) : [];
@@ -9185,6 +9196,7 @@ function ResetSemesterModal({ store, onClose }) {
             <div>❌ Statistik <b>{totalSiswa} siswa</b> (poin, level, streak)</div>
             <div>❌ Semua badge yang sudah didapat</div>
             <div>❌ Semua broadcast/pengumuman</div>
+            <div>❌ Semua jatah susulan personal</div>
           </div>
         </div>
 
@@ -9194,6 +9206,7 @@ function ResetSemesterModal({ store, onClose }) {
             <div>✅ Tugas yang sudah dibuat <b>tetap ada</b></div>
             <div>✅ Bank Soal <b>tetap ada</b></div>
             <div>✅ Foto profil <b>tetap ada</b></div>
+            <div>✅ Nilai Akhir & bonus nilai <b>tetap ada</b> (per periode)</div>
           </div>
         </div>
 
@@ -10403,7 +10416,7 @@ function BoostModal({ mode, boost, siswa, mapel, jenjang, periode, store, onClos
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1100 }}>
+    <div className="modal-overlay" onClick={e => { e.stopPropagation(); onClose(); }} style={{ zIndex: 1100 }}>
       <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
@@ -10779,9 +10792,10 @@ function useNotifications(user, store, route) {
         if (t.status !== "aktif") return;
         const eventKey = `tugas_${id}`;
         if (seenIds.has(eventKey)) return;
-        seenIds.add(eventKey);
-        // Skip notif kalau lagi di halaman tugas
+        // Skip notif kalau lagi di halaman tugas — JANGAN tandai seen di sini, biar notifnya
+        // masih bisa muncul begitu siswa pindah dari halaman tugas.
         if (route === "tugas" || route === "tugas-detail" || route === "kerjakan") return;
+        seenIds.add(eventKey);
         pushNotif({
           type: "tugas",
           title: "Tugas baru!",
@@ -10804,13 +10818,13 @@ function useNotifications(user, store, route) {
         if (subMs < bootTime) return;
         const eventKey = `sub_${id}`;
         if (seenIds.has(eventKey)) return;
-        seenIds.add(eventKey);
         const siswaList = store.getAllSiswa();
         const siswa = siswaList.find(x => x.id === s.siswaId);
         const tugas = store.getTugas().find(x => x.id === s.tugasId);
         if (!siswa || !tugas) return;
-        // Skip notif kalau guru lagi di dashboard atau analisis
+        // Skip notif kalau guru lagi di dashboard atau analisis — jangan tandai seen dulu.
         if (route === "home-guru" || route === "analisis-tugas") return;
+        seenIds.add(eventKey);
         pushNotif({
           type: "submission",
           title: "Submission baru",
@@ -10835,9 +10849,9 @@ function useNotifications(user, store, route) {
           if (msg.toId !== user.id) return;
           const eventKey = `msg_${tid}_${msgId}`;
           if (seenIds.has(eventKey)) return;
-          seenIds.add(eventKey);
-          // Skip notif kalau lagi di halaman pesan
+          // Skip notif kalau lagi di halaman pesan — jangan tandai seen dulu.
           if (route === "chat") return;
+          seenIds.add(eventKey);
           const siswaList = store.getAllSiswa();
           const guru = store.fbGuru;
           const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
@@ -11008,9 +11022,13 @@ function AppInner() {
 
   async function handleLogout() {
     if (user) setOffline(user.uid);
-    // Clear semua cache localStorage
+    // Bersihkan cache localStorage, KECUALI autosave kuis (astrolab.quiz.*).
+    // Autosave itu satu-satunya salinan jawaban siswa yang belum dikumpulkan — kalau ikut dihapus,
+    // siswa yang logout di tengah pengerjaan (atau login ulang karena sesi bermasalah) kehilangan
+    // seluruh progresnya. Data ini sudah di-scope per siswa+tugas, jadi aman ditinggal.
     try {
-      const keys = Object.keys(localStorage).filter(k => k.startsWith("astrolab."));
+      const keys = Object.keys(localStorage)
+        .filter(k => k.startsWith("astrolab.") && !k.startsWith("astrolab.quiz."));
       keys.forEach(k => localStorage.removeItem(k));
     } catch {}
     await signOut(auth);
