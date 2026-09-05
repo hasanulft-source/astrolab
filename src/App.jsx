@@ -1911,12 +1911,46 @@ function useStore() {
     return () => u10();
   }, []);
 
-  const boostGroupKey = (siswaId, mapel, jenjang, periode) => `${siswaId}_${mapel}_${jenjang}_${periode}`;
+  // PENTING: `periode` selalu mengandung "/" (mis. "Semester Ganjil 2026/2027") dan di Firebase RTDB
+  // "/" adalah PEMISAH PATH, bukan karakter biasa. Tanpa sanitize, key ikut bercabang jadi sub-path
+  // (nilaiBoost/{...2026}/{2027}/{id}) sementara pembacaan pakai string utuh sebagai satu key —
+  // hasilnya bonus tersimpan tapi tidak pernah terbaca. Sanitize sama persis dengan nilaiAkhirKey.
+  const boostGroupKey = (siswaId, mapel, jenjang, periode) =>
+    `${siswaId}_${mapel}_${jenjang}_${periode}`.replace(/[.#$/[\]]/g, "-");
+
+  // Path LAMA (sebelum sanitize) — masih dibaca supaya bonus yang terlanjur diinput guru sebelum
+  // fix ini tetap muncul, bisa diedit, dan bisa dihapus. Tulisan baru selalu ke path yang sudah bersih.
+  const legacyBoostGroup = (siswaId, mapel, jenjang, periode) => {
+    const raw = `${siswaId}_${mapel}_${jenjang}_${periode}`;
+    return raw.includes("/") ? raw : null;
+  };
+  // Telusuri nilaiBoostData mengikuti segmen path (menangani key datar maupun yang terlanjur bercabang)
+  const readBoostGroup = (path) => {
+    if (!path) return {};
+    let node = nilaiBoostData;
+    for (const seg of path.split("/")) {
+      node = node?.[seg];
+      if (!node || typeof node !== "object") return {};
+    }
+    return node;
+  };
+  // Resolusi path absolut 1 boost — cek lokasi baru dulu, baru lokasi lama
+  const boostPath = (siswaId, mapel, jenjang, periode, boostId) => {
+    const grp = boostGroupKey(siswaId, mapel, jenjang, periode);
+    if (readBoostGroup(grp)[boostId]) return `nilaiBoost/${grp}/${boostId}`;
+    const legacy = legacyBoostGroup(siswaId, mapel, jenjang, periode);
+    if (legacy && readBoostGroup(legacy)[boostId]) return `nilaiBoost/${legacy}/${boostId}`;
+    return `nilaiBoost/${grp}/${boostId}`;
+  };
 
   // Return array of boost untuk 1 siswa+mapel+jenjang+periode (semua komponen, atau filtered by komponen kalau dikasih)
   const getBoosts = (siswaId, mapel, jenjang, periode, komponen = null) => {
-    const grp = nilaiBoostData[boostGroupKey(siswaId, mapel, jenjang, periode)] || {};
-    const arr = Object.entries(grp).map(([id, v]) => ({ ...v, id }));
+    const grp = readBoostGroup(boostGroupKey(siswaId, mapel, jenjang, periode));
+    const legacy = readBoostGroup(legacyBoostGroup(siswaId, mapel, jenjang, periode));
+    const arr = [
+      ...Object.entries(grp).map(([id, v]) => ({ ...v, id })),
+      ...Object.entries(legacy).map(([id, v]) => ({ ...v, id })),
+    ];
     return komponen ? arr.filter(b => b.komponen === komponen) : arr;
   };
 
@@ -1942,13 +1976,11 @@ function useStore() {
   const updateBoost = async (siswaId, mapel, jenjang, periode, boostId, patch) => {
     if (patch.nilai !== undefined && (typeof patch.nilai !== "number" || patch.nilai <= 0 || patch.nilai > 100)) throw new Error("Nilai bonus harus 1-100");
     if (patch.alasan !== undefined && (!patch.alasan || patch.alasan.trim().length < 5)) throw new Error("Alasan wajib diisi (minimal 5 karakter)");
-    const grp = boostGroupKey(siswaId, mapel, jenjang, periode);
-    await update(ref(db, `nilaiBoost/${grp}/${boostId}`), { ...patch, updatedAt: Date.now() });
+    await update(ref(db, boostPath(siswaId, mapel, jenjang, periode, boostId)), { ...patch, updatedAt: Date.now() });
   };
 
   const removeBoost = async (siswaId, mapel, jenjang, periode, boostId) => {
-    const grp = boostGroupKey(siswaId, mapel, jenjang, periode);
-    await remove(ref(db, `nilaiBoost/${grp}/${boostId}`));
+    await remove(ref(db, boostPath(siswaId, mapel, jenjang, periode, boostId)));
   };
 
   // Hitung rata-rata "Tugas Astrolab" untuk siswa, STRICT filter by mapel+jenjang (tidak boleh campur IPA/Informatika).
