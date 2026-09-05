@@ -1521,7 +1521,7 @@ function useStore() {
   const getSubBy = (sid, tid) => subs.find(s => s.siswaId === sid && s.tugasId === tid);
 
   // STATS
-  const getStats = (sid) => stats[sid] || { poin: 0, poinHistory: [], tugasSelesai: 0, nilaiList: [], nilaiRata: 0, streak: 0 };
+  const getStats = (sid) => stats[sid] || { poin: 0, poinHistory: [], tugasSelesai: 0, nilaiList: [], nilaiRata: 0, streak: 0, streakResetFor: {} };
   const updateStats = async (sid, nilai, poinDapat, ontime = true) => {
     const s = getStats(sid);
     const newPoin = s.poin + poinDapat;
@@ -1540,11 +1540,30 @@ function useStore() {
       streak: newStreak,
     });
   };
-  // Reset streak siswa kalau kelewat deadline (dipanggil saat siswa buka tugas yang udah lewat & belum dikerjain)
-  const resetStreakIfMissed = async (sid) => {
+  // Reset streak siswa kalau kelewat deadline (dipanggil saat siswa buka dashboard).
+  //
+  // PENTING: tugas yang terlewat TIDAK PERNAH hilang dari daftar "lewat deadline & belum dikerjakan".
+  // Versi lama cuma cek `streak > 0` lalu reset, jadi begitu siswa melewatkan SATU tugas, kondisinya
+  // permanen true — setiap kali dia buka Beranda streak-nya dibalikin ke 0 lagi, selamanya. Praktis
+  // siswa itu gak akan pernah bisa bangun streak lagi seumur semester.
+  //
+  // Fix: catat tugas yang sudah "menghukum" siswa di stats.streakResetFor = { [tugasId]: true }.
+  // Satu tugas cuma boleh reset streak SEKALI. Tugas yang sudah tercatat di-skip di kunjungan berikutnya.
+  //
+  // Penandaan tetap dilakukan walau streak sudah 0, supaya tugas itu gak "menabung hukuman" dan
+  // baru meledak nanti pas siswa sudah membangun streak baru.
+  const resetStreakIfMissed = async (sid, missedTugasIds = []) => {
+    if (!missedTugasIds.length) return;
     const s = getStats(sid);
-    if ((s.streak || 0) === 0) return;
-    await update(ref(db, `stats/${sid}`), { streak: 0 });
+    const sudahDihitung = s.streakResetFor || {};
+    const baru = missedTugasIds.filter(tid => tid && !sudahDihitung[tid]);
+    if (baru.length === 0) return; // semua tugas terlewat sudah pernah diproses — jangan reset lagi
+
+    // Multi-path update: tandai semua tugas baru sekaligus + reset streak dalam satu write.
+    const patch = {};
+    baru.forEach(tid => { patch[`streakResetFor/${tid}`] = true; });
+    if ((s.streak || 0) > 0) patch.streak = 0;
+    await update(ref(db, `stats/${sid}`), patch);
   };
 
   // ─── INTERVENSI NILAI (guru only) ───
@@ -2545,21 +2564,29 @@ function DashboardSiswa({ user, store, navigate }) {
     return tb - ta;
   };
   const tugas = allTugas.filter(t => fmtDl(t.deadline).tone !== "bad").sort(byNewest); // belum lewat deadline
-  const tugasLewat = allTugas.filter(t => fmtDl(t.deadline).tone === "bad" && !store.hasSub(user.id, t.id));
+  // Tugas yang benar-benar "hangus": lewat deadline, belum dikerjakan, DAN gak punya window susulan
+  // personal yang masih aktif. Siswa yang masih punya jatah susulan (mis. hasil reset dari guru)
+  // belum boleh divonis — konsisten dengan perlakuan di getTugasAstrolabAvg.
+  const tugasLewat = allTugas.filter(t =>
+    fmtDl(t.deadline).tone === "bad" &&
+    !store.hasSub(user.id, t.id) &&
+    !store.isSusulanAktif(t.id, user.id)
+  );
   const lb = store.getLeaderboard(user.jenjang);
   const myRank = lb.find(s => s.id === user.id);
 
-  // Reset streak kalau siswa lewatin deadline tanpa submit. Trigger sekali per session pas data ready.
+  // Reset streak kalau siswa lewatin deadline tanpa submit. Trigger sekali per mount pas data ready.
+  // Dedupe per-tugas ada di store (stats.streakResetFor) — lihat resetStreakIfMissed.
   const hasCheckedStreak = useRef(false);
+  const missedIds = tugasLewat.map(t => t.id).join(",");
   useEffect(() => {
     if (hasCheckedStreak.current) return;
     // Tunggu sampai data loaded (allTugas terisi atau confirmed empty)
     if (store.loading) return;
-    if (tugasLewat.length > 0 && (stats.streak || 0) > 0) {
-      hasCheckedStreak.current = true;
-      store.resetStreakIfMissed(user.id);
-    }
-  }, [tugasLewat.length, stats.streak, store.loading]);
+    if (!missedIds) return;
+    hasCheckedStreak.current = true;
+    store.resetStreakIfMissed(user.id, missedIds.split(","));
+  }, [missedIds, store.loading]);
 
   // Dynamic greeting by waktu
   const hour = new Date().getHours();
