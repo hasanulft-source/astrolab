@@ -2589,7 +2589,14 @@ function LoginScreen({ onLogin }) {
 // ─── DASHBOARD SISWA ───
 function DashboardSiswa({ user, store, navigate }) {
   const stats = store.getStats(user.id);
-  const allTugas = store.getTugas().filter(t => t.jenjang === user.jenjang && t.status === "aktif");
+  // Filter sama seperti DaftarTugas: tugas personal (assignedTo array) hanya untuk siswa yang di-assign.
+  // Tanpa ini, "Latihan Khusus" milik siswa lain bocor ke Beranda semua orang — dan yang lebih parah,
+  // ikut masuk hitungan tugasLewat sehingga memicu reset streak siswa yang bahkan tidak ditugasi.
+  const allTugas = store.getTugas().filter(t => {
+    if (t.jenjang !== user.jenjang || t.status !== "aktif") return false;
+    if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(user.id)) return false;
+    return true;
+  });
   const byNewest = (a, b) => {
     const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
