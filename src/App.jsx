@@ -6495,23 +6495,345 @@ function OrphanEssayCard({ result, saving, onNilai }) {
   );
 }
 
+// ═══ VIEW: Render distribusi jawaban per soal (dipake di AnalisisTugasDetail expand) ═══
+function SoalDistribusiView({ dist, soal }) {
+  if (!dist) return <div style={{ fontSize: 11, color: "var(--ink-3)", fontStyle: "italic" }}>Distribusi tidak tersedia untuk tipe soal ini.</div>;
+
+  // Helper: render 1 row opsi dengan bar horizontal
+  const OpsiBar = ({ label, text, count, pct, isKunci, isDominantWrong, showKuncilabel = true }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+      <div style={{ minWidth: 22, fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700, color: isKunci ? "var(--good)" : "var(--ink-3)" }}>{label}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+          <div style={{ fontSize: 12, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{text || <span style={{ fontStyle: "italic", color: "var(--ink-3)" }}>(kosong)</span>}</div>
+          {isKunci && showKuncilabel && <span style={{ fontSize: 9, background: "var(--good-bg)", color: "var(--good)", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>✓ KUNCI</span>}
+          {isDominantWrong && <span style={{ fontSize: 9, background: "var(--bad-bg)", color: "var(--bad)", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>⚠ Dominan</span>}
+        </div>
+        <div style={{ height: 6, background: "var(--surface)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line-soft)" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: isKunci ? "var(--good)" : isDominantWrong ? "var(--bad)" : "var(--ink-3)", opacity: isKunci || isDominantWrong ? 1 : 0.4, borderRadius: 99, transition: "width .3s" }} />
+        </div>
+      </div>
+      <div style={{ minWidth: 60, textAlign: "right", fontSize: 11, fontFamily: "var(--mono)", fontWeight: 600, color: "var(--ink-2)" }}>{count} <span style={{ color: "var(--ink-3)" }}>({pct}%)</span></div>
+    </div>
+  );
+
+  // ── PG / TF / Excel (single-choice)
+  if (dist.type === "single-choice") {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".05em" }}>Distribusi Jawaban</div>
+        {dist.opsi.map(o => (
+          <OpsiBar
+            key={o.idx}
+            label={soal.type === "tf" ? (o.idx === 0 ? "B" : "S") : String.fromCharCode(65 + o.idx)}
+            text={o.text}
+            count={o.count}
+            pct={o.pct}
+            isKunci={o.isKunci}
+            isDominantWrong={o.idx === dist.dominantWrong}
+          />
+        ))}
+        {dist.belumJawab > 0 && (
+          <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 6, fontStyle: "italic" }}>
+            + {dist.belumJawab} siswa tidak menjawab
+          </div>
+        )}
+        {dist.dominantWrong !== null && dist.opsi[dist.dominantWrong] && (
+          <div style={{ marginTop: 10, padding: "8px 10px", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 6, fontSize: 11, color: "var(--ink-1)", lineHeight: 1.5 }}>
+            💡 <b>Insight:</b> Opsi <b>{soal.type === "tf" ? (dist.dominantWrong === 0 ? "Benar" : "Salah") : String.fromCharCode(65 + dist.dominantWrong)}</b> paling banyak dipilih siswa yang salah — kemungkinan pola miskonsepsi. Perlu ditelusuri saat pembahasan.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Kompleks (multi-choice): show per-opsi individual pick rate
+  if (dist.type === "multi-choice") {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".05em" }}>Distribusi Pilihan (per opsi)</div>
+        {dist.opsi.map(o => (
+          <OpsiBar
+            key={o.idx}
+            label={String.fromCharCode(65 + o.idx)}
+            text={o.text}
+            count={o.count}
+            pct={o.pct}
+            isKunci={o.isKunci}
+          />
+        ))}
+        <div style={{ marginTop: 8, padding: "6px 10px", background: "var(--surface)", borderRadius: 6, fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+          <b>Cara baca:</b> Soal kompleks butuh kombinasi opsi. Opsi hijau (KUNCI) idealnya dipilih 100%, opsi lain 0%. Deviasi = petunjuk miskonsepsi.
+        </div>
+      </div>
+    );
+  }
+
+  // ── Pasangan (matching): per-pair correctness
+  if (dist.type === "matching") {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".05em" }}>Akurasi per Pasangan</div>
+        {dist.pairs.map((p, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < dist.pairs.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+            <div style={{ minWidth: 22, fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700, color: "var(--ink-3)" }}>{i + 1}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, color: "var(--ink-1)", lineHeight: 1.4 }}>
+                <b>{p.kiri}</b> ↔ <span style={{ color: "var(--good)" }}>{p.kunciKananText}</span>
+              </div>
+              <div style={{ height: 5, background: "var(--surface)", borderRadius: 99, overflow: "hidden", marginTop: 3, border: "1px solid var(--line-soft)" }}>
+                <div style={{ height: "100%", width: `${p.pct}%`, background: p.pct >= 70 ? "var(--good)" : p.pct >= 40 ? "var(--warn)" : "var(--bad)", borderRadius: 99 }} />
+              </div>
+            </div>
+            <div style={{ minWidth: 70, textAlign: "right", fontSize: 11, fontFamily: "var(--mono)", fontWeight: 600, color: p.pct >= 70 ? "var(--good)" : p.pct >= 40 ? "var(--warn)" : "var(--bad)" }}>{p.correctCount}/{dist.total} ({p.pct}%)</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Pseudocode (text answer): top 5 jawaban
+  if (dist.type === "text-answer") {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Top Jawaban</div>
+        <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginBottom: 8 }}>Kunci: <b style={{ color: "var(--good)", fontFamily: "var(--mono)" }}>"{dist.correct}"</b></div>
+        {dist.topAnswers.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--ink-3)", fontStyle: "italic" }}>Belum ada jawaban.</div>
+        ) : dist.topAnswers.map((a, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>"{a.text}"</div>
+                {a.isCorrect && <span style={{ fontSize: 9, background: "var(--good-bg)", color: "var(--good)", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>✓ BENAR</span>}
+              </div>
+              <div style={{ height: 5, background: "var(--surface)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line-soft)" }}>
+                <div style={{ height: "100%", width: `${a.pct}%`, background: a.isCorrect ? "var(--good)" : "var(--ink-3)", opacity: a.isCorrect ? 1 : 0.5, borderRadius: 99 }} />
+              </div>
+            </div>
+            <div style={{ minWidth: 60, textAlign: "right", fontSize: 11, fontFamily: "var(--mono)", fontWeight: 600, color: "var(--ink-2)" }}>{a.count} <span style={{ color: "var(--ink-3)" }}>({a.pct}%)</span></div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Debug: top pattern
+  if (dist.type === "debug") {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>Top Perbaikan Debug</div>
+        <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginBottom: 8 }}>
+          Kunci: baris <b style={{ color: "var(--good)", fontFamily: "var(--mono)" }}>{dist.correctBaris}</b> → <b style={{ color: "var(--good)", fontFamily: "var(--mono)" }}>"{dist.correctPerbaikan}"</b>
+        </div>
+        {dist.topPatterns.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--ink-3)", fontStyle: "italic" }}>Belum ada jawaban.</div>
+        ) : dist.topPatterns.map((p, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                <div style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                  Br.{p.baris} → "{p.perbaikan}"
+                </div>
+                {p.isCorrect && <span style={{ fontSize: 9, background: "var(--good-bg)", color: "var(--good)", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>✓ BENAR</span>}
+              </div>
+              <div style={{ height: 5, background: "var(--surface)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line-soft)" }}>
+                <div style={{ height: "100%", width: `${p.pct}%`, background: p.isCorrect ? "var(--good)" : "var(--ink-3)", opacity: p.isCorrect ? 1 : 0.5, borderRadius: 99 }} />
+              </div>
+            </div>
+            <div style={{ minWidth: 60, textAlign: "right", fontSize: 11, fontFamily: "var(--mono)", fontWeight: 600, color: "var(--ink-2)" }}>{p.count} <span style={{ color: "var(--ink-3)" }}>({p.pct}%)</span></div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Essay / Refleksi: gak bisa distribusi otomatis
+  if (dist.type === "essay") {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".05em" }}>Ringkasan Nilai Essay</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          <div style={{ padding: "10px 12px", background: "var(--surface)", borderRadius: 6, border: "1px solid var(--line-soft)", textAlign: "center" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--mono)", color: "var(--good)" }}>{dist.dinilai}</div>
+            <div style={{ fontSize: 10, color: "var(--ink-3)" }}>Sudah dinilai</div>
+          </div>
+          <div style={{ padding: "10px 12px", background: "var(--surface)", borderRadius: 6, border: "1px solid var(--line-soft)", textAlign: "center" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--mono)", color: dist.belumDinilai > 0 ? "var(--warn)" : "var(--ink-3)" }}>{dist.belumDinilai}</div>
+            <div style={{ fontSize: 10, color: "var(--ink-3)" }}>Belum dinilai</div>
+          </div>
+          <div style={{ padding: "10px 12px", background: "var(--surface)", borderRadius: 6, border: "1px solid var(--line-soft)", textAlign: "center" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--mono)", color: dist.avgNilai !== null ? (dist.avgNilai >= 80 ? "var(--good)" : dist.avgNilai >= 60 ? "var(--warn)" : "var(--bad)") : "var(--ink-3)" }}>{dist.avgNilai !== null ? dist.avgNilai : "—"}</div>
+            <div style={{ fontSize: 10, color: "var(--ink-3)" }}>Rata-rata</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 8, padding: "6px 10px", background: "var(--surface)", borderRadius: 6, fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+          <b>Catatan:</b> Distribusi otomatis tidak tersedia untuk essay/refleksi karena jawaban terbuka. Buka "Nilai Essay" untuk review jawaban per siswa.
+        </div>
+      </div>
+    );
+  }
+
+  return <div style={{ fontSize: 11, color: "var(--ink-3)", fontStyle: "italic" }}>Distribusi tidak tersedia untuk tipe soal ini.</div>;
+}
+
+// ═══ HELPER: Compute distribusi jawaban per soal untuk analisis miskonsepsi ═══
+// Return object dengan `type` (single-choice/multi-choice/matching/text/debug/essay) + data spesifik per tipe.
+// Highlight dominant distractor (opsi salah yang paling banyak dipilih) — signal miskonsepsi.
+function computeSoalDistribution(soal, soalIdx, subs) {
+  // Ambil semua results untuk soal ini (via soalId dulu, origIdx fallback)
+  const results = subs
+    .map(sub => {
+      const r = (sub.soalResults || []).find(x => (x.soalId && x.soalId === soal.id) || (!x.soalId && x.origIdx === soalIdx));
+      return r ? { ...r, siswaId: sub.siswaId, subId: sub.id } : null;
+    })
+    .filter(Boolean);
+  const total = results.length;
+
+  // PG / Excel — distribusi opsi + highlight kunci & dominant distractor
+  if (soal.type === "pg" || soal.type === "excel") {
+    const counts = (soal.opsi || []).map(() => 0);
+    let belumJawab = 0;
+    results.forEach(r => {
+      if (typeof r.pickedAnswer === "number" && counts[r.pickedAnswer] !== undefined) counts[r.pickedAnswer]++;
+      else belumJawab++;
+    });
+    const opsi = (soal.opsi || []).map((text, idx) => ({
+      idx, text, count: counts[idx],
+      pct: total > 0 ? Math.round((counts[idx] / total) * 100) : 0,
+      isKunci: idx === soal.jawaban,
+    }));
+    // Dominant wrong = opsi salah yang paling banyak dipilih (min 1 pemilih)
+    const wrongOpsi = opsi.filter(o => !o.isKunci && o.count > 0);
+    const dominantWrong = wrongOpsi.length > 0 ? wrongOpsi.reduce((a, b) => b.count > a.count ? b : a).idx : null;
+    return { type: "single-choice", opsi, dominantWrong, belumJawab, total };
+  }
+
+  // TF (True/False) — 2 opsi
+  if (soal.type === "tf") {
+    const counts = [0, 0]; // [Benar, Salah]
+    let belumJawab = 0;
+    results.forEach(r => {
+      if (r.pickedAnswer === 0 || r.pickedAnswer === 1) counts[r.pickedAnswer]++;
+      else belumJawab++;
+    });
+    const opsi = [
+      { idx: 0, text: "Benar", count: counts[0], pct: total > 0 ? Math.round((counts[0] / total) * 100) : 0, isKunci: soal.jawaban === 0 },
+      { idx: 1, text: "Salah", count: counts[1], pct: total > 0 ? Math.round((counts[1] / total) * 100) : 0, isKunci: soal.jawaban === 1 },
+    ];
+    const wrongOpsi = opsi.filter(o => !o.isKunci && o.count > 0);
+    const dominantWrong = wrongOpsi.length > 0 ? wrongOpsi.reduce((a, b) => b.count > a.count ? b : a).idx : null;
+    return { type: "single-choice", opsi, dominantWrong, belumJawab, total };
+  }
+
+  // Kompleks (multi-select) — per opsi count + kunci set
+  if (soal.type === "komplex") {
+    const counts = (soal.opsi || []).map(() => 0);
+    let belumJawab = 0;
+    results.forEach(r => {
+      if (Array.isArray(r.pickedMulti) && r.pickedMulti.length > 0) {
+        r.pickedMulti.forEach(idx => { if (counts[idx] !== undefined) counts[idx]++; });
+      } else belumJawab++;
+    });
+    const kunciSet = new Set(soal.jawaban || []);
+    const opsi = (soal.opsi || []).map((text, idx) => ({
+      idx, text, count: counts[idx],
+      pct: total > 0 ? Math.round((counts[idx] / total) * 100) : 0,
+      isKunci: kunciSet.has(idx),
+    }));
+    return { type: "multi-choice", opsi, belumJawab, total };
+  }
+
+  // Pasangan — per-pair correctness
+  if (soal.type === "pasang") {
+    const pairs = (soal.kiri || []).map((kiriText, ki) => {
+      let correctCount = 0;
+      results.forEach(r => {
+        if (r.pickedPasang && r.pickedPasang[ki] === (soal.jawaban || [])[ki]) correctCount++;
+      });
+      return {
+        kiri: kiriText,
+        kunciKananIdx: (soal.jawaban || [])[ki],
+        kunciKananText: (soal.kanan || [])[(soal.jawaban || [])[ki]] || "—",
+        correctCount,
+        pct: total > 0 ? Math.round((correctCount / total) * 100) : 0,
+      };
+    });
+    return { type: "matching", pairs, total };
+  }
+
+  // Pseudocode — top jawaban text
+  if (soal.type === "pseudocode") {
+    const freq = {};
+    results.forEach(r => {
+      const key = (r.pickedText || "(kosong)").trim();
+      freq[key] = (freq[key] || 0) + 1;
+    });
+    const topAnswers = Object.entries(freq)
+      .map(([text, count]) => ({
+        text, count,
+        pct: total > 0 ? Math.round((count / total) * 100) : 0,
+        isCorrect: text === (soal.jawabanBenar || "").trim(),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    return { type: "text-answer", topAnswers, correct: soal.jawabanBenar || "—", total };
+  }
+
+  // Debug — top pattern {baris, perbaikan}
+  if (soal.type === "debug") {
+    const freq = {};
+    results.forEach(r => {
+      const pd = r.pickedDebug || {};
+      const key = `${pd.baris ?? "—"}::${(pd.perbaikan || "(kosong)").trim()}`;
+      freq[key] = (freq[key] || 0) + 1;
+    });
+    const topPatterns = Object.entries(freq)
+      .map(([key, count]) => {
+        const [baris, perbaikan] = key.split("::");
+        const isCorrect = String(baris) === String(soal.barisBug) && perbaikan === (soal.perbaikanBenar || "").trim();
+        return { baris, perbaikan, count, pct: total > 0 ? Math.round((count / total) * 100) : 0, isCorrect };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    return { type: "debug", topPatterns, correctBaris: soal.barisBug, correctPerbaikan: soal.perbaikanBenar || "—", total };
+  }
+
+  // Essay / Refleksi — no distribution, just grading summary
+  if (soal.type === "essay" || soal.type === "refleksi") {
+    const dinilai = results.filter(r => r.statusNilai === "dinilai");
+    const belumDinilai = results.length - dinilai.length;
+    const avgNilai = dinilai.length > 0 ? Math.round(dinilai.reduce((sum, r) => sum + (r.nilaiEssay || 0), 0) / dinilai.length) : null;
+    return { type: "essay", dinilai: dinilai.length, belumDinilai, avgNilai, total };
+  }
+
+  return null;
+}
+
 function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
   const t = store.getTugas().find(x => x.id === tugasId);
   if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
-  const subs = store.getSubs().filter(s => s.tugasId === t.id);
-  const total = subs.length;
+  const allSubs = store.getSubs().filter(s => s.tugasId === t.id);
   const [nilaiEssayTarget, setNilaiEssayTarget] = useState(null);
+  const [hanyaKKM, setHanyaKKM] = useState(false);
+  const [expandedSoal, setExpandedSoal] = useState(null); // soalIdx yang lagi di-expand untuk lihat distribusi
+  // Filter: kalau toggle "Hanya di bawah KKM (80)" aktif, cuma analisa submissions dengan nilai < 80
+  const subs = hanyaKKM ? allSubs.filter(s => (s.nilai || 0) < 80) : allSubs;
+  const total = subs.length;
+  const totalAll = allSubs.length;
   const hasEssay = (t.soal || []).some(s => s.type === "essay");
-  const perluDinilai = subs.filter(sub => (sub.soalResults || []).some(r => r.statusNilai === "perlu_dinilai")).length;
+  const perluDinilai = allSubs.filter(sub => (sub.soalResults || []).some(r => r.statusNilai === "perlu_dinilai")).length;
 
-  if (total === 0) return <div className="empty">Belum ada siswa yang mengerjakan.</div>;
+  if (totalAll === 0) return <div className="empty">Belum ada siswa yang mengerjakan.</div>;
 
-  const avgNilai = Math.round(subs.reduce((a, s) => a + s.nilai, 0) / total);
-  const feedback = avgNilai >= 85
-    ? "Soal tergolong mudah dikuasai siswa. Pertimbangkan meningkatkan kompleksitas soal untuk menantang siswa lebih jauh."
-    : avgNilai >= 65
-      ? "Tingkat kesulitan soal cukup baik. Sebagian siswa sudah memahami materi, namun masih ada ruang untuk perbaikan."
-      : "Soal tergolong sulit bagi siswa. Pertimbangkan mengulang materi sebelum memberikan tugas serupa.";
+  const avgNilai = total > 0 ? Math.round(subs.reduce((a, s) => a + s.nilai, 0) / total) : 0;
+  const feedback = total === 0
+    ? "Tidak ada siswa yang perlu perhatian khusus di bawah KKM. 👍"
+    : avgNilai >= 85
+      ? "Soal tergolong mudah dikuasai siswa. Pertimbangkan meningkatkan kompleksitas soal untuk menantang siswa lebih jauh."
+      : avgNilai >= 65
+        ? "Tingkat kesulitan soal cukup baik. Sebagian siswa sudah memahami materi, namun masih ada ruang untuk perbaikan."
+        : "Soal tergolong sulit bagi siswa. Pertimbangkan mengulang materi sebelum memberikan tugas serupa.";
 
   // Hitung akurasi per soal dari soalResults
   const soalStats = (t.soal || []).map((s, i) => {
@@ -6545,7 +6867,7 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
       <div style={{ paddingTop: 8, paddingBottom: 14 }}>
         <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 2 }}>{t.mapel}</div>
         <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>{t.judul}</h1>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>{total} siswa · {t.soal?.length || 0} soal</div>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>{totalAll} siswa submit · {t.soal?.length || 0} soal</div>
       </div>
 
       {/* Banner nilai essay */}
@@ -6602,39 +6924,67 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
         </div>
       )}
 
-      {/* Per soal — sorted sulit ke mudah */}
-      <div className="sh"><h2>Per Soal</h2></div>
+      {/* Per soal — sorted sulit ke mudah + filter KKM + expand distribusi jawaban */}
+      <div className="sh" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <h2>Per Soal {hanyaKKM && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--ink-3)" }}>· dari {total} siswa &lt; KKM</span>}</h2>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: hanyaKKM ? "var(--accent-2)" : "var(--ink-3)", fontWeight: hanyaKKM ? 700 : 500, padding: "5px 10px", borderRadius: 6, background: hanyaKKM ? "var(--accent-tint)" : "transparent", transition: "all .15s" }}>
+          <input type="checkbox" checked={hanyaKKM} onChange={e => { setHanyaKKM(e.target.checked); setExpandedSoal(null); }} style={{ margin: 0, accentColor: "var(--accent-2)" }} />
+          Hanya siswa &lt; KKM (80)
+        </label>
+      </div>
+      {total === 0 ? (
+        <Card><div className="empty empty-box" style={{ padding: "24px 16px" }}><I n="check" s={28} style={{ color: "var(--good)" }} /><h3 style={{ color: "var(--good)" }}>Semua siswa di atas KKM</h3><p>Tidak ada siswa dengan nilai &lt; 80 untuk tugas ini.</p></div></Card>
+      ) : (
       <Card pad="none" style={{ overflow: "hidden", marginBottom: 16 }}>
-        {soalStats.map((s, idx) => (
-          <div key={s.i} style={{ padding: "14px 16px", borderBottom: idx < soalStats.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>
-                  Soal {s.i + 1} · {s.poin || Math.floor(t.poinMax / t.soal.length)} poin
+        {soalStats.map((s, idx) => {
+          const isExpanded = expandedSoal === s.i;
+          const dist = isExpanded ? computeSoalDistribution(s, s.i, subs) : null;
+          return (
+            <div key={s.i} style={{ borderBottom: idx < soalStats.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+              <button
+                onClick={() => setExpandedSoal(isExpanded ? null : s.i)}
+                style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "14px 16px", fontFamily: "var(--font)" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
+                      Soal {s.i + 1} · {s.poin || Math.floor(t.poinMax / t.soal.length)} poin
+                      <span style={{ background: "var(--surface-alt)", color: "var(--ink-2)", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>{s.type.toUpperCase()}</span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{s.pertanyaan}</div>
+                  </div>
+                  <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: s.color, padding: "3px 8px", background: s.bg, borderRadius: 6 }}>{s.label}</span>
+                    <I n={isExpanded ? "chevD" : "chevR"} s={14} style={{ color: "var(--ink-3)" }} />
+                  </div>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{s.pertanyaan}</div>
-              </div>
-              <div style={{ flexShrink: 0 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: s.color, padding: "3px 8px", background: s.bg, borderRadius: 6 }}>{s.label}</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ flex: 1, height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${s.pct}%`, background: s.color, borderRadius: 99, transition: "width .5s" }} />
-              </div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0, fontFamily: "var(--mono)" }}>{s.correctCount}/{total} benar ({s.pct}%)</div>
-            </div>
-          </div>
-        ))}
-      </Card>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1, height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${s.pct}%`, background: s.color, borderRadius: 99, transition: "width .5s" }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0, fontFamily: "var(--mono)" }}>{s.correctCount}/{total} benar ({s.pct}%)</div>
+                </div>
+              </button>
 
-      {/* Distribusi nilai siswa */}
-      <div className="sh"><h2>Distribusi Nilai</h2></div>
+              {/* Expandable distribusi jawaban */}
+              {isExpanded && dist && (
+                <div style={{ padding: "12px 16px 16px", background: "var(--surface-alt)", borderTop: "1px solid var(--line-soft)" }}>
+                  <SoalDistribusiView dist={dist} soal={s} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </Card>
+      )}
+
+      {/* Distribusi nilai siswa — SELALU pake allSubs (bukan filtered), biar konsisten menampilkan semua siswa */}
+      <div className="sh"><h2>Distribusi Nilai <span style={{ fontSize: 11, fontWeight: 500, color: "var(--ink-3)" }}>· {totalAll} siswa</span></h2></div>
       <Card pad="none" style={{ overflow: "hidden", marginBottom: 16 }}>
-        {subs.slice().sort((a, b) => b.nilai - a.nilai).map((s, i) => {
+        {allSubs.slice().sort((a, b) => b.nilai - a.nilai).map((s, i) => {
           const siswa = store.getAllSiswa().find(x => x.id === s.siswaId) || { nama: s.siswaId };
           return (
-            <div key={s.id || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderBottom: i < subs.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+            <div key={s.id || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderBottom: i < allSubs.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-3)", width: 20, textAlign: "right", flexShrink: 0, fontFamily: "var(--mono)" }}>{i + 1}</div>
               <UserAvatar userId={s.siswaId} name={siswa.nama} size="sm" store={store} />
               <div style={{ flex: 1, minWidth: 0 }}>
