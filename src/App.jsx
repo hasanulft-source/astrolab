@@ -6048,7 +6048,13 @@ function NilaiEssayModal({ tugas, store, onClose }) {
     );
   }
 
-  const currentSub = subsWithEssay[activeSubIdx];
+  // subsWithEssay di-derive ulang tiap render dari data live: begitu essay terakhir seorang siswa
+  // selesai dinilai, siswa itu KELUAR dari array — tapi activeSubIdx tidak ikut menyusut. Kalau dia
+  // ada di indeks terakhir (alur normal: klik "Siswa berikutnya" sampai habis, lalu nilai yang
+  // terakhir), currentSub jadi undefined dan render di bawah melempar TypeError.
+  // Clamp indeksnya supaya selalu menunjuk entri yang valid.
+  const safeSubIdx = Math.min(activeSubIdx, subsWithEssay.length - 1);
+  const currentSub = subsWithEssay[safeSubIdx];
   const siswa = siswaList.find(s => s.id === currentSub?.siswaId);
 
   // Shared save logic — dipakai baik untuk soal yang masih match normal, maupun jawaban orphan
@@ -6136,7 +6142,7 @@ function NilaiEssayModal({ tugas, store, onClose }) {
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap", paddingBottom: 2 }}>
           {subsWithEssay.map((sub, i) => {
             const s = siswaList.find(x => x.id === sub.siswaId);
-            const isCurrent = i === activeSubIdx;
+            const isCurrent = i === safeSubIdx;
             const perluDinilai = (sub.soalResults || []).filter(r => r.statusNilai === "perlu_dinilai").length;
             return (
               <button key={sub.id} onClick={() => setActiveSubIdx(i)} title={s?.nama || sub.siswaId} style={{
@@ -6195,9 +6201,9 @@ function NilaiEssayModal({ tugas, store, onClose }) {
         </div>
 
         <div className="modal-actions" style={{ marginTop: 14 }}>
-          {activeSubIdx > 0 && <button className="btn btn-outline btn-sm" onClick={() => setActiveSubIdx(activeSubIdx - 1)}>← Siswa sebelumnya</button>}
+          {safeSubIdx > 0 && <button className="btn btn-outline btn-sm" onClick={() => setActiveSubIdx(safeSubIdx - 1)}>← Siswa sebelumnya</button>}
           <div style={{ flex: 1 }} />
-          {activeSubIdx < subsWithEssay.length - 1 && <button className="btn btn-primary btn-sm" onClick={() => setActiveSubIdx(activeSubIdx + 1)}>Siswa berikutnya →</button>}
+          {safeSubIdx < subsWithEssay.length - 1 && <button className="btn btn-primary btn-sm" onClick={() => setActiveSubIdx(safeSubIdx + 1)}>Siswa berikutnya →</button>}
         </div>
       </div>
     </div>
