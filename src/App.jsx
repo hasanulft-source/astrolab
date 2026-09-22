@@ -1921,6 +1921,33 @@ function useStore() {
     return () => u10();
   }, []);
 
+  // ═══ PUBLISH GATE NILAI ═══
+  // Guru harus "terbitkan" nilai per mapel+jenjang+periode sebelum siswa bisa lihat.
+  // Mencegah siswa melihat nilai yang belum selesai diinput (partial data → bandingan sosial).
+  const [nilaiPublishData, setNilaiPublishData] = useState({});
+  useEffect(() => {
+    const npRef = ref(db, "nilaiPublish");
+    const u11 = onValue(npRef, snap => setNilaiPublishData(snap.val() || {}));
+    return () => u11();
+  }, []);
+
+  const nilaiPublishKey = (mapel, jenjang, periode) => `${mapel}_${jenjang}_${periode}`.replace(/[.#$/[\]]/g, "-");
+
+  const isNilaiPublished = (mapel, jenjang, periode) => {
+    const key = nilaiPublishKey(mapel, jenjang, periode);
+    return !!(nilaiPublishData[key]?.published);
+  };
+
+  const publishNilai = async (mapel, jenjang, periode) => {
+    const key = nilaiPublishKey(mapel, jenjang, periode);
+    await set(ref(db, `nilaiPublish/${key}`), { published: true, publishedAt: Date.now(), mapel, jenjang, periode });
+  };
+
+  const unpublishNilai = async (mapel, jenjang, periode) => {
+    const key = nilaiPublishKey(mapel, jenjang, periode);
+    await set(ref(db, `nilaiPublish/${key}`), { published: false, unpublishedAt: Date.now(), mapel, jenjang, periode });
+  };
+
   // PENTING: `periode` selalu mengandung "/" (mis. "Semester Ganjil 2026/2027") dan di Firebase RTDB
   // "/" adalah PEMISAH PATH, bukan karakter biasa. Tanpa sanitize, key ikut bercabang jadi sub-path
   // (nilaiBoost/{...2026}/{2027}/{id}) sementara pembacaan pakai string utuh sebagai satu key —
@@ -2081,10 +2108,15 @@ function useStore() {
   //   Edit jadi 90 → poin lama (8) di-revoke, poin baru (9) di-kasih → net +1.
   //   Hapus nilai → poin (8) di-revoke → net -8. Floor di 0 (gak pernah minus).
   // Poin ini SEPARATE dari poin tugas Astrolab — cuma additive di stats.poin total.
-  const applyNilaiPoinDelta = async (siswaId, nilaiLama, nilaiBaru, reasonLabel = "nilai-manual") => {
+  // Rate poin per komponen nilai manual:
+  //   Sumatif/UTS/UAS = 1.0 (100%) — reward effort ujian penuh (belajar semalaman, persiapan serius)
+  //   Kuis/Portofolio = 0.1 (10%) — tetap kasih apresiasi tapi gak dominasi leaderboard
+  const NILAI_POIN_RATE = { sumatif: 1.0, uts: 1.0, uas: 1.0, kuis: 0.1, portofolio: 0.1 };
+
+  const applyNilaiPoinDelta = async (siswaId, nilaiLama, nilaiBaru, reasonLabel = "nilai-manual", rate = 0.1) => {
     const num = (v) => typeof v === "number" && !isNaN(v) ? v : 0;
-    const poinLama = Math.round(num(nilaiLama) * 0.1);
-    const poinBaru = Math.round(num(nilaiBaru) * 0.1);
+    const poinLama = Math.round(num(nilaiLama) * rate);
+    const poinBaru = Math.round(num(nilaiBaru) * rate);
     const delta = poinBaru - poinLama;
     if (delta === 0) return;
     const s = getStats(siswaId);
@@ -2107,8 +2139,8 @@ function useStore() {
     const nilaiBaru = nilai === "" || nilai === null ? "" : Number(nilai);
     const updated = { ...rec[tipe], [kolomKey]: nilaiBaru };
     await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [tipe]: updated, updatedAt: Date.now() });
-    // Apply poin: nilaiLama/nilaiBaru non-number (kolom kosong "") dianggap 0 poin
-    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0);
+    // Apply poin: sumatif = 100% (reward effort ujian), kuis = 10%
+    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0, "nilai-manual", NILAI_POIN_RATE[tipe] || 0.1);
   };
 
   // Update field manual (uts/uas/portofolio) — 1 angka langsung
@@ -2118,7 +2150,7 @@ function useStore() {
     const nilaiLama = rec[field]; // bisa null, number, undefined
     const nilaiBaru = nilai === "" || nilai === null ? null : Number(nilai);
     await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [field]: nilaiBaru, updatedAt: Date.now() });
-    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0);
+    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0, "nilai-manual", NILAI_POIN_RATE[field] || 0.1);
   };
 
   // Tambah kolom dinamis baru (BAB atau Kuis) — apply ke SEMUA siswa di kelas+mapel+periode itu sekaligus
@@ -2158,7 +2190,7 @@ function useStore() {
     await update(ref(db), updates);
     // Revoke poin per siswa yg punya nilai di kolom ini (sequential biar stats gak race)
     for (const { siswaId, nilaiLama } of revertList) {
-      await applyNilaiPoinDelta(siswaId, nilaiLama, 0, "hapus-kolom-nilai");
+      await applyNilaiPoinDelta(siswaId, nilaiLama, 0, "hapus-kolom-nilai", NILAI_POIN_RATE[tipe] || 0.1);
     }
   };
 
@@ -2179,10 +2211,11 @@ function useStore() {
   const bulkImportNilaiAkhir = async (rows, mapel, jenjang, periode) => {
     const updates = {};
     const poinDeltas = {}; // siswaId -> accumulated delta poin dari semua kolom yg berubah
-    const computeDelta = (lama, baru) => {
+    // Rate beda per komponen: sumatif/uts/uas = 100%, kuis/portofolio = 10%
+    const computeDelta = (lama, baru, rate = 0.1) => {
       const l = typeof lama === "number" ? lama : 0;
       const b = typeof baru === "number" ? baru : 0;
-      return Math.round(b * 0.1) - Math.round(l * 0.1);
+      return Math.round(b * rate) - Math.round(l * rate);
     };
     rows.forEach(r => {
       const key = nilaiAkhirKey(r.siswaId, mapel, jenjang, periode);
@@ -2197,26 +2230,27 @@ function useStore() {
       Object.entries(mergedSumatif).forEach(([k, v]) => {
         const safe = k.replace(/[.#$/[\]]/g, "-");
         updates[`nilaiAkhir/${key}/sumatif/${safe}`] = (v === null || v === undefined) ? "" : v;
-        // Hitung delta hanya untuk key yg di-import (ada di r.sumatif) — key yg cuma dari rec.sumatif = no change
-        if (r.sumatif && k in r.sumatif) totalDelta += computeDelta((rec.sumatif || {})[safe], typeof v === "number" ? v : 0);
+        // Sumatif = 100% rate
+        if (r.sumatif && k in r.sumatif) totalDelta += computeDelta((rec.sumatif || {})[safe], typeof v === "number" ? v : 0, NILAI_POIN_RATE.sumatif);
       });
       const mergedKuis = { ...rec.kuis, ...r.kuis };
       Object.entries(mergedKuis).forEach(([k, v]) => {
         const safe = k.replace(/[.#$/[\]]/g, "-");
         updates[`nilaiAkhir/${key}/kuis/${safe}`] = (v === null || v === undefined) ? "" : v;
-        if (r.kuis && k in r.kuis) totalDelta += computeDelta((rec.kuis || {})[safe], typeof v === "number" ? v : 0);
+        // Kuis = 10% rate
+        if (r.kuis && k in r.kuis) totalDelta += computeDelta((rec.kuis || {})[safe], typeof v === "number" ? v : 0, NILAI_POIN_RATE.kuis);
       });
       if (r.uts !== null) {
         updates[`nilaiAkhir/${key}/uts`] = r.uts;
-        totalDelta += computeDelta(rec.uts, r.uts);
+        totalDelta += computeDelta(rec.uts, r.uts, NILAI_POIN_RATE.uts); // UTS = 100%
       }
       if (r.uas !== null) {
         updates[`nilaiAkhir/${key}/uas`] = r.uas;
-        totalDelta += computeDelta(rec.uas, r.uas);
+        totalDelta += computeDelta(rec.uas, r.uas, NILAI_POIN_RATE.uas); // UAS = 100%
       }
       if (r.portofolio !== null) {
         updates[`nilaiAkhir/${key}/portofolio`] = r.portofolio;
-        totalDelta += computeDelta(rec.portofolio, r.portofolio);
+        totalDelta += computeDelta(rec.portofolio, r.portofolio, NILAI_POIN_RATE.portofolio); // Portofolio = 10%
       }
       if (totalDelta !== 0) poinDeltas[r.siswaId] = (poinDeltas[r.siswaId] || 0) + totalDelta;
     });
@@ -2476,7 +2510,7 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
 }
 
 // ─── CONFIRM MODAL ───
@@ -4195,7 +4229,7 @@ function LaporModal({ user, store, onClose }) {
   );
 }
 
-function ProfilSiswa({ user, store }) {
+function ProfilSiswa({ user, store, navigate }) {
   const stats = store.getStats(user.id);
   const lb = store.getLeaderboard(user.jenjang);
   const myRank = lb.find(s => s.id === user.id);
@@ -4299,6 +4333,22 @@ function ProfilSiswa({ user, store }) {
           {[{ v: stats.poin.toLocaleString("id-ID"), l: "total poin" }, { v: String(stats.tugasSelesai), l: "tugas selesai" }, { v: stats.nilaiRata || "—", l: "nilai rata" }].map(s => <div key={s.l} style={{ textAlign: "center" }}><div className="stat-num" style={{ fontSize: 22, fontWeight: 700 }}>{s.v}</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>{s.l}</div></div>)}
         </div>
       </Card>
+
+      {/* ═══ CTA RAPOR PERKEMBANGAN ═══ */}
+      <button onClick={() => navigate("rapor")} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", marginBottom: 12 }}>
+        <Card pad="none" style={{ overflow: "hidden", background: "linear-gradient(135deg, #0a525c 0%, #09637E 50%, #088395 100%)", color: "#fff" }}>
+          <div style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,0.15)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <I n="award" s={22} style={{ color: "#fff" }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.02em" }}>Rapor Perkembangan</div>
+              <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>Lihat breakdown nilaimu per komponen semester ini</div>
+            </div>
+            <I n="chevR" s={18} style={{ color: "rgba(255,255,255,0.7)", flexShrink: 0 }} />
+          </div>
+        </Card>
+      </button>
 
       {/* Badges */}
       <Card style={{ marginBottom: 12 }}>
@@ -9369,6 +9419,184 @@ function KelasView({ store, navigate }) {
 }
 
 // ─── PROFIL GURU ───
+// ═══ RAPOR PERKEMBANGAN SISWA ═══
+// Screen dedicated untuk siswa melihat breakdown nilai semester aktif.
+// Data di-fetch langsung dari Firebase (bukan dari store bulk listener yang guru-only).
+// Gated: nilai cuma muncul kalau guru sudah "terbitkan" di NilaiAkhirPage (publish gate).
+// Bonus Nilai ditampilkan sebagai angka tanpa alasan (alasan = catatan informal guru).
+function RaporSiswa({ user, store, navigate }) {
+  const [loading, setLoading] = useState(true);
+  const [nilaiData, setNilaiData] = useState({});
+  const [boostData, setBoostData] = useState({});
+  const periode = getPeriodeAktif();
+  const mapels = user.jenjang === "VII" ? ["IPA", "Informatika"] : ["IPA"];
+  const sanitize = (s) => s.replace(/[.#$/[\]]/g, "-");
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      const nd = {};
+      const bd = {};
+      for (const mapel of mapels) {
+        const naKey = sanitize(`${user.id}_${mapel}_${user.jenjang}_${periode}`);
+        try {
+          const snap = await get(ref(db, `nilaiAkhir/${naKey}`));
+          nd[mapel] = snap.val();
+        } catch { nd[mapel] = null; }
+        // Fetch boost (try both sanitized and legacy key)
+        const bKey = sanitize(`${user.id}_${mapel}_${user.jenjang}_${periode}`);
+        try {
+          const snap = await get(ref(db, `nilaiBoost/${bKey}`));
+          bd[mapel] = snap.val() || {};
+        } catch { bd[mapel] = {}; }
+      }
+      setNilaiData(nd);
+      setBoostData(bd);
+      setLoading(false);
+    };
+    fetchData();
+  }, [user.id, user.jenjang]);
+
+  // Compute breakdown per mapel (mirror computeNilaiAkhir tapi dari fetched data)
+  function computeBreakdown(mapel) {
+    const rec = nilaiData[mapel] || {};
+    const boosts = boostData[mapel] || {};
+    const boostArr = Object.values(boosts);
+    const getBoostSum = (komponen) => boostArr.filter(b => b.komponen === komponen).reduce((sum, b) => sum + (Number(b.nilai) || 0), 0);
+
+    const sumatifVals = Object.values(rec.sumatif || {}).filter(v => typeof v === "number");
+    const sumatifAvg = sumatifVals.length ? sumatifVals.reduce((a, b) => a + b, 0) / sumatifVals.length : null;
+    const kuisVals = Object.values(rec.kuis || {}).filter(v => typeof v === "number");
+    const kuisAvg = kuisVals.length ? kuisVals.reduce((a, b) => a + b, 0) / kuisVals.length : null;
+    const tugasAvg = store.getTugasAstrolabAvg(user.id, mapel, user.jenjang);
+
+    const applyBoost = (base, key) => {
+      const boost = getBoostSum(key);
+      if (typeof base !== "number") return { val: base, base, boost };
+      return { val: Math.min(100, base + boost), base, boost };
+    };
+
+    const komponen = [
+      { label: "Sumatif per BAB", key: "sumatif", ...applyBoost(sumatifAvg, "sumatif"), bobot: 0.10, icon: "book" },
+      { label: "Tugas Astrolab", key: "tugasAstrolab", ...applyBoost(tugasAvg, "tugasAstrolab"), bobot: 0.20, icon: "target" },
+      { label: "UTS", key: "uts", ...applyBoost(rec.uts, "uts"), bobot: 0.20, icon: "edit" },
+      { label: "UAS", key: "uas", ...applyBoost(rec.uas, "uas"), bobot: 0.20, icon: "edit" },
+      { label: "Kuis Harian", key: "kuis", ...applyBoost(kuisAvg, "kuis"), bobot: 0.10, icon: "zap" },
+      { label: "Portofolio", key: "portofolio", ...applyBoost(rec.portofolio, "portofolio"), bobot: 0.20, icon: "star" },
+    ];
+
+    const filled = komponen.filter(k => typeof k.val === "number");
+    const totalBobot = filled.reduce((s, k) => s + k.bobot, 0);
+    const nilaiAkhir = totalBobot > 0 ? Math.round(filled.reduce((s, k) => s + k.val * k.bobot, 0) / totalBobot * 100) / 100 : null;
+
+    // Sumatif per BAB detail
+    const sumatifDetail = Object.entries(rec.sumatif || {}).filter(([, v]) => typeof v === "number").map(([label, val]) => ({ label, val }));
+
+    return { komponen, nilaiAkhir, filled: filled.length, total: komponen.length, sumatifDetail };
+  }
+
+  const nilaiColor = (n) => n >= 80 ? "var(--good)" : n >= 65 ? "var(--warn)" : "var(--bad)";
+
+  if (loading) return <>
+    <div className="topbar"><button className="topbar-back" onClick={() => navigate("profil")}><I n="chevL" s={18} /></button><div className="topbar-title">Rapor</div><div style={{ width: 36 }} /></div>
+    <div className="page"><div style={{ textAlign: "center", padding: "60px 0", color: "var(--ink-3)" }}>Memuat data...</div></div>
+  </>;
+
+  return <>
+    <div className="topbar"><button className="topbar-back" onClick={() => navigate("profil")}><I n="chevL" s={18} /></button><div className="topbar-title">Rapor Perkembangan</div><div style={{ width: 36 }} /></div>
+    <div className="page">
+      <div style={{ paddingTop: 8, paddingBottom: 6 }}>
+        <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{periode}</div>
+        <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", margin: "4px 0 0" }}>Rapor Perkembangan</h1>
+      </div>
+
+      {mapels.map(mapel => {
+        const published = store.isNilaiPublished(mapel, user.jenjang, periode);
+        if (!published) return (
+          <Card key={mapel} style={{ marginBottom: 14, textAlign: "center", padding: "30px 20px" }}>
+            <I n="clock" s={28} style={{ color: "var(--ink-3)", marginBottom: 8 }} />
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-2)" }}>Nilai {mapel} Belum Diterbitkan</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>Guru belum menerbitkan nilai untuk {mapel} semester ini. Nanti akan muncul di sini.</div>
+          </Card>
+        );
+
+        const br = computeBreakdown(mapel);
+        return (
+          <div key={mapel} style={{ marginBottom: 20 }}>
+            {/* Hero card — Nilai Akhir besar */}
+            <Card pad="none" style={{ overflow: "hidden", marginBottom: 10 }}>
+              <div style={{ background: "linear-gradient(135deg, #0a525c 0%, #09637E 50%, #088395 100%)", color: "#fff", padding: "22px 20px 18px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".1em", opacity: 0.8, fontWeight: 700 }}>{mapel} · Kelas {user.jenjang}</div>
+                <div style={{ fontSize: 52, fontWeight: 900, fontFamily: "var(--mono)", lineHeight: 1.1, marginTop: 6 }}>
+                  {br.nilaiAkhir !== null ? br.nilaiAkhir : "—"}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>
+                  {br.nilaiAkhir === null ? "Belum cukup data" : br.nilaiAkhir >= 80 ? "Di atas KKM — Kerja bagus!" : br.nilaiAkhir >= 65 ? "Mendekati KKM — Terus tingkatkan!" : "Di bawah KKM — Jangan menyerah!"}
+                </div>
+                {br.filled < br.total && <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>({br.filled}/{br.total} komponen terisi)</div>}
+              </div>
+            </Card>
+
+            {/* Breakdown 6 komponen */}
+            <Card pad="none" style={{ overflow: "hidden", marginBottom: 10 }}>
+              <div style={{ padding: "12px 16px 8px", fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>Breakdown Komponen</div>
+              {br.komponen.map((k, i) => {
+                const hasVal = typeof k.val === "number";
+                const hasBoost = k.boost > 0 && typeof k.base === "number";
+                return (
+                  <div key={k.key} style={{ padding: "10px 16px", borderTop: "1px solid var(--line-soft)", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: hasVal ? "var(--accent-tint)" : "var(--surface-alt)", color: hasVal ? "var(--accent-2)" : "var(--ink-3)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                      <I n={k.icon} s={14} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>{k.label}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                        <div style={{ flex: 1, height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: hasVal ? `${k.val}%` : "0%", background: hasVal ? nilaiColor(k.val) : "var(--ink-3)", borderRadius: 99, transition: "width .5s" }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600 }}>{Math.round(k.bobot * 100)}%</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      {hasVal ? (
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 18, fontWeight: 800, color: nilaiColor(k.val) }}>{Math.round(k.val)}</div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>—</div>
+                      )}
+                      {hasBoost && (
+                        <div style={{ fontSize: 9, color: "var(--accent-2)", fontWeight: 700, fontFamily: "var(--mono)" }}>+{k.boost} bonus</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+
+            {/* Sumatif per BAB — mini bar chart */}
+            {br.sumatifDetail.length > 0 && (
+              <Card style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 10 }}>Nilai Sumatif per BAB</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 100 }}>
+                  {br.sumatifDetail.map((d, i) => {
+                    const h = Math.max(8, (d.val / 100) * 90);
+                    return (
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700, color: nilaiColor(d.val) }}>{d.val}</div>
+                        <div style={{ width: "100%", maxWidth: 40, height: h, background: nilaiColor(d.val), borderRadius: "4px 4px 0 0", transition: "height .5s", opacity: 0.85 }} />
+                        <div style={{ fontSize: 9, color: "var(--ink-3)", fontWeight: 600, textAlign: "center", lineHeight: 1.2, maxWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  </>;
+}
+
 function ProfilGuru({ user, store, navigate }) {
   const photo = store.getPhoto(user.uid || user.id); // reaktif dari Firebase
   const [editing, setEditing] = useState(false);
@@ -10523,7 +10751,7 @@ function NilaiAkhirPage({ store }) {
   return (
     <div className="page">
       <div className="dt">
-        <div><h1>Nilai Akhir</h1><p>Komposit 6 komponen · Sumatif 10% · Tugas Astrolab 20% · UTS 20% · UAS 20% · Kuis 10% · Portofolio 20%</p><p style={{ marginTop: 4, fontSize: 11, color: "var(--accent-2)", fontWeight: 600 }}><I n="zap" s={11} /> Setiap input/edit nilai otomatis kasih siswa <b>+10% poin</b> (reward konsistensi)</p></div>
+        <div><h1>Nilai Akhir</h1><p>Komposit 6 komponen · Sumatif 10% · Tugas Astrolab 20% · UTS 20% · UAS 20% · Kuis 10% · Portofolio 20%</p><p style={{ marginTop: 4, fontSize: 11, color: "var(--accent-2)", fontWeight: 600 }}><I n="zap" s={11} /> Sumatif, UTS, UAS: <b>+100% poin</b> (reward effort ujian) · Kuis, Portofolio: +10% poin</p></div>
       </div>
       <div className="topbar">
         <div style={{ width: 36 }} />
@@ -10532,7 +10760,7 @@ function NilaiAkhirPage({ store }) {
       </div>
 
       {/* Filter mapel + kelas + periode */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
         <select className="inp" style={{ flex: "1 1 140px", maxWidth: 180 }} value={mapel} onChange={e => setMapel(e.target.value)}>
           <option value="IPA">IPA</option>
           <option value="Informatika">Informatika</option>
@@ -10544,6 +10772,25 @@ function NilaiAkhirPage({ store }) {
         <select className="inp" style={{ flex: "1 1 220px", maxWidth: 280 }} value={periode} onChange={e => setPeriode(e.target.value)}>
           {periodeOptions.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
+        {/* Publish gate toggle — siswa baru bisa lihat nilai setelah ini di-on-kan */}
+        {(() => {
+          const published = store.isNilaiPublished(mapel, jenjang, periode);
+          return (
+            <button
+              className={`btn btn-sm ${published ? "btn-primary" : "btn-outline"}`}
+              style={{ marginLeft: "auto", gap: 6 }}
+              onClick={async () => {
+                try {
+                  if (published) await store.unpublishNilai(mapel, jenjang, periode);
+                  else await store.publishNilai(mapel, jenjang, periode);
+                } catch (e) { alert("Gagal: " + (e?.message || "error")); }
+              }}
+            >
+              <I n={published ? "check" : "flag"} s={12} />
+              {published ? "Diterbitkan ✓" : "Terbitkan ke Siswa"}
+            </button>
+          );
+        })()}
       </div>
 
       {/* Toolbar tambah kolom */}
@@ -11571,7 +11818,8 @@ function AppInner() {
       else if (route === "tugas-detail") screen = <DetailTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "review-tugas") screen = <ReviewTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
-      else if (route === "profil") screen = <ProfilSiswa user={user} store={store} />;
+      else if (route === "profil") screen = <ProfilSiswa user={user} store={store} navigate={navigate} />;
+      else if (route === "rapor") screen = <RaporSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
       else screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
     }
