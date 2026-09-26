@@ -7769,7 +7769,7 @@ function TugasGuru({ store, navigate }) {
                     <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                       <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
                       <span className="chip">{t.soal?.length || 0} soal</span>
-                      <span className="chip">+{t.poinMax} pt</span>
+                      <span className="chip">+{t.poinMax} pt{t.graded === false ? ` · efektif ${Math.round(t.poinMax * 0.2)}` : ""}</span>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, flexDirection: "column", alignItems: "flex-end" }}>
