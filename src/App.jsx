@@ -1599,7 +1599,11 @@ function useStore() {
     const totalPoinTugas = (t.soal || []).reduce((sum, s) => sum + (Number(s.poin) || 10), 0);
     const nilaiLama = sub.nilai;
     const poinLama = sub.poinDapat || 0;
-    const poinBaru = Math.round((nilaiBaru / 100) * totalPoinTugas);
+    let poinBaru = Math.round((nilaiBaru / 100) * totalPoinTugas);
+    // Latihan Khusus (graded: false): poin 20% — konsisten dengan doSubmit & saveResultUpdate
+    if (t.graded === false) {
+      poinBaru = Math.round(poinBaru * 0.2);
+    }
     const deltaPoin = poinBaru - poinLama;
 
     // Update submission — set nilai baru, poin baru, append ke riwayatIntervensi
@@ -3184,7 +3188,7 @@ function DaftarTugas({ user, store, navigate }) {
                     ? <span className="chip chip-bad"><I n="clock" s={10} /> Lewat deadline</span>
                     : <>
                         <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
-                        <span className="chip">+{t.poinMax} pt</span>
+                        <span className="chip">+{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt</span>
                         <span className="chip">{t.soal?.length || 0} soal</span>
                       </>
                 }
@@ -3294,7 +3298,7 @@ function DetailTugas({ user, store, tugasId, navigate }) {
         {t.deskripsi && <p style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.65, marginBottom: 14 }}>{t.deskripsi}</p>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
-          <span className="chip"><I n="target" s={10} />+{t.poinMax} pt maks</span>
+          <span className="chip"><I n="target" s={10} />+{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt maks</span>
           <span className="chip">{t.soal?.length || 0} soal</span>
           {lewat && !done && !susulanAktif && <span className="chip chip-bad">Ditutup</span>}
           {lewat && !done && susulanAktif && <span className="chip" style={{ background: "var(--accent-tint)", color: "var(--accent-2)" }}>Susulan Aktif</span>}
@@ -3780,6 +3784,11 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       const rasio = nilai > 0 ? susulanInfo.nilaiMaks / nilai : 0;
       totalPoin = Math.round(totalPoin * rasio);
       nilai = susulanInfo.nilaiMaks;
+    }
+
+    // Latihan Khusus (graded: false): poin dikurangi jadi 20% — insentif belajar tanpa inflate leaderboard
+    if (t.graded === false) {
+      totalPoin = Math.round(totalPoin * 0.2);
     }
 
     const hasEssay = t.soal.some(s => s.type === "essay" || s.type === "refleksi");
@@ -6300,6 +6309,11 @@ function NilaiEssayModal({ tugas, store, onClose }) {
         const rasio = nilaiBaru > 0 ? susulanInfo.nilaiMaks / nilaiBaru : 0;
         totalPoinBaru = Math.round(totalPoinBaru * rasio);
         nilaiBaru = susulanInfo.nilaiMaks;
+      }
+
+      // Latihan Khusus (graded: false): poin 20% — konsisten dengan doSubmit
+      if (tugas.graded === false) {
+        totalPoinBaru = Math.round(totalPoinBaru * 0.2);
       }
 
       await update(ref(db, `submissions/${currentSub.id}`), {
