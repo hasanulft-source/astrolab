@@ -10671,6 +10671,7 @@ function MateriViewer({ materi, store, onBack }) {
   const [pages, setPages] = useState(null);
   const [idx, setIdx] = useState(0);
   const [loading, setLoading] = useState(true);
+  const touchRef = useRef(null); // hooks harus sebelum early return
 
   useEffect(() => {
     let cancelled = false;
@@ -10688,7 +10689,6 @@ function MateriViewer({ materi, store, onBack }) {
   const next = () => setIdx(i => Math.min(total - 1, i + 1));
 
   // Swipe support
-  const touchRef = useRef(null);
   const onTouchStart = e => { touchRef.current = e.touches[0].clientX; };
   const onTouchEnd = e => {
     if (touchRef.current === null) return;
