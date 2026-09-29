@@ -10688,7 +10688,7 @@ function MateriViewer({ materi, store, onBack }) {
   const next = () => setIdx(i => Math.min(total - 1, i + 1));
 
   // Swipe support
-  const touchRef = React.useRef(null);
+  const touchRef = useRef(null);
   const onTouchStart = e => { touchRef.current = e.touches[0].clientX; };
   const onTouchEnd = e => {
     if (touchRef.current === null) return;
