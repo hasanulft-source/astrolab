@@ -461,6 +461,7 @@ const IC = {
   heart: "M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z",
   award: "M12 15a7 7 0 100-14 7 7 0 000 14zM8.21 13.89L7 23l5-3 5 3-1.21-9.12",
   rotate: "M1 4v6h6 M3.51 15a9 9 0 102.13-9.36L1 10",
+  fileText: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
 };
 function I({ n, s = 16, style, cls = "" }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={style} className={cls}><path d={IC[n] || ""} /></svg>;
@@ -2514,7 +2515,39 @@ function useStore() {
     return results;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading };
+  // ─── MATERI LATIHAN MANDIRI ───
+  const [materiList, setMateriList] = useState([]);
+  useEffect(() => {
+    const mRef = ref(db, "materiLatihan");
+    const unsub = onValue(mRef, snap => {
+      const data = snap.val() || {};
+      setMateriList(Object.entries(data).map(([id, v]) => ({ ...v, id })));
+    }, () => setMateriList([]));
+    return () => unsub();
+  }, []);
+  const getMateriList = () => materiList;
+  const addMateri = async (meta, pages) => {
+    const newRef = push(ref(db, "materiLatihan"));
+    const id = newRef.key;
+    await set(newRef, { ...meta, pageCount: pages.length, createdAt: Date.now() });
+    // Simpan pages terpisah supaya listener metadata tetap ringan
+    await set(ref(db, `materiPages/${id}`), pages);
+    return id;
+  };
+  const deleteMateri = async (id) => {
+    await remove(ref(db, `materiLatihan/${id}`));
+    await remove(ref(db, `materiPages/${id}`));
+  };
+  const updateMateri = async (id, patch) => {
+    await update(ref(db, `materiLatihan/${id}`), patch);
+  };
+  // On-demand: load pages hanya saat siswa buka viewer
+  const loadMateriPages = async (id) => {
+    const snap = await get(ref(db, `materiPages/${id}`));
+    return snap.val() || [];
+  };
+
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages };
 }
 
 // ─── CONFIRM MODAL ───
@@ -6046,6 +6079,7 @@ function DashboardGuru({ store, navigate }) {
           <button className="btn btn-ghost btn-sm" onClick={() => backupFromStore(store)} title="Download backup data"><I n="chartBar" s={13} /> Backup</button>
           <button className="btn btn-outline btn-sm" onClick={() => setShowLaporan(true)}><I n="chartBar" s={13} /> Laporan</button>
           <button className="btn btn-outline btn-sm" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={13} /> Export Nilai</button>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate("materi-manager")}><I n="fileText" s={13} /> Materi</button>
           <button className="btn btn-primary" onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Tugas baru</button>
         </div>
       </div>
@@ -7769,7 +7803,7 @@ function TugasGuru({ store, navigate }) {
                     <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                       <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
                       <span className="chip">{t.soal?.length || 0} soal</span>
-                      <span className="chip">+{t.poinMax} pt{t.graded === false ? ` · efektif ${Math.round(t.poinMax * 0.2)}` : ""}</span>
+                      <span className="chip">maks +{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt{t.graded === false ? " (20%)" : ""}</span>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, flexDirection: "column", alignItems: "flex-end" }}>
@@ -10593,8 +10627,292 @@ function BadgeManager({ store }) {
   );
 }
 
+// ─── LATIHAN MANDIRI ───
+// Helper: convert PDF pages to compressed JPEG base64 array via pdf.js (loaded from CDN on demand)
+let _pdfjsLoaded = false;
+async function loadPdfJs() {
+  if (_pdfjsLoaded && window.pdfjsLib) return window.pdfjsLib;
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";
+    s.type = "module";
+    // pdf.js ESM needs a different loading approach — use globalThis workaround
+    const s2 = document.createElement("script");
+    s2.type = "module";
+    s2.textContent = `import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs";window.pdfjsLib=pdfjsLib;window.dispatchEvent(new Event("pdfjsReady"));`;
+    document.head.appendChild(s2);
+    const onReady = () => { _pdfjsLoaded = true; window.removeEventListener("pdfjsReady", onReady); resolve(window.pdfjsLib); };
+    window.addEventListener("pdfjsReady", onReady);
+    setTimeout(() => reject(new Error("Gagal memuat PDF library")), 15000);
+  });
+}
+
+async function pdfToImages(file, maxWidth = 1200, quality = 0.65) {
+  const pdfjsLib = await loadPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const vp = page.getViewport({ scale: 1 });
+    const scale = Math.min(1, maxWidth / vp.width);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    pages.push(canvas.toDataURL("image/jpeg", quality));
+  }
+  return pages;
+}
+
+// ─── MATERI VIEWER (slide-by-slide) ───
+function MateriViewer({ materi, store, onBack }) {
+  const [pages, setPages] = useState(null);
+  const [idx, setIdx] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    store.loadMateriPages(materi.id).then(p => {
+      if (!cancelled) { setPages(p); setLoading(false); }
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [materi.id]);
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><div className="spinner" /><p style={{ color: "var(--ink-3)", fontSize: 13, marginTop: 12 }}>Memuat materi...</p></div>;
+  if (!pages || pages.length === 0) return <div style={{ padding: 40, textAlign: "center" }}><p style={{ color: "var(--ink-3)" }}>Materi kosong</p><button className="btn btn-outline btn-sm" onClick={onBack} style={{ marginTop: 12 }}>Kembali</button></div>;
+
+  const total = pages.length;
+  const prev = () => setIdx(i => Math.max(0, i - 1));
+  const next = () => setIdx(i => Math.min(total - 1, i + 1));
+
+  // Swipe support
+  const touchRef = React.useRef(null);
+  const onTouchStart = e => { touchRef.current = e.touches[0].clientX; };
+  const onTouchEnd = e => {
+    if (touchRef.current === null) return;
+    const diff = e.changedTouches[0].clientX - touchRef.current;
+    if (diff > 50) prev();
+    else if (diff < -50) next();
+    touchRef.current = null;
+  };
+
+  return <div>
+    <div className="topbar">
+      <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
+      <div className="topbar-title" style={{ fontSize: 13 }}>{materi.judul}</div>
+      <div style={{ width: 36, textAlign: "right", fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{idx + 1}/{total}</div>
+    </div>
+    <div style={{ position: "relative", background: "var(--surface-alt)", minHeight: 300, display: "flex", alignItems: "center", justifyContent: "center" }}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <img src={pages[idx]} alt={`Halaman ${idx + 1}`} style={{ maxWidth: "100%", maxHeight: "75vh", objectFit: "contain", display: "block" }} />
+      {/* Arrow overlays */}
+      {idx > 0 && <button onClick={prev} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.4)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }}><I n="chevL" s={18} /></button>}
+      {idx < total - 1 && <button onClick={next} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.4)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }}><I n="chevR" s={18} /></button>}
+    </div>
+    {/* Page dots / progress */}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 16px" }}>
+      <button className="btn btn-outline btn-sm" onClick={prev} disabled={idx === 0}><I n="chevL" s={14} /> Sebelumnya</button>
+      <span style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--ink-3)", minWidth: 50, textAlign: "center" }}>{idx + 1} / {total}</span>
+      <button className="btn btn-primary btn-sm" onClick={next} disabled={idx === total - 1}>Selanjutnya <I n="chevR" s={14} /></button>
+    </div>
+  </div>;
+}
+
+// ─── LATIHAN MANDIRI PAGE (student) ───
+function LatihanMandiri({ user, store, navigate }) {
+  const [viewMateri, setViewMateri] = useState(null);
+  const materiList = store.getMateriList().filter(m => m.jenjang === user.jenjang);
+
+  if (viewMateri) return <MateriViewer materi={viewMateri} store={store} onBack={() => setViewMateri(null)} />;
+
+  // Group by mapel → bab
+  const grouped = {};
+  materiList.forEach(m => {
+    const key = m.mapel || "Lainnya";
+    if (!grouped[key]) grouped[key] = {};
+    const bab = m.bab || "Umum";
+    if (!grouped[key][bab]) grouped[key][bab] = [];
+    grouped[key][bab].push(m);
+  });
+
+  const mapelKeys = Object.keys(grouped).sort();
+
+  return <div>
+    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Latihan Mandiri</div><div style={{ width: 36 }} /></div>
+    <div style={{ padding: 16 }}>
+      {mapelKeys.length === 0 && <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi</h3><p>Guru belum menambahkan materi latihan mandiri.</p></div></Card>}
+      {mapelKeys.map(mapel => (
+        <div key={mapel} style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mapel}</div>
+          {Object.entries(grouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, items]) => (
+            <div key={bab} style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <I n="layers" s={14} style={{ color: "var(--accent-2)" }} /> {bab}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => (
+                  <button key={m.id} onClick={() => setViewMateri(m)}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", transition: "border-color .15s" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent-2)"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line-soft)"}>
+                    <div style={{ width: 40, height: 40, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                      <I n="book" s={18} style={{ color: "var(--accent-2)" }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{m.judul}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{m.pageCount} halaman</div>
+                    </div>
+                    <I n="chevR" s={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+// ─── MATERI MANAGER (guru) ───
+function MateriManager({ store, navigate }) {
+  const [showUpload, setShowUpload] = useState(false);
+  const [form, setForm] = useState({ judul: "", mapel: "IPA", jenjang: "VII", bab: "" });
+  const [pdfFile, setPdfFile] = useState(null);
+  const [converting, setConverting] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const materiList = store.getMateriList();
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  async function handleUpload() {
+    if (!form.judul.trim()) return alert("Judul wajib diisi");
+    if (!form.bab.trim()) return alert("BAB wajib diisi");
+    if (!pdfFile) return alert("Pilih file PDF");
+    try {
+      setConverting(true);
+      setProgress("Memuat PDF library...");
+      await loadPdfJs();
+      setProgress("Mengkonversi halaman PDF...");
+      const pages = await pdfToImages(pdfFile, 1200, 0.65);
+      setProgress(`${pages.length} halaman dikonversi. Menyimpan...`);
+      await store.addMateri({
+        judul: form.judul.trim(),
+        mapel: form.mapel,
+        jenjang: form.jenjang,
+        bab: form.bab.trim(),
+        urutan: materiList.filter(m => m.mapel === form.mapel && m.jenjang === form.jenjang && m.bab === form.bab.trim()).length,
+      }, pages);
+      setShowUpload(false);
+      setForm({ judul: "", mapel: "IPA", jenjang: "VII", bab: "" });
+      setPdfFile(null);
+      setConverting(false);
+      setProgress("");
+    } catch (e) {
+      setConverting(false);
+      setProgress("");
+      alert("Gagal upload: " + (e?.message || "unknown error"));
+    }
+  }
+
+  async function doDelete(id) {
+    try {
+      await store.deleteMateri(id);
+      setConfirmDelete(null);
+    } catch (e) { alert("Gagal hapus: " + e.message); }
+  }
+
+  // Group by mapel → jenjang → bab
+  const grouped = {};
+  materiList.forEach(m => {
+    const mk = `${m.mapel} ${m.jenjang}`;
+    if (!grouped[mk]) grouped[mk] = {};
+    const bab = m.bab || "Umum";
+    if (!grouped[mk][bab]) grouped[mk][bab] = [];
+    grouped[mk][bab].push(m);
+  });
+
+  return <div>
+    <div className="topbar">
+      <button className="topbar-back" onClick={() => navigate("home-guru")}><I n="chevL" s={18} /></button>
+      <div className="topbar-title">Materi Latihan Mandiri</div>
+      <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }} onClick={() => setShowUpload(true)}><I n="plus" s={22} /></button>
+    </div>
+    <div style={{ padding: 16 }}>
+      {/* Upload modal */}
+      {showUpload && <div className="modal-overlay" onClick={() => !converting && setShowUpload(false)}>
+        <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+          <h3>Upload Materi PDF</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+            <input className="inp" placeholder="Judul materi" value={form.judul} onChange={e => set("judul", e.target.value)} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <select className="inp" value={form.mapel} onChange={e => set("mapel", e.target.value)} style={{ flex: 1 }}>
+                <option value="IPA">IPA</option>
+                <option value="Informatika">Informatika</option>
+              </select>
+              <select className="inp" value={form.jenjang} onChange={e => set("jenjang", e.target.value)} style={{ flex: 1 }}>
+                <option value="VII">Kelas VII</option>
+                <option value="VIII">Kelas VIII</option>
+              </select>
+            </div>
+            <input className="inp" placeholder="BAB (contoh: Bab 1 — Sistem Komputer)" value={form.bab} onChange={e => set("bab", e.target.value)} />
+            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: "2px dashed var(--line)", borderRadius: 8, cursor: "pointer", background: pdfFile ? "var(--accent-tint)" : "var(--surface)" }}>
+              <I n="upload" s={16} style={{ color: "var(--accent-2)" }} />
+              <span style={{ fontSize: 13, color: pdfFile ? "var(--accent-2)" : "var(--ink-2)" }}>
+                {pdfFile ? `${pdfFile.name} (${(pdfFile.size / 1024 / 1024).toFixed(1)} MB)` : "Pilih file PDF"}
+              </span>
+              <input type="file" accept=".pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) setPdfFile(e.target.files[0]); }} />
+            </label>
+            {converting && <div style={{ fontSize: 12, color: "var(--accent-2)", display: "flex", alignItems: "center", gap: 8 }}><div className="spinner" style={{ width: 16, height: 16 }} /> {progress}</div>}
+          </div>
+          <div className="modal-actions" style={{ marginTop: 16 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => setShowUpload(false)} disabled={converting}>Batal</button>
+            <button className="btn btn-primary btn-sm" onClick={handleUpload} disabled={converting || !pdfFile}>
+              {converting ? "Mengkonversi..." : "Upload & Simpan"}
+            </button>
+          </div>
+        </div>
+      </div>}
+
+      {/* Delete confirm */}
+      {confirmDelete && <Confirm title="Hapus Materi" desc={`Hapus "${confirmDelete.judul}"? Siswa tidak bisa mengakses materi ini lagi.`} onOk={() => doDelete(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />}
+
+      {/* Materi list */}
+      {materiList.length === 0 ? (
+        <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi</h3><p>Upload PDF untuk materi latihan mandiri siswa.</p><button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowUpload(true)}><I n="upload" s={14} /> Upload PDF</button></div></Card>
+      ) : (
+        Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0])).map(([mk, babs]) => (
+          <div key={mk} style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mk}</div>
+            {Object.entries(babs).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, items]) => (
+              <div key={bab} style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab}</div>
+                {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", marginBottom: 6 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                      <I n="book" s={16} style={{ color: "var(--accent-2)" }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{m.judul}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>{m.pageCount} halaman · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</div>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ))
+      )}
+    </div>
+  </div>;
+}
+
 // ─── NAV ───
-const SNAV = [{ id: "home", l: "Beranda", ic: "home" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "tugas", l: "Tugas", ic: "book" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "profil", l: "Profil", ic: "user" }];
+const SNAV = [{ id: "home", l: "Beranda", ic: "home" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "tugas", l: "Tugas", ic: "book" }, { id: "latihan-mandiri", l: "Mandiri", ic: "layers" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "profil", l: "Profil", ic: "user" }];
 const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "flag" }, { id: "nilai-akhir", l: "Nilai Akhir", ic: "award" }];
 
 function Sidebar({ user, route, navigate, onLogout, store }) {
@@ -11824,6 +12142,7 @@ function AppInner() {
       else if (route === "laporan-guru") screen = <LaporanGuru store={store} />;
       else if (route === "nilai-akhir") screen = <NilaiAkhirPage store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
+      else if (route === "materi-manager") screen = <MateriManager store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
     } else {
       if (route === "home") screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
@@ -11834,6 +12153,7 @@ function AppInner() {
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "profil") screen = <ProfilSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "rapor") screen = <RaporSiswa user={user} store={store} navigate={navigate} />;
+      else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
       else screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
     }
