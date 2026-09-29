@@ -10787,27 +10787,28 @@ function MateriViewer({ materi, store, onBack }) {
       setDlProgress("Memuat library...");
       const { jsPDF } = await loadJsPdf();
       setDlProgress("Menyiapkan PDF...");
-      // Load first image to get aspect ratio
-      const img = new Image();
-      img.src = pages[0];
-      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
-      const ratio = img.height / img.width;
-      // A4-width PDF in mm, scale pages proportionally
-      const pdfW = 210; // A4 width
-      const pdfH = pdfW * ratio;
-      const doc = new jsPDF({ unit: "mm", format: [pdfW, pdfH] });
+      // Helper: load image and get dimensions
+      const loadImg = (src) => new Promise((res, rej) => {
+        const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src;
+      });
+      const firstImg = await loadImg(pages[0]);
+      const isLandscape = firstImg.width > firstImg.height;
+      // Use image's own aspect ratio for page size (no forced A4)
+      const baseW = isLandscape ? 297 : 210; // mm — A4 landscape or portrait
+      const ratio0 = firstImg.height / firstImg.width;
+      const baseH = baseW * ratio0;
+      const doc = new jsPDF({ unit: "mm", format: [baseW, baseH], orientation: isLandscape ? "landscape" : "portrait" });
       for (let i = 0; i < pages.length; i++) {
         setDlProgress(`Halaman ${i + 1}/${pages.length}...`);
         if (i > 0) {
-          // Recalculate ratio per page (pages may have different aspect ratios)
-          const pImg = new Image();
-          pImg.src = pages[i];
-          await new Promise((res, rej) => { pImg.onload = res; pImg.onerror = rej; });
+          const pImg = await loadImg(pages[i]);
           const pR = pImg.height / pImg.width;
-          const pH = pdfW * pR;
-          doc.addPage([pdfW, pH]);
+          const pLand = pImg.width > pImg.height;
+          const pW = pLand ? 297 : 210;
+          const pH = pW * pR;
+          doc.addPage([pW, pH], pLand ? "landscape" : "portrait");
         }
-        doc.addImage(pages[i], "JPEG", 0, 0, pdfW, doc.internal.pageSize.getHeight());
+        doc.addImage(pages[i], "JPEG", 0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight());
       }
       const filename = (materi.judul || "materi").replace(/[^a-zA-Z0-9_\- ]/g, "").trim() + ".pdf";
       doc.save(filename);
