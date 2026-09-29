@@ -10727,6 +10727,20 @@ async function pdfToImagesDual(file, onProgress) {
 }
 
 // ─── MATERI VIEWER (slide-by-slide + fullscreen pinch-zoom) ───
+// Helper: load jspdf for PDF download from CDN
+let _jspdfLoaded = false;
+async function loadJsPdf() {
+  if (_jspdfLoaded && window.jspdf) return window.jspdf;
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js";
+    s.onload = () => { _jspdfLoaded = true; resolve(window.jspdf); };
+    s.onerror = () => reject(new Error("Gagal memuat jspdf"));
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error("Timeout memuat jspdf")), 15000);
+  });
+}
+
 function MateriViewer({ materi, store, onBack }) {
   // ALL hooks MUST be before any early return (React Rules of Hooks)
   const [pages, setPages] = useState(null);
@@ -10735,6 +10749,7 @@ function MateriViewer({ materi, store, onBack }) {
   const [fs, setFs] = useState(false); // fullscreen mode
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dlProgress, setDlProgress] = useState(""); // download progress
   const touchRef = useRef(null);
   const pinchRef = useRef(null); // { dist, zoom, midX, midY }
   const panRef = useRef(null); // { startX, startY, panX, panY }
@@ -10765,6 +10780,43 @@ function MateriViewer({ materi, store, onBack }) {
   const total = pages.length;
   const prev = () => setIdx(i => Math.max(0, i - 1));
   const next = () => setIdx(i => Math.min(total - 1, i + 1));
+
+  // ── Download all pages as PDF ──
+  async function handleDownload() {
+    try {
+      setDlProgress("Memuat library...");
+      const { jsPDF } = await loadJsPdf();
+      setDlProgress("Menyiapkan PDF...");
+      // Load first image to get aspect ratio
+      const img = new Image();
+      img.src = pages[0];
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+      const ratio = img.height / img.width;
+      // A4-width PDF in mm, scale pages proportionally
+      const pdfW = 210; // A4 width
+      const pdfH = pdfW * ratio;
+      const doc = new jsPDF({ unit: "mm", format: [pdfW, pdfH] });
+      for (let i = 0; i < pages.length; i++) {
+        setDlProgress(`Halaman ${i + 1}/${pages.length}...`);
+        if (i > 0) {
+          // Recalculate ratio per page (pages may have different aspect ratios)
+          const pImg = new Image();
+          pImg.src = pages[i];
+          await new Promise((res, rej) => { pImg.onload = res; pImg.onerror = rej; });
+          const pR = pImg.height / pImg.width;
+          const pH = pdfW * pR;
+          doc.addPage([pdfW, pH]);
+        }
+        doc.addImage(pages[i], "JPEG", 0, 0, pdfW, doc.internal.pageSize.getHeight());
+      }
+      const filename = (materi.judul || "materi").replace(/[^a-zA-Z0-9_\- ]/g, "").trim() + ".pdf";
+      doc.save(filename);
+      setDlProgress("");
+    } catch (e) {
+      setDlProgress("");
+      alert("Gagal download: " + (e?.message || "error"));
+    }
+  }
 
   // ── Normal view swipe ──
   const onTouchStart = e => { touchRef.current = e.touches[0].clientX; };
@@ -10873,9 +10925,11 @@ function MateriViewer({ materi, store, onBack }) {
     <div className="topbar">
       <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
       <div className="topbar-title" style={{ fontSize: 13 }}>{materi.judul}</div>
-      <button onClick={() => setFs(true)} style={{ background: "none", border: "none", color: "var(--ink-2)", cursor: "pointer", padding: 4, marginRight: 4 }}><I n="maximize" s={16} /></button>
-      <div style={{ width: 36, textAlign: "right", fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{idx + 1}/{total}</div>
+      <button onClick={handleDownload} disabled={!!dlProgress} style={{ background: "none", border: "none", color: "var(--accent-2)", cursor: dlProgress ? "default" : "pointer", padding: 4, opacity: dlProgress ? .5 : 1 }} title="Download PDF"><I n="download" s={16} /></button>
+      <button onClick={() => setFs(true)} style={{ background: "none", border: "none", color: "var(--ink-2)", cursor: "pointer", padding: 4 }}><I n="maximize" s={16} /></button>
+      <div style={{ width: 30, textAlign: "right", fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{idx + 1}/{total}</div>
     </div>
+    {dlProgress && <div style={{ padding: "6px 16px", fontSize: 12, color: "var(--accent-2)", background: "var(--accent-tint)", display: "flex", alignItems: "center", gap: 8 }}><div className="spinner" style={{ width: 14, height: 14 }} /> {dlProgress}</div>}
     <div style={{ position: "relative", background: "var(--surface-alt)", minHeight: 300, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
       onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={() => setFs(true)}>
       <img src={pages[idx]} alt={`Halaman ${idx + 1}`} style={{ maxWidth: "100%", maxHeight: "75vh", objectFit: "contain", display: "block" }} />
@@ -10894,15 +10948,180 @@ function MateriViewer({ materi, store, onBack }) {
   </div>;
 }
 
+// ─── LATIHAN QUIZ (student — PG only, immediate feedback) ───
+function LatihanQuiz({ bab, soalPool, onBack }) {
+  const MAX_SOAL = 10;
+  const [soalList] = useState(() => {
+    // Deduplicate by pertanyaan text (same question from different tugas)
+    const seen = new Set();
+    const unique = [];
+    for (const s of soalPool) {
+      const key = s.pertanyaan.trim().toLowerCase();
+      if (!seen.has(key)) { seen.add(key); unique.push(s); }
+    }
+    return shuffle([...unique]).slice(0, MAX_SOAL);
+  });
+  const [idx, setIdx] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [answered, setAnswered] = useState(false);
+  const [results, setResults] = useState([]); // array of booleans
+  const [done, setDone] = useState(false);
+
+  const total = soalList.length;
+
+  function handleSelect(optIdx) {
+    if (answered) return;
+    setSelected(optIdx);
+    setAnswered(true);
+    setResults(r => [...r, optIdx === soalList[idx].jawaban]);
+  }
+
+  function handleNext() {
+    if (idx < total - 1) {
+      setIdx(i => i + 1);
+      setSelected(null);
+      setAnswered(false);
+    } else {
+      setDone(true);
+    }
+  }
+
+  function handleRetry() {
+    setIdx(0);
+    setSelected(null);
+    setAnswered(false);
+    setResults([]);
+    setDone(false);
+  }
+
+  // ── Result screen ──
+  if (done) {
+    const correct = results.filter(Boolean).length;
+    const pct = Math.round((correct / total) * 100);
+    const emoji = pct >= 80 ? "🎉" : pct >= 50 ? "💪" : "📖";
+    return <div>
+      <div className="topbar">
+        <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
+        <div className="topbar-title" style={{ fontSize: 13 }}>Hasil Latihan</div>
+        <div style={{ width: 36 }} />
+      </div>
+      <div style={{ padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>{emoji}</div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "var(--ink)" }}>{correct}/{total}</div>
+        <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>jawaban benar ({pct}%)</div>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8, marginBottom: 20 }}>{bab}</div>
+        {/* Progress bar */}
+        <div style={{ height: 8, background: "var(--surface-alt)", borderRadius: 4, overflow: "hidden", marginBottom: 24 }}>
+          <div style={{ width: `${pct}%`, height: "100%", background: pct >= 80 ? "var(--good)" : pct >= 50 ? "var(--accent)" : "var(--bad)", borderRadius: 4, transition: "width .5s ease" }} />
+        </div>
+        {/* Per-question summary */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 24 }}>
+          {results.map((ok, i) => (
+            <div key={i} style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, fontFamily: "var(--mono)", background: ok ? "var(--good-bg)" : "var(--bad-bg)", color: ok ? "var(--good)" : "var(--bad)", border: `1.5px solid ${ok ? "var(--good)" : "var(--bad)"}` }}>{i + 1}</div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button className="btn btn-outline" onClick={onBack}><I n="chevL" s={14} /> Kembali</button>
+          <button className="btn btn-primary" onClick={handleRetry}><I n="rotate" s={14} /> Coba Lagi</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── Quiz question screen ──
+  const soal = soalList[idx];
+  const isCorrect = answered && selected === soal.jawaban;
+  const isWrong = answered && selected !== soal.jawaban;
+
+  return <div>
+    <div className="topbar">
+      <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
+      <div className="topbar-title" style={{ fontSize: 13 }}>{bab}</div>
+      <div style={{ fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)", width: 50, textAlign: "right" }}>{idx + 1}/{total}</div>
+    </div>
+    {/* Progress dots */}
+    <div style={{ display: "flex", gap: 3, padding: "8px 16px" }}>
+      {soalList.map((_, i) => (
+        <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i < idx ? (results[i] ? "var(--good)" : "var(--bad)") : i === idx ? "var(--accent)" : "var(--line)", transition: "background .2s" }} />
+      ))}
+    </div>
+    <div style={{ padding: "12px 16px 24px" }}>
+      {/* Question */}
+      {soal.gambar && <img src={soal.gambar} alt="" style={{ maxWidth: "100%", borderRadius: 8, marginBottom: 12 }} />}
+      <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.55, marginBottom: 16, color: "var(--ink)" }}>{soal.pertanyaan}</div>
+      {/* Options */}
+      {(soal.opsi || []).map((o, i) => {
+        let cls = "quiz-opt";
+        if (answered) {
+          if (i === soal.jawaban) cls += " correct";
+          else if (i === selected && i !== soal.jawaban) cls += " wrong";
+        } else if (selected === i) {
+          cls += " selected";
+        }
+        return <button key={i} className={cls} onClick={() => handleSelect(i)} style={{ cursor: answered ? "default" : "pointer" }}>
+          <div className="quiz-letter">{String.fromCharCode(65 + i)}</div>
+          <span style={{ flex: 1 }}>{o}</span>
+          {answered && i === soal.jawaban && <I n="check" s={16} style={{ color: "var(--good)", flexShrink: 0 }} />}
+          {answered && i === selected && i !== soal.jawaban && <I n="x" s={16} style={{ color: "var(--bad)", flexShrink: 0 }} />}
+        </button>;
+      })}
+      {/* Feedback */}
+      {answered && <div style={{ marginTop: 16, padding: 14, borderRadius: "var(--r)", background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", border: `1px solid ${isCorrect ? "var(--good)" : "var(--bad)"}` }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: isCorrect ? "var(--good)" : "var(--bad)", marginBottom: soal.pembahasan ? 8 : 0 }}>
+          {isCorrect ? "Benar! ✓" : `Salah — Jawaban: ${String.fromCharCode(65 + soal.jawaban)}`}
+        </div>
+        {soal.pembahasan && soal.pembahasan.trim() && <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink-1)", whiteSpace: "pre-wrap" }}>{soal.pembahasan}</div>}
+      </div>}
+      {/* Next button */}
+      {answered && <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+        <button className="btn btn-primary" onClick={handleNext}>
+          {idx < total - 1 ? <>Selanjutnya <I n="chevR" s={14} /></> : <>Lihat Hasil <I n="chevR" s={14} /></>}
+        </button>
+      </div>}
+    </div>
+  </div>;
+}
+
 // ─── LATIHAN MANDIRI PAGE (student — tabbed: Materi + Latihan) ───
 function LatihanMandiri({ user, store, navigate }) {
   const [tab, setTab] = useState("materi");
   const [viewMateri, setViewMateri] = useState(null);
+  const [quizBab, setQuizBab] = useState(null); // { bab, soal } or null
   const materiList = store.getMateriList().filter(m => m.jenjang === user.jenjang);
 
+  // ── Collect PG questions from completed tugas, grouped by mapel → bab ──
+  const allTugas = store.getTugas();
+  const now = Date.now();
+  const latihanMap = {}; // { "mapel||bab": [...pgSoal] }
+  allTugas.forEach(t => {
+    if (t.jenjang !== user.jenjang) return;
+    if (!t.materi?.trim()) return;
+    if (!t.soal?.length) return;
+    // Only include tugas past deadline (prevent answer leaking)
+    if (!t.deadline) return;
+    const dl = new Date(t.deadline).getTime();
+    if (isNaN(dl) || dl > now) return;
+    const pgSoal = t.soal.filter(s => s.type === "pg" && s.pertanyaan?.trim() && s.opsi?.length >= 2 && s.jawaban !== undefined && s.jawaban !== null);
+    if (!pgSoal.length) return;
+    const key = `${t.mapel || "Lainnya"}||${t.materi.trim()}`;
+    if (!latihanMap[key]) latihanMap[key] = [];
+    latihanMap[key].push(...pgSoal.map(s => ({ ...s, pembahasan: s.pembahasan || "" })));
+  });
+
+  // Group for display: { mapel: { bab: [...soal] } }
+  const latihanGrouped = {};
+  Object.entries(latihanMap).forEach(([key, soal]) => {
+    const [mapel, bab] = key.split("||");
+    if (!latihanGrouped[mapel]) latihanGrouped[mapel] = {};
+    latihanGrouped[mapel][bab] = soal;
+  });
+  const latihanMapelKeys = Object.keys(latihanGrouped).sort();
+
+  // Early returns for sub-views (after all hooks)
+  if (quizBab) return <LatihanQuiz bab={quizBab.bab} soalPool={quizBab.soal} onBack={() => setQuizBab(null)} />;
   if (viewMateri) return <MateriViewer materi={viewMateri} store={store} onBack={() => setViewMateri(null)} />;
 
-  // Group by mapel → bab
+  // Group materi by mapel → bab (for Materi tab)
   const grouped = {};
   materiList.forEach(m => {
     const key = m.mapel || "Lainnya";
@@ -10964,11 +11183,31 @@ function LatihanMandiri({ user, store, navigate }) {
     </div>}
 
     {tab === "latihan" && <div style={{ padding: 16 }}>
-      <Card><div className="empty empty-box">
+      {latihanMapelKeys.length === 0 && <Card><div className="empty empty-box">
         <I n="edit" s={32} />
-        <h3>Segera Hadir</h3>
-        <p style={{ color: "var(--ink-3)", fontSize: 13 }}>Latihan mandiri interaktif akan segera tersedia. Kamu bisa berlatih soal kapan saja di sini.</p>
-      </div></Card>
+        <h3>Belum ada latihan</h3>
+        <p style={{ color: "var(--ink-3)", fontSize: 13 }}>Soal latihan akan tersedia setelah tugas yang terkait materi selesai (melewati deadline).</p>
+      </div></Card>}
+      {latihanMapelKeys.map(mapel => (
+        <div key={mapel} style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mapel}</div>
+          {Object.entries(latihanGrouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soal]) => (
+            <button key={bab} onClick={() => setQuizBab({ bab, soal })}
+              style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", marginBottom: 8, transition: "border-color .15s" }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent)"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line-soft)"}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: "linear-gradient(135deg, var(--accent-tint), var(--accent-soft))", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <I n="edit" s={18} style={{ color: "var(--accent)" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{bab}</div>
+                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{soal.length} soal tersedia</div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-tint)", padding: "4px 10px", borderRadius: 12, flexShrink: 0 }}>Mulai</span>
+            </button>
+          ))}
+        </div>
+      ))}
     </div>}
   </div>;
 }
