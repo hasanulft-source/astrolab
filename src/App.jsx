@@ -2528,28 +2528,53 @@ function useStore() {
     return () => unsub();
   }, []);
   const getMateriList = () => materiList;
-  const addMateri = async (meta, pages) => {
+  const addMateri = async (meta, hdPages, loPages) => {
     const newRef = push(ref(db, "materiLatihan"));
     const id = newRef.key;
-    await set(newRef, { ...meta, pageCount: pages.length, createdAt: Date.now() });
-    // Simpan pages terpisah supaya listener metadata tetap ringan
-    await set(ref(db, `materiPages/${id}`), pages);
+    await set(newRef, { ...meta, pageCount: hdPages.length, createdAt: Date.now() });
+    // HD pages (7 hari pertama) — terpisah dari metadata supaya listener ringan
+    await set(ref(db, `materiPages/${id}`), hdPages);
+    // Compressed/arsip pages (setelah 7 hari)
+    await set(ref(db, `materiPagesLo/${id}`), loPages);
     return id;
   };
   const deleteMateri = async (id) => {
     await remove(ref(db, `materiLatihan/${id}`));
     await remove(ref(db, `materiPages/${id}`));
+    await remove(ref(db, `materiPagesLo/${id}`));
   };
   const updateMateri = async (id, patch) => {
     await update(ref(db, `materiLatihan/${id}`), patch);
   };
-  // On-demand: load pages hanya saat siswa buka viewer
-  const loadMateriPages = async (id) => {
-    const snap = await get(ref(db, `materiPages/${id}`));
-    return snap.val() || [];
+  // On-demand: load pages — HD jika < 7 hari, arsip jika ≥ 7 hari
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  const loadMateriPages = async (id, createdAt) => {
+    const isHd = createdAt && (Date.now() - createdAt < SEVEN_DAYS);
+    const path = isHd ? `materiPages/${id}` : `materiPagesLo/${id}`;
+    const snap = await get(ref(db, path));
+    const pages = snap.val();
+    // Fallback: kalau arsip belum ada (materi lama sebelum fitur dual), coba HD
+    if (!pages && !isHd) {
+      const fallback = await get(ref(db, `materiPages/${id}`));
+      return fallback.val() || [];
+    }
+    return pages || [];
+  };
+  // Lazy archival: hapus HD pages untuk materi > 7 hari (dipanggil dari MateriManager)
+  const archiveOldMateri = async () => {
+    const now = Date.now();
+    const toArchive = materiList.filter(m => m.createdAt && (now - m.createdAt >= SEVEN_DAYS));
+    for (const m of toArchive) {
+      // Cek apakah HD masih ada
+      const hdSnap = await get(ref(db, `materiPages/${m.id}`));
+      if (hdSnap.exists()) {
+        await remove(ref(db, `materiPages/${m.id}`));
+      }
+    }
+    return toArchive.length;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri };
 }
 
 // ─── CONFIRM MODAL ───
@@ -10668,6 +10693,39 @@ async function pdfToImages(file, maxWidth = 1200, quality = 0.65) {
   return pages;
 }
 
+// Dual quality: HD (7 hari pertama) + compressed (arsip setelahnya)
+// Render PDF sekali di resolusi tinggi, lalu downscale untuk versi arsip
+async function pdfToImagesDual(file, onProgress) {
+  const pdfjsLib = await loadPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const hdPages = [];
+  const loPages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    if (onProgress) onProgress(i, pdf.numPages);
+    const page = await pdf.getPage(i);
+    const vp = page.getViewport({ scale: 1 });
+    // HD: render besar (max 1800px), quality 0.85
+    const hdScale = Math.min(3, 1800 / vp.width);
+    const hdVp = page.getViewport({ scale: hdScale });
+    const hdC = document.createElement("canvas");
+    hdC.width = Math.round(hdVp.width);
+    hdC.height = Math.round(hdVp.height);
+    await page.render({ canvasContext: hdC.getContext("2d"), viewport: hdVp }).promise;
+    hdPages.push(hdC.toDataURL("image/jpeg", 0.85));
+    // Arsip: downscale dari HD canvas (max 1200px, quality 0.6)
+    const loW = Math.min(hdC.width, 1200);
+    const loRatio = loW / hdC.width;
+    const loH = Math.round(hdC.height * loRatio);
+    const loC = document.createElement("canvas");
+    loC.width = loW;
+    loC.height = loH;
+    loC.getContext("2d").drawImage(hdC, 0, 0, loW, loH);
+    loPages.push(loC.toDataURL("image/jpeg", 0.6));
+  }
+  return { hdPages, loPages, numPages: pdf.numPages };
+}
+
 // ─── MATERI VIEWER (slide-by-slide + fullscreen pinch-zoom) ───
 function MateriViewer({ materi, store, onBack }) {
   // ALL hooks MUST be before any early return (React Rules of Hooks)
@@ -10685,7 +10743,7 @@ function MateriViewer({ materi, store, onBack }) {
 
   useEffect(() => {
     let cancelled = false;
-    store.loadMateriPages(materi.id).then(p => {
+    store.loadMateriPages(materi.id, materi.createdAt).then(p => {
       if (!cancelled) { setPages(p); setLoading(false); }
     }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -10836,8 +10894,9 @@ function MateriViewer({ materi, store, onBack }) {
   </div>;
 }
 
-// ─── LATIHAN MANDIRI PAGE (student) ───
+// ─── LATIHAN MANDIRI PAGE (student — tabbed: Materi + Latihan) ───
 function LatihanMandiri({ user, store, navigate }) {
+  const [tab, setTab] = useState("materi");
   const [viewMateri, setViewMateri] = useState(null);
   const materiList = store.getMateriList().filter(m => m.jenjang === user.jenjang);
 
@@ -10852,13 +10911,26 @@ function LatihanMandiri({ user, store, navigate }) {
     if (!grouped[key][bab]) grouped[key][bab] = [];
     grouped[key][bab].push(m);
   });
-
   const mapelKeys = Object.keys(grouped).sort();
 
+  const tabStyle = (active) => ({
+    flex: 1, padding: "10px 0", fontSize: 13, fontWeight: active ? 700 : 500,
+    color: active ? "var(--accent)" : "var(--ink-3)",
+    borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
+    background: "none", border: "none", borderTop: "none", borderLeft: "none", borderRight: "none",
+    cursor: "pointer", transition: "all .15s", letterSpacing: ".01em"
+  });
+
   return <div>
-    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Latihan Mandiri</div><div style={{ width: 36 }} /></div>
-    <div style={{ padding: 16 }}>
-      {mapelKeys.length === 0 && <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi</h3><p>Guru belum menambahkan materi latihan mandiri.</p></div></Card>}
+    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Mandiri</div><div style={{ width: 36 }} /></div>
+    {/* Tab bar */}
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+      <button style={tabStyle(tab === "materi")} onClick={() => setTab("materi")}><I n="book" s={13} style={{ marginRight: 5, verticalAlign: -2 }} />Materi</button>
+      <button style={tabStyle(tab === "latihan")} onClick={() => setTab("latihan")}><I n="edit" s={13} style={{ marginRight: 5, verticalAlign: -2 }} />Latihan Mandiri</button>
+    </div>
+
+    {tab === "materi" && <div style={{ padding: 16 }}>
+      {mapelKeys.length === 0 && <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi</h3><p>Guru belum menambahkan materi.</p></div></Card>}
       {mapelKeys.map(mapel => (
         <div key={mapel} style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mapel}</div>
@@ -10868,8 +10940,9 @@ function LatihanMandiri({ user, store, navigate }) {
                 <I n="layers" s={14} style={{ color: "var(--accent-2)" }} /> {bab}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => (
-                  <button key={m.id} onClick={() => setViewMateri(m)}
+                {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => {
+                  const isHd = m.createdAt && Date.now() - m.createdAt < 7 * 86400000;
+                  return <button key={m.id} onClick={() => setViewMateri(m)}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", transition: "border-color .15s" }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent-2)"}
                     onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line-soft)"}>
@@ -10877,18 +10950,26 @@ function LatihanMandiri({ user, store, navigate }) {
                       <I n="book" s={18} style={{ color: "var(--accent-2)" }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{m.judul}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>{m.judul}{isHd && <span style={{ fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4 }}>HD</span>}</div>
                       <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{m.pageCount} halaman</div>
                     </div>
                     <I n="chevR" s={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-                  </button>
-                ))}
+                  </button>;
+                })}
               </div>
             </div>
           ))}
         </div>
       ))}
-    </div>
+    </div>}
+
+    {tab === "latihan" && <div style={{ padding: 16 }}>
+      <Card><div className="empty empty-box">
+        <I n="edit" s={32} />
+        <h3>Segera Hadir</h3>
+        <p style={{ color: "var(--ink-3)", fontSize: 13 }}>Latihan mandiri interaktif akan segera tersedia. Kamu bisa berlatih soal kapan saja di sini.</p>
+      </div></Card>
+    </div>}
   </div>;
 }
 
@@ -10904,6 +10985,11 @@ function MateriManager({ store, navigate }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Lazy archival: hapus HD pages untuk materi lama saat guru buka halaman ini
+  useEffect(() => {
+    store.archiveOldMateri().catch(() => {});
+  }, []);
+
   async function handleUpload() {
     if (!form.judul.trim()) return alert("Judul wajib diisi");
     if (!form.bab.trim()) return alert("BAB wajib diisi");
@@ -10912,16 +10998,18 @@ function MateriManager({ store, navigate }) {
       setConverting(true);
       setProgress("Memuat PDF library...");
       await loadPdfJs();
-      setProgress("Mengkonversi halaman PDF...");
-      const pages = await pdfToImages(pdfFile, 1200, 0.65);
-      setProgress(`${pages.length} halaman dikonversi. Menyimpan...`);
+      setProgress("Mengkonversi halaman...");
+      const { hdPages, loPages, numPages } = await pdfToImagesDual(pdfFile, (i, total) => {
+        setProgress(`Halaman ${i}/${total}...`);
+      });
+      setProgress(`${numPages} halaman siap. Menyimpan HD + arsip...`);
       await store.addMateri({
         judul: form.judul.trim(),
         mapel: form.mapel,
         jenjang: form.jenjang,
         bab: form.bab.trim(),
         urutan: materiList.filter(m => m.mapel === form.mapel && m.jenjang === form.jenjang && m.bab === form.bab.trim()).length,
-      }, pages);
+      }, hdPages, loPages);
       setShowUpload(false);
       setForm({ judul: "", mapel: "IPA", jenjang: "VII", bab: "" });
       setPdfFile(null);
@@ -11013,7 +11101,7 @@ function MateriManager({ store, navigate }) {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{m.judul}</div>
-                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>{m.pageCount} halaman · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>{m.pageCount} halaman · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{m.createdAt && Date.now() - m.createdAt < 7*86400000 ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4, letterSpacing: ".03em" }}>HD</span> : <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, color: "var(--ink-3)", background: "var(--surface-alt)", padding: "1px 5px", borderRadius: 4 }}>Arsip</span>}</div>
                     </div>
                     <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
                   </div>
