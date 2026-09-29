@@ -462,6 +462,8 @@ const IC = {
   award: "M12 15a7 7 0 100-14 7 7 0 000 14zM8.21 13.89L7 23l5-3 5 3-1.21-9.12",
   rotate: "M1 4v6h6 M3.51 15a9 9 0 102.13-9.36L1 10",
   fileText: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  maximize: "M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3",
+  minimize: "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7",
 };
 function I({ n, s = 16, style, cls = "" }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={style} className={cls}><path d={IC[n] || ""} /></svg>;
@@ -10666,12 +10668,20 @@ async function pdfToImages(file, maxWidth = 1200, quality = 0.65) {
   return pages;
 }
 
-// ─── MATERI VIEWER (slide-by-slide) ───
+// ─── MATERI VIEWER (slide-by-slide + fullscreen pinch-zoom) ───
 function MateriViewer({ materi, store, onBack }) {
+  // ALL hooks MUST be before any early return (React Rules of Hooks)
   const [pages, setPages] = useState(null);
   const [idx, setIdx] = useState(0);
   const [loading, setLoading] = useState(true);
-  const touchRef = useRef(null); // hooks harus sebelum early return
+  const [fs, setFs] = useState(false); // fullscreen mode
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const touchRef = useRef(null);
+  const pinchRef = useRef(null); // { dist, zoom, midX, midY }
+  const panRef = useRef(null); // { startX, startY, panX, panY }
+  const tapRef = useRef(null); // { time, x, y } for double-tap
+  const imgContainerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -10681,6 +10691,16 @@ function MateriViewer({ materi, store, onBack }) {
     return () => { cancelled = true; };
   }, [materi.id]);
 
+  // Reset zoom/pan when page changes or fullscreen toggles
+  useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, [idx, fs]);
+
+  // Lock body scroll when fullscreen
+  useEffect(() => {
+    if (fs) { document.body.style.overflow = "hidden"; }
+    else { document.body.style.overflow = ""; }
+    return () => { document.body.style.overflow = ""; };
+  }, [fs]);
+
   if (loading) return <div style={{ padding: 40, textAlign: "center" }}><div className="spinner" /><p style={{ color: "var(--ink-3)", fontSize: 13, marginTop: 12 }}>Memuat materi...</p></div>;
   if (!pages || pages.length === 0) return <div style={{ padding: 40, textAlign: "center" }}><p style={{ color: "var(--ink-3)" }}>Materi kosong</p><button className="btn btn-outline btn-sm" onClick={onBack} style={{ marginTop: 12 }}>Kembali</button></div>;
 
@@ -10688,7 +10708,7 @@ function MateriViewer({ materi, store, onBack }) {
   const prev = () => setIdx(i => Math.max(0, i - 1));
   const next = () => setIdx(i => Math.min(total - 1, i + 1));
 
-  // Swipe support
+  // ── Normal view swipe ──
   const onTouchStart = e => { touchRef.current = e.touches[0].clientX; };
   const onTouchEnd = e => {
     if (touchRef.current === null) return;
@@ -10698,20 +10718,116 @@ function MateriViewer({ materi, store, onBack }) {
     touchRef.current = null;
   };
 
+  // ── Fullscreen touch handlers ──
+  const getDist = (t) => Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+
+  const fsTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      // Pinch start
+      e.preventDefault();
+      const d = getDist(e.touches);
+      pinchRef.current = { dist: d, zoom, midX: (e.touches[0].clientX + e.touches[1].clientX) / 2, midY: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+      panRef.current = null;
+    } else if (e.touches.length === 1) {
+      const now = Date.now();
+      const t = e.touches[0];
+      // Double-tap detection
+      if (tapRef.current && now - tapRef.current.time < 300 && Math.abs(t.clientX - tapRef.current.x) < 30 && Math.abs(t.clientY - tapRef.current.y) < 30) {
+        // Toggle zoom
+        e.preventDefault();
+        if (zoom > 1.1) { setZoom(1); setPan({ x: 0, y: 0 }); }
+        else { setZoom(2.5); setPan({ x: 0, y: 0 }); }
+        tapRef.current = null;
+        return;
+      }
+      tapRef.current = { time: now, x: t.clientX, y: t.clientY };
+      // Pan start (only when zoomed)
+      if (zoom > 1.05) {
+        panRef.current = { startX: t.clientX, startY: t.clientY, panX: pan.x, panY: pan.y };
+      } else {
+        // Swipe nav start
+        touchRef.current = t.clientX;
+        panRef.current = null;
+      }
+    }
+  };
+
+  const fsTouchMove = (e) => {
+    if (e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault();
+      const d = getDist(e.touches);
+      const newZoom = Math.min(5, Math.max(1, pinchRef.current.zoom * (d / pinchRef.current.dist)));
+      setZoom(newZoom);
+      if (newZoom <= 1.05) setPan({ x: 0, y: 0 });
+    } else if (e.touches.length === 1 && panRef.current && zoom > 1.05) {
+      e.preventDefault();
+      const t = e.touches[0];
+      const dx = t.clientX - panRef.current.startX;
+      const dy = t.clientY - panRef.current.startY;
+      setPan({ x: panRef.current.panX + dx, y: panRef.current.panY + dy });
+    }
+  };
+
+  const fsTouchEnd = (e) => {
+    if (pinchRef.current && e.touches.length < 2) {
+      pinchRef.current = null;
+      if (zoom < 1.05) { setZoom(1); setPan({ x: 0, y: 0 }); }
+      return;
+    }
+    if (panRef.current) { panRef.current = null; return; }
+    // Swipe nav when not zoomed
+    if (touchRef.current !== null && zoom <= 1.05) {
+      const diff = e.changedTouches[0].clientX - touchRef.current;
+      if (diff > 50) prev();
+      else if (diff < -50) next();
+      touchRef.current = null;
+    }
+  };
+
+  // ── Fullscreen overlay ──
+  const fsOverlay = fs ? <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#000", display: "flex", flexDirection: "column", touchAction: "none" }}>
+    {/* Top bar */}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "rgba(0,0,0,.7)", position: "relative", zIndex: 2 }}>
+      <div style={{ color: "#fff", fontSize: 12, fontFamily: "var(--mono)", opacity: .8 }}>{idx + 1} / {total}</div>
+      <div style={{ color: "#fff", fontSize: 12, opacity: .6, flex: 1, textAlign: "center", padding: "0 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{materi.judul}</div>
+      <button onClick={() => setFs(false)} style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="x" s={16} /></button>
+    </div>
+    {/* Image area with pinch-zoom */}
+    <div ref={imgContainerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", position: "relative" }}
+      onTouchStart={fsTouchStart} onTouchMove={fsTouchMove} onTouchEnd={fsTouchEnd}>
+      <img src={pages[idx]} alt={`Halaman ${idx + 1}`}
+        draggable={false}
+        style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: "center center", transition: pinchRef.current ? "none" : "transform .15s ease-out", userSelect: "none", WebkitUserSelect: "none" }} />
+      {/* Nav arrows (only show when not zoomed) */}
+      {zoom <= 1.05 && idx > 0 && <button onClick={prev} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: "50%", width: 40, height: 40, cursor: "pointer", display: "grid", placeItems: "center" }}><I n="chevL" s={20} /></button>}
+      {zoom <= 1.05 && idx < total - 1 && <button onClick={next} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: "50%", width: 40, height: 40, cursor: "pointer", display: "grid", placeItems: "center" }}><I n="chevR" s={20} /></button>}
+    </div>
+    {/* Bottom nav */}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 16px", background: "rgba(0,0,0,.7)", position: "relative", zIndex: 2 }}>
+      <button onClick={prev} disabled={idx === 0} style={{ background: idx === 0 ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.15)", color: idx === 0 ? "rgba(255,255,255,.3)" : "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: idx === 0 ? "default" : "pointer", fontSize: 13 }}><I n="chevL" s={14} /> Prev</button>
+      <span style={{ color: "rgba(255,255,255,.5)", fontSize: 11, fontFamily: "var(--mono)", minWidth: 50, textAlign: "center" }}>Pinch / 2x tap untuk zoom</span>
+      <button onClick={next} disabled={idx === total - 1} style={{ background: idx === total - 1 ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.15)", color: idx === total - 1 ? "rgba(255,255,255,.3)" : "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: idx === total - 1 ? "default" : "pointer", fontSize: 13 }}>Next <I n="chevR" s={14} /></button>
+    </div>
+  </div> : null;
+
   return <div>
+    {fsOverlay}
     <div className="topbar">
       <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
       <div className="topbar-title" style={{ fontSize: 13 }}>{materi.judul}</div>
+      <button onClick={() => setFs(true)} style={{ background: "none", border: "none", color: "var(--ink-2)", cursor: "pointer", padding: 4, marginRight: 4 }}><I n="maximize" s={16} /></button>
       <div style={{ width: 36, textAlign: "right", fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{idx + 1}/{total}</div>
     </div>
-    <div style={{ position: "relative", background: "var(--surface-alt)", minHeight: 300, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <div style={{ position: "relative", background: "var(--surface-alt)", minHeight: 300, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={() => setFs(true)}>
       <img src={pages[idx]} alt={`Halaman ${idx + 1}`} style={{ maxWidth: "100%", maxHeight: "75vh", objectFit: "contain", display: "block" }} />
+      {/* Fullscreen hint overlay */}
+      <div style={{ position: "absolute", bottom: 10, right: 10, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: 6, padding: "4px 8px", fontSize: 11, display: "flex", alignItems: "center", gap: 4, backdropFilter: "blur(4px)" }}><I n="maximize" s={12} /> Fullscreen</div>
       {/* Arrow overlays */}
-      {idx > 0 && <button onClick={prev} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.4)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }}><I n="chevL" s={18} /></button>}
-      {idx < total - 1 && <button onClick={next} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.4)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }}><I n="chevR" s={18} /></button>}
+      {idx > 0 && <button onClick={(e) => { e.stopPropagation(); prev(); }} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.4)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }}><I n="chevL" s={18} /></button>}
+      {idx < total - 1 && <button onClick={(e) => { e.stopPropagation(); next(); }} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,.4)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", backdropFilter: "blur(4px)" }}><I n="chevR" s={18} /></button>}
     </div>
-    {/* Page dots / progress */}
+    {/* Page nav */}
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 16px" }}>
       <button className="btn btn-outline btn-sm" onClick={prev} disabled={idx === 0}><I n="chevL" s={14} /> Sebelumnya</button>
       <span style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--ink-3)", minWidth: 50, textAlign: "center" }}>{idx + 1} / {total}</span>
