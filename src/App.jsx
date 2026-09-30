@@ -45,6 +45,44 @@ function shuffle(arr) {
   return a;
 }
 
+// ─── MATERI CACHE (IndexedDB) ───
+// Cache materi pages di browser supaya gak download ulang dari Firebase
+const _MCDB = "astrolab_mcache";
+const _MCST = "pages";
+function _openMC() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(_MCDB, 1);
+    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(_MCST)) r.result.createObjectStore(_MCST); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function getMCache(id) {
+  try {
+    const d = await _openMC();
+    return new Promise(res => {
+      const tx = d.transaction(_MCST, "readonly");
+      const req = tx.objectStore(_MCST).get(id);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    });
+  } catch { return null; }
+}
+async function setMCache(id, pages) {
+  try {
+    const d = await _openMC();
+    const tx = d.transaction(_MCST, "readwrite");
+    tx.objectStore(_MCST).put({ pages, t: Date.now() }, id);
+  } catch {}
+}
+async function delMCache(id) {
+  try {
+    const d = await _openMC();
+    const tx = d.transaction(_MCST, "readwrite");
+    tx.objectStore(_MCST).delete(id);
+  } catch {}
+}
+
 // ─── ACCOUNTS ───
 // Hardcoded accounts removed — semua akun dikelola via Firebase Auth + /accounts/{id}
 // Data siswa diambil dari fbAccounts (Firebase Realtime DB)
@@ -2542,23 +2580,32 @@ function useStore() {
     await remove(ref(db, `materiLatihan/${id}`));
     await remove(ref(db, `materiPages/${id}`));
     await remove(ref(db, `materiPagesLo/${id}`));
+    delMCache(id).catch(() => {}); // hapus browser cache juga
   };
   const updateMateri = async (id, patch) => {
     await update(ref(db, `materiLatihan/${id}`), patch);
   };
   // On-demand: load pages — HD jika < 7 hari, arsip jika ≥ 7 hari
+  // Browser cache (IndexedDB) → kalau udah pernah download, gak perlu ke Firebase lagi
   const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
   const loadMateriPages = async (id, createdAt) => {
+    // 1. Cek browser cache dulu
+    const cached = await getMCache(id);
+    if (cached && cached.pages && cached.pages.length > 0) return cached.pages;
+    // 2. Gak ada di cache → fetch dari Firebase
     const isHd = createdAt && (Date.now() - createdAt < SEVEN_DAYS);
     const path = isHd ? `materiPages/${id}` : `materiPagesLo/${id}`;
     const snap = await get(ref(db, path));
-    const pages = snap.val();
+    let pages = snap.val();
     // Fallback: kalau arsip belum ada (materi lama sebelum fitur dual), coba HD
     if (!pages && !isHd) {
       const fallback = await get(ref(db, `materiPages/${id}`));
-      return fallback.val() || [];
+      pages = fallback.val() || [];
     }
-    return pages || [];
+    pages = pages || [];
+    // 3. Simpan ke cache buat next time
+    if (pages.length > 0) setMCache(id, pages).catch(() => {});
+    return pages;
   };
   // Lazy archival: hapus HD pages untuk materi > 7 hari (dipanggil dari MateriManager)
   const archiveOldMateri = async () => {
