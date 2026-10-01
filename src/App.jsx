@@ -843,12 +843,13 @@ const TIERS = [
 ];
 
 // XP cumulative per level (progressive scaling)
+// Disesuaikan: 1 semester siswa terbaik bisa Astronot III-IV, 1 tahun penuh Commander III-IV
 const LEVEL_XP = [
-  0,     200,   500,    950,    // Nebula I-IV
-  1500,  2200,  3000,   4000,   // Bintang I-IV
-  5200,  6700,  8500,   10700,  // Planet I-IV
-  13300, 16500, 20300,  24800,  // Astronot I-IV
-  30000, 36000, 43000,  51000,  // Commander I-IV
+  0,     50,    120,    200,    // Nebula I-IV
+  300,   450,   650,    850,    // Bintang I-IV
+  1100,  1400,  1750,   2100,   // Planet I-IV
+  2500,  2900,  3300,   3750,   // Astronot I-IV
+  4300,  5000,  5800,   6800,   // Commander I-IV
 ];
 
 const SUB_ROMAN = ["I", "II", "III", "IV"];
@@ -1147,8 +1148,8 @@ const AUTO_BADGES = [
 
   // === XP ===
   { id: "xp1k",        icon: "gem1",         rim: "teal",   name: "1K Club",        desc: "Total 1.000 XP",                   color: "#0d6b7a", bg: "#eaf4f3", category: "XP", poin: 50 },
-  { id: "xp5k",        icon: "gem2",         rim: "violet", name: "5K Club",        desc: "Total 5.000 XP",                   color: "#7c3aed", bg: "#f5f3ff", category: "XP", poin: 50 },
-  { id: "xp10k",       icon: "diamond",      rim: "amber",  name: "10K Elite",      desc: "Total 10.000 XP",                  color: "#b45309", bg: "#fef3c7", category: "XP", poin: 50 },
+  { id: "xp5k",        icon: "gem2",         rim: "violet", name: "3K Club",        desc: "Total 3.000 XP",                   color: "#7c3aed", bg: "#f5f3ff", category: "XP", poin: 50 },
+  { id: "xp10k",       icon: "diamond",      rim: "amber",  name: "5K Elite",       desc: "Total 5.000 XP",                   color: "#b45309", bg: "#fef3c7", category: "XP", poin: 50 },
 ];
 
 const MANUAL_BADGES = [
@@ -1220,8 +1221,8 @@ function checkAutoBadges(stats, submission, isTopClass = false, isTopThree = fal
 
   // XP milestones
   if (newPoin >= 1000 && (stats.poin || 0) < 1000) earned.push("xp1k");
-  if (newPoin >= 5000 && (stats.poin || 0) < 5000) earned.push("xp5k");
-  if (newPoin >= 10000 && (stats.poin || 0) < 10000) earned.push("xp10k");
+  if (newPoin >= 3000 && (stats.poin || 0) < 3000) earned.push("xp5k");
+  if (newPoin >= 5000 && (stats.poin || 0) < 5000) earned.push("xp10k");
 
   return earned;
 }
