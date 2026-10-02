@@ -1171,7 +1171,7 @@ const MANUAL_BADGES = [
 ];
 const ALL_BADGES = [...AUTO_BADGES, ...MANUAL_BADGES];
 
-function checkAutoBadges(stats, submission, isTopClass = false, isTopThree = false) {
+function checkAutoBadges(stats, submission, isTopClass = false, isTopThree = false, ownedBadges = []) {
   const earned = [];
   const nilai = submission.nilai || 0;
   const tugasSelesai = (stats.tugasSelesai || 0) + 1; // setelah submission ini
@@ -1212,17 +1212,17 @@ function checkAutoBadges(stats, submission, isTopClass = false, isTopThree = fal
   if (isTopClass) earned.push("topclass");
   if (isTopThree && !isTopClass) earned.push("podium");
 
-  // Level milestones — cek apakah crossing threshold
-  const prevLevel = getLevel(stats.poin || 0).id;
-  if (newLevel >= 5 && prevLevel < 5) earned.push("lv5");
-  if (newLevel >= 10 && prevLevel < 10) earned.push("lv10");
-  if (newLevel >= 15 && prevLevel < 15) earned.push("lv15");
-  if (newLevel >= 20 && prevLevel < 20) earned.push("lv20");
+  // Level milestones — award kalau qualified DAN belum punya badge-nya
+  // (pakai ownedBadges biar aman kalau threshold diubah — siswa yang retroaktif melewati level tetap dapat)
+  if (newLevel >= 5 && !ownedBadges.includes("lv5")) earned.push("lv5");
+  if (newLevel >= 10 && !ownedBadges.includes("lv10")) earned.push("lv10");
+  if (newLevel >= 15 && !ownedBadges.includes("lv15")) earned.push("lv15");
+  if (newLevel >= 20 && !ownedBadges.includes("lv20")) earned.push("lv20");
 
-  // XP milestones
-  if (newPoin >= 1000 && (stats.poin || 0) < 1000) earned.push("xp1k");
-  if (newPoin >= 3000 && (stats.poin || 0) < 3000) earned.push("xp5k");
-  if (newPoin >= 5000 && (stats.poin || 0) < 5000) earned.push("xp10k");
+  // XP milestones — same pattern
+  if (newPoin >= 1000 && !ownedBadges.includes("xp1k")) earned.push("xp1k");
+  if (newPoin >= 3000 && !ownedBadges.includes("xp5k")) earned.push("xp5k");
+  if (newPoin >= 5000 && !ownedBadges.includes("xp10k")) earned.push("xp10k");
 
   return earned;
 }
@@ -3368,6 +3368,13 @@ function DetailTugas({ user, store, tugasId, navigate }) {
   // Bisa kerjakan kalau: normal (belum lewat), ATAU lewat tapi punya susulan personal yang masih aktif
   const bisa = !done && t.status === "aktif" && t.soal?.length > 0 && (!lewat || susulanAktif);
 
+  // ── Social Proof: hitung progres kelas ──
+  const _spAllSiswa = store.getAllSiswa(t.jenjang);
+  const _spSiswaList = Array.isArray(t.assignedTo) ? _spAllSiswa.filter(s => t.assignedTo.includes(s.id)) : _spAllSiswa;
+  const _spTotal = _spSiswaList.length;
+  const _spDone = _spTotal > 1 ? store.getSubs().filter(s => s.tugasId === t.id).length : 0;
+  const _spPct = _spTotal > 1 ? Math.round((_spDone / _spTotal) * 100) : 0;
+
   return <>
     <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas")}><I n="chevL" s={18} /></button><div className="topbar-title">Detail Tugas</div><div style={{ width: 36 }} /></div>
     <div className="page">
@@ -3412,6 +3419,25 @@ function DetailTugas({ user, store, tugasId, navigate }) {
           {lewat && !done && susulanAktif && <span className="chip" style={{ background: "var(--accent-tint)", color: "var(--accent-2)" }}>Susulan Aktif</span>}
         </div>
       </Card>
+
+      {/* Social Proof — progres kelas (hanya untuk yang belum kerjakan) */}
+      {!done && _spTotal > 1 && _spPct > 0 && (
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: "var(--surface-alt)", borderRadius: 12, border: "1px solid var(--line-soft)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-3)" }}>
+              <I n="users" s={12} />
+              <span>Progres Kelas</span>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: _spPct >= 60 ? "var(--good)" : "var(--ink-2)" }}>{_spDone}/{_spTotal}</span>
+          </div>
+          <div style={{ height: 6, borderRadius: 99, background: "var(--line-soft)", overflow: "hidden" }}>
+            <div style={{ height: "100%", borderRadius: 99, background: _spPct >= 80 ? "var(--good)" : _spPct >= 60 ? "#60a5fa" : "var(--accent)", width: `${Math.max(_spPct, 3)}%`, transition: "width .5s" }} />
+          </div>
+          {_spPct >= 80 && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.4 }}>Hampir semua sudah menyelesaikan tugas ini</div>}
+          {_spPct >= 60 && _spPct < 80 && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.4 }}>Sebagian besar kelas sudah selesai</div>}
+          {_spPct >= 30 && _spPct < 60 && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.4 }}>Sebagian teman sekelasmu sudah mengerjakan</div>}
+        </div>
+      )}
 
       {/* Sudah dikerjakan */}
       {done && sub && (
@@ -3908,7 +3934,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const isTopClass = lb.length > 0 && lb[0].id === user.id;
     const isTopThree = lb.length > 0 && lb.slice(0, 3).some(s => s.id === user.id);
     const subForBadge = { nilai, ontime, poinDapat: totalPoin, publishedAt: t.createdAt ? new Date(t.createdAt).getTime() : 0 };
-    const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass, isTopThree);
+    const newBadges = checkAutoBadges(prevStats, subForBadge, isTopClass, isTopThree, store.getBadges(user.id));
 
     // CRITICAL: tunggu Firebase write selesai dengan timeout 10 detik. Firebase RTDB tidak
     // fail-fast saat offline (queue silent + retry), jadi tanpa timeout tombol bisa stuck
@@ -3952,6 +3978,40 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <div className="stat-num" style={{ fontSize: 52, fontWeight: 800, color: "var(--accent)", margin: "20px 0 4px", letterSpacing: "-.03em" }}>{result.nilai}</div>
       <div style={{ fontSize: 13, color: "var(--ink-3)" }}>nilai · {result.correctCount}/{total} benar</div>
       <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>+{result.poinDapat} poin didapat</div>
+      {/* Completion Moment — posisi penyelesaian di kelas */}
+      {(() => {
+        const cmAllSiswa = store.getAllSiswa(t.jenjang);
+        const cmSiswaList = Array.isArray(t.assignedTo) ? cmAllSiswa.filter(s => t.assignedTo.includes(s.id)) : cmAllSiswa;
+        const cmTotal = cmSiswaList.length;
+        if (cmTotal < 2) return null;
+        const cmDone = store.getSubs().filter(s => s.tugasId === t.id).length;
+        const cmPct = Math.round((cmDone / cmTotal) * 100);
+        // Jangan tunjukkan posisi kalau student termasuk yang terakhir (>85%) — hindari malu
+        const showPosition = cmDone <= Math.ceil(cmTotal * 0.5);
+        // Milestone celebrations
+        const isMilestone = cmPct >= 50 && cmPct < 100;
+        const isComplete = cmPct >= 100;
+        if (!showPosition && !isMilestone && !isComplete) return null;
+        return (
+          <div style={{ marginTop: 14, padding: "10px 18px", borderRadius: 12, background: isComplete ? "#f0fdf4" : "var(--surface-alt)", border: isComplete ? "1.5px solid #86efac" : "1px solid var(--line-soft)", width: "100%", maxWidth: 320, textAlign: "center" }}>
+            {showPosition && (
+              <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                <span style={{ fontWeight: 700, color: "var(--accent)" }}>Kamu yang ke-{cmDone}</span> dari kelasmu yang menyelesaikan tugas ini
+              </div>
+            )}
+            {!showPosition && isMilestone && (
+              <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                Kelas sudah <span style={{ fontWeight: 700, color: "var(--good)" }}>{cmPct}%</span> selesai!
+              </div>
+            )}
+            {isComplete && (
+              <div style={{ fontSize: 13, color: "var(--good)", fontWeight: 700, lineHeight: 1.5 }}>
+                Seluruh kelas sudah menyelesaikan tugas ini!
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <div style={{ width: "100%", maxWidth: 320, marginTop: 16 }}><LevelCard poin={newPoin} /></div>
       {result.ontime && result.newStreak > 0 && (
         <div style={{ width: "100%", maxWidth: 340, marginTop: 12 }}>
