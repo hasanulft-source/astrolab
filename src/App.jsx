@@ -4098,6 +4098,16 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const iconKey = result.nilai >= 90 ? "trophy" : result.nilai >= 70 ? "checkCircle" : "book";
     const iconColor = result.nilai >= 90 ? "#b45309" : result.nilai >= 70 ? "var(--good)" : "var(--accent)";
     const newPoin = (store.getStats(user.id).poin || 0);
+    // Sisa tugas — pre-compute supaya bisa dipakai di reminder card DAN tombol "Kembali ke Tugas"
+    const sisaTugas = store.getTugas().filter(st => {
+      if (st.id === t.id) return false;
+      if (st.jenjang !== user.jenjang || st.status !== "aktif") return false;
+      if (Array.isArray(st.assignedTo) && !st.assignedTo.includes(user.id)) return false;
+      if (store.hasSub(user.id, st.id)) return false;
+      const stLewat = fmtDl(st.deadline).tone === "bad";
+      if (stLewat && !store.isSusulanAktif(st.id, user.id)) return false;
+      return true;
+    });
     return <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, textAlign: "center" }}>
       <div style={{ width: 72, height: 72, borderRadius: 20, background: result.nilai >= 90 ? "#fef3c7" : result.nilai >= 70 ? "var(--good-bg)" : "var(--accent-soft)", color: iconColor, display: "grid", placeItems: "center", marginBottom: 18 }}>
         <I n={iconKey} s={36} />
@@ -4160,51 +4170,41 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
           </div>
         </div>
       )}
-      {/* Sisa tugas reminder — hitung tugas lain yang belum dikerjakan */}
-      {(() => {
-        const sisaTugas = store.getTugas().filter(st => {
-          if (st.id === t.id) return false; // skip tugas yang baru saja dikerjakan
-          if (st.jenjang !== user.jenjang || st.status !== "aktif") return false;
-          if (Array.isArray(st.assignedTo) && !st.assignedTo.includes(user.id)) return false;
-          if (store.hasSub(user.id, st.id)) return false; // skip sudah dikerjakan
-          const stLewat = fmtDl(st.deadline).tone === "bad";
-          if (stLewat && !store.isSusulanAktif(st.id, user.id)) return false; // lewat tanpa susulan = skip
-          return true;
-        });
-        if (!sisaTugas.length) return null;
-        return (
-          <div style={{ width: "100%", maxWidth: 340, marginTop: 16 }}>
-            <button onClick={() => setShowSisaTugas(true)} style={{
-              width: "100%", background: "var(--accent-tint)", border: "1.5px solid var(--accent)",
-              borderRadius: 14, padding: "14px 16px", cursor: "pointer", textAlign: "left"
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10, background: "var(--accent)",
-                  color: "#fff", display: "grid", placeItems: "center", flexShrink: 0
-                }}><I n="book" s={16} /></div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>
-                    Masih ada {sisaTugas.length} tugas lagi!
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
-                    Kerjakan sekarang untuk jaga streak
-                  </div>
+      {/* Sisa tugas reminder card */}
+      {sisaTugas.length > 0 && (
+        <div style={{ width: "100%", maxWidth: 340, marginTop: 16 }}>
+          <button onClick={() => setShowSisaTugas(true)} style={{
+            width: "100%", background: "var(--accent-tint)", border: "1.5px solid var(--accent)",
+            borderRadius: 14, padding: "14px 16px", cursor: "pointer", textAlign: "left"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10, background: "var(--accent)",
+                color: "#fff", display: "grid", placeItems: "center", flexShrink: 0
+              }}><I n="book" s={16} /></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>
+                  Masih ada {sisaTugas.length} tugas lagi!
                 </div>
-                <I n="chevR" s={16} style={{ color: "var(--accent)" }} />
+                <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
+                  Kerjakan sekarang untuk jaga streak
+                </div>
               </div>
-            </button>
-            {/* Popup sisa tugas */}
-            {showSisaTugas && (
-              <TugasHariIniPopup pendingTugas={sisaTugas} store={store} user={user} navigate={navigate} onClose={() => setShowSisaTugas(false)} />
-            )}
-          </div>
-        );
-      })()}
-      <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
-        <button className="btn btn-outline" onClick={() => navigate("tugas")}>Kembali ke Tugas</button>
-        <button className="btn btn-primary" onClick={() => navigate("leaderboard")}>Lihat Ranking</button>
-      </div>
+              <I n="chevR" s={16} style={{ color: "var(--accent)" }} />
+            </div>
+          </button>
+        </div>
+      )}
+      {/* Popup sisa tugas — muncul dari reminder card ATAU tombol "Kembali ke Tugas" */}
+      {showSisaTugas && sisaTugas.length > 0 && (
+        <TugasHariIniPopup pendingTugas={sisaTugas} store={store} user={user} navigate={navigate} onClose={() => setShowSisaTugas(false)} />
+      )}
+      {sisaTugas.length === 0 && (
+        <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+          <button className="btn btn-outline" onClick={() => navigate("tugas")}>Kembali ke Tugas</button>
+          <button className="btn btn-primary" onClick={() => navigate("leaderboard")}>Lihat Ranking</button>
+        </div>
+      )}
     </div>;
   }
 
