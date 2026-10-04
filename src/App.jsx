@@ -2742,6 +2742,102 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// ─── TUGAS HARI INI POPUP ───
+// Flag session-level: popup cuma muncul 1× setelah login, bukan tiap kali DashboardSiswa re-mount
+let _tugasPopupShownThisSession = false;
+
+function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
+  if (!pendingTugas.length) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 250 }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: "var(--surface)", borderRadius: 20, width: "100%", maxWidth: 400,
+        boxShadow: "0 20px 60px rgba(0,0,0,.25)", overflow: "hidden", maxHeight: "85vh", display: "flex", flexDirection: "column"
+      }}>
+        {/* Header */}
+        <div style={{
+          background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)",
+          padding: "20px 20px 18px", color: "#fff", position: "relative"
+        }}>
+          <button onClick={onClose} style={{
+            position: "absolute", top: 12, right: 12, background: "rgba(255,255,255,.2)",
+            border: "none", borderRadius: 99, width: 28, height: 28, display: "grid", placeItems: "center",
+            color: "#fff", cursor: "pointer"
+          }}><I n="x" s={14} /></button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,.2)",
+              display: "grid", placeItems: "center"
+            }}><I n="book" s={18} /></div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.01em" }}>Tugas Hari Ini</div>
+              <div style={{ fontSize: 12, opacity: .8 }}>{pendingTugas.length} tugas menunggu</div>
+            </div>
+          </div>
+        </div>
+        {/* Tugas list */}
+        <div style={{ padding: "12px 16px 16px", overflowY: "auto", flex: 1 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {pendingTugas.map(t => {
+              const dl = fmtDl(t.deadline);
+              const soalCount = t.soal?.length || 0;
+              // Progress kelas
+              const allSiswa = store.getAllSiswa(t.jenjang);
+              const siswaList = Array.isArray(t.assignedTo) ? allSiswa.filter(s => t.assignedTo.includes(s.id)) : allSiswa;
+              const totalSiswa = siswaList.length;
+              const sudahKerjakan = totalSiswa > 1 ? store.getSubs().filter(s => s.tugasId === t.id).length : 0;
+              const pctDone = totalSiswa > 1 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
+              return (
+                <div key={t.id} style={{
+                  border: "1.5px solid var(--line)", borderRadius: 14, padding: "14px 16px",
+                  background: "var(--surface)", transition: "border-color .15s"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "var(--accent-tint)",
+                      padding: "3px 8px", borderRadius: 6, letterSpacing: ".03em", textTransform: "uppercase"
+                    }}>{t.mapel}</span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 600,
+                      color: dl.tone === "bad" ? "var(--bad)" : dl.tone === "warn" ? "var(--warn)" : "var(--ink-3)",
+                      display: "flex", alignItems: "center", gap: 4
+                    }}><I n="clock" s={12} />{dl.label}</span>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.4 }}>{t.judul}</div>
+                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                    <I n="fileText" s={12} />{soalCount} soal
+                  </div>
+                  {/* Progress bar */}
+                  {totalSiswa > 1 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: "var(--ink-3)", display: "flex", alignItems: "center", gap: 4 }}>
+                          <I n="users" s={11} />{sudahKerjakan}/{totalSiswa} siswa
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600 }}>{pctDone}%</span>
+                      </div>
+                      <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%", borderRadius: 99, transition: "width .4s",
+                          width: `${pctDone}%`,
+                          background: pctDone >= 80 ? "var(--good)" : "var(--accent)"
+                        }} />
+                      </div>
+                    </div>
+                  )}
+                  <button className="btn btn-primary btn-sm" style={{ width: "100%" }} onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }}>
+                    Kerjakan <I n="chevR" s={13} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── DASHBOARD SISWA ───
 function DashboardSiswa({ user, store, navigate }) {
   const stats = store.getStats(user.id);
@@ -2786,6 +2882,23 @@ function DashboardSiswa({ user, store, navigate }) {
   // Dynamic greeting by waktu
   const hour = new Date().getHours();
   const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
+
+  // ── Tugas Hari Ini Popup — hanya muncul sekali per session login ──
+  // Include: tugas deadline belum lewat + tugas susulan aktif + tugas perorangan (assignedTo)
+  const pendingTugas = allTugas.filter(t => {
+    if (store.hasSub(user.id, t.id)) return false; // sudah dikerjakan
+    const lewat = fmtDl(t.deadline).tone === "bad";
+    if (lewat && !store.isSusulanAktif(t.id, user.id)) return false; // lewat tanpa susulan = skip
+    return true;
+  });
+  const [showTugasPopup, setShowTugasPopup] = useState(false);
+  const tugasPopupTriggered = useRef(false);
+  useEffect(() => {
+    if (tugasPopupTriggered.current || _tugasPopupShownThisSession) return;
+    if (store.loading) return; // tunggu data loaded
+    if (pendingTugas.length > 0) { tugasPopupTriggered.current = true; setShowTugasPopup(true); }
+  }, [store.loading, pendingTugas.length]);
+  const closeTugasPopup = () => { _tugasPopupShownThisSession = true; setShowTugasPopup(false); };
 
   return <>
     <div className="page">
@@ -2885,6 +2998,10 @@ function DashboardSiswa({ user, store, navigate }) {
           lb.slice(0, 3).map(s => <div key={s.id} className="lb-row" style={{ gridTemplateColumns: "28px 34px 1fr auto" }}><div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : "top3"}`}>{s.rank}</div><UserAvatar userId={s.id} name={s.nama} size="sm" store={store} /><div><div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span>{s.nama}{s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span><LevelBadge poin={s.poin || 0} size="xs" showName={false} /></div><div className="lb-meta">{s.kelas}</div></div><div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div></div>)}
       </Card>
     </div>
+    {/* Tugas Hari Ini Popup */}
+    {showTugasPopup && pendingTugas.length > 0 && (
+      <TugasHariIniPopup pendingTugas={pendingTugas} store={store} user={user} navigate={navigate} onClose={closeTugasPopup} />
+    )}
   </>;
 }
 
@@ -3804,6 +3921,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   const submitLockRef = useRef(false); // synchronous guard against double-tap race
   const [savedAt, setSavedAt] = useState(null); // timestamp untuk auto-save indicator
   const [savedTick, setSavedTick] = useState(0); // force re-render setelah save
+  const [showSisaTugas, setShowSisaTugas] = useState(false); // popup sisa tugas setelah submit
 
   // Auto-fade save indicator setelah 2.5s
   useEffect(() => {
@@ -4031,6 +4149,47 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
           </div>
         </div>
       )}
+      {/* Sisa tugas reminder — hitung tugas lain yang belum dikerjakan */}
+      {(() => {
+        const sisaTugas = store.getTugas().filter(st => {
+          if (st.id === t.id) return false; // skip tugas yang baru saja dikerjakan
+          if (st.jenjang !== user.jenjang || st.status !== "aktif") return false;
+          if (Array.isArray(st.assignedTo) && !st.assignedTo.includes(user.id)) return false;
+          if (store.hasSub(user.id, st.id)) return false; // skip sudah dikerjakan
+          const stLewat = fmtDl(st.deadline).tone === "bad";
+          if (stLewat && !store.isSusulanAktif(st.id, user.id)) return false; // lewat tanpa susulan = skip
+          return true;
+        });
+        if (!sisaTugas.length) return null;
+        return (
+          <div style={{ width: "100%", maxWidth: 340, marginTop: 16 }}>
+            <button onClick={() => setShowSisaTugas(true)} style={{
+              width: "100%", background: "var(--accent-tint)", border: "1.5px solid var(--accent)",
+              borderRadius: 14, padding: "14px 16px", cursor: "pointer", textAlign: "left"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, background: "var(--accent)",
+                  color: "#fff", display: "grid", placeItems: "center", flexShrink: 0
+                }}><I n="book" s={16} /></div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>
+                    Masih ada {sisaTugas.length} tugas lagi!
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
+                    Kerjakan sekarang untuk jaga streak
+                  </div>
+                </div>
+                <I n="chevR" s={16} style={{ color: "var(--accent)" }} />
+              </div>
+            </button>
+            {/* Popup sisa tugas */}
+            {showSisaTugas && (
+              <TugasHariIniPopup pendingTugas={sisaTugas} store={store} user={user} navigate={navigate} onClose={() => setShowSisaTugas(false)} />
+            )}
+          </div>
+        );
+      })()}
       <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
         <button className="btn btn-outline" onClick={() => navigate("tugas")}>Kembali ke Tugas</button>
         <button className="btn btn-primary" onClick={() => navigate("leaderboard")}>Lihat Ranking</button>
