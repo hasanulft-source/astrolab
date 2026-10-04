@@ -397,6 +397,32 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .mini-icon-3{background:#fef3c7;color:#b45309;}
 .mini-icon-bad{background:var(--bad-bg);color:var(--bad);}
 
+/* DASHBOARD SISWA — Status Card */
+.ds-status{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px;border:1px solid var(--line-soft);}
+.ds-status-hdr{background:linear-gradient(135deg,var(--accent) 0%,var(--accent-2) 100%);padding:16px 18px;display:flex;align-items:center;justify-content:space-between;}
+.ds-rank-num{font-family:var(--mono);font-size:36px;font-weight:700;color:#fff;line-height:1;letter-spacing:-.02em;}
+.ds-rank-sub{font-size:11px;color:rgba(255,255,255,.55);margin-top:4px;}
+.ds-poin{text-align:right;}
+.ds-poin-num{font-family:var(--mono);font-size:28px;font-weight:600;color:#fff;line-height:1;letter-spacing:-.01em;}
+.ds-poin-label{font-size:10px;color:rgba(255,255,255,.6);font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-top:3px;}
+.ds-status-body{padding:14px 18px;}
+.ds-level-row{display:flex;align-items:center;gap:10px;}
+.ds-level-info{flex:1;min-width:0;}
+.ds-level-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;}
+.ds-level-bar{height:6px;background:var(--surface-alt);border-radius:99px;overflow:hidden;}
+.ds-level-fill{height:100%;border-radius:99px;transition:width .5s;}
+.ds-streak{display:flex;align-items:center;gap:3px;flex-shrink:0;padding-left:8px;text-align:center;}
+.ds-streak-num{font-family:var(--mono);font-size:16px;font-weight:800;color:#dc2626;display:flex;align-items:center;gap:2px;}
+.ds-streak-label{font-size:9px;color:var(--ink-3);}
+/* DASHBOARD SISWA — Quick Stats Strip */
+.ds-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
+.ds-stat{background:var(--surface);border-radius:var(--r-sm);padding:12px 14px;display:flex;align-items:center;gap:10px;border:1px solid var(--line-soft);box-shadow:var(--shadow-sm);}
+.ds-stat-icon{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;flex-shrink:0;}
+.ds-stat-icon.score{background:#dbeafe;color:#1e40af;}
+.ds-stat-icon.tasks{background:#d1fae5;color:#047857;}
+.ds-stat-val{font-family:var(--mono);font-size:18px;font-weight:700;line-height:1;}
+.ds-stat-label{font-size:10px;color:var(--ink-3);margin-top:2px;line-height:1.2;}
+
 /* QUIZ STICKY FOOTER */
 .quiz-foot-sticky{position:sticky;bottom:0;z-index:50;padding:12px 16px;background:var(--surface);border-top:1px solid var(--line);display:flex;gap:10px;box-shadow:0 -4px 16px rgba(0,0,0,.04);}
 @supports (padding:env(safe-area-inset-bottom)){.quiz-foot-sticky{padding-bottom:calc(12px + env(safe-area-inset-bottom));}}
@@ -2911,102 +2937,118 @@ function DashboardSiswa({ user, store, navigate }) {
   }, [store.loading, pendingTugas.length]);
   const closeTugasPopup = () => { _tugasPopupShownThisSession = true; setShowTugasPopup(false); };
 
+  const prog = getLevelProgress(stats.poin || 0);
+  const lv = getLevel(stats.poin || 0);
+
   return <>
     <div className="page">
-      {/* Greeting — mobile & desktop */}
-      <div style={{ paddingTop: 12, paddingBottom: 12 }}>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greeting}!</div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, {user.namaDisplay}</h1>
+      {/* Greeting */}
+      <div style={{ paddingTop: 14, paddingBottom: 16 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greeting}!</div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0, lineHeight: 1.2 }}>Halo, {user.namaDisplay}</h1>
       </div>
-      <div className="dt" style={{ paddingTop: 0, marginBottom: 4 }}></div>
-      {/* HERO CARD MERGED: Total Poin + Streak dalam 1 dark navy card dengan comet backdrop */}
-      <Card pad="none" style={{ background: "linear-gradient(135deg, #0a1220 0%, #142338 60%, #1a3554 100%)", color: "#fff", marginBottom: 12, border: "none", position: "relative", overflow: "hidden", minHeight: 200, boxShadow: `0 4px 20px ${getFlameTheme(stats.streak || 0).glow}` }}>
-        {/* Comet flame backdrop (kanan area) — cuma render kalau streak > 0 */}
-        {(stats.streak || 0) > 0 && <StreakCometSVG streak={stats.streak} width="65%" heightPx={130} rightPx={0} topPx={40} />}
 
-        {/* Layer konten di atas comet (z-index tinggi) */}
-        <div style={{ position: "relative", zIndex: 3, padding: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-            {/* KIRI — Total Poin */}
-            <div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", fontWeight: 500, letterSpacing: "0.05em" }}>TOTAL POIN</div>
-              <div className="stat-num" style={{ fontSize: 42, fontWeight: 700, letterSpacing: "-.02em", lineHeight: 1.05, marginTop: 4 }}>{stats.poin.toLocaleString("id-ID")}</div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 6 }}>Ranking #{myRank?.rank || "—"} di Kelas {user.jenjang}</div>
-            </div>
-            {/* KANAN — Streak (kalau ada) + tugas selesai */}
-            <div style={{ textAlign: "right" }}>
-              {(stats.streak || 0) > 0 && (
-                <>
-                  <div style={{ display: "inline-flex", alignItems: "baseline", gap: 3 }}>
-                    <span style={{ fontSize: 32, fontWeight: 500, color: "#fff", lineHeight: 1, fontFamily: "var(--mono)" }}>{stats.streak}</span>
-                    <span style={{ fontSize: 16, color: getFlameTheme(stats.streak).inner[1], fontWeight: 500 }}>×</span>
-                  </div>
-                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 500, marginTop: 2 }}>streak on fire</div>
-                </>
-              )}
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: (stats.streak || 0) > 0 ? 8 : 0 }}>{stats.tugasSelesai} tugas selesai</div>
-            </div>
+      {/* Status Card: Ranking + Poin + Level + Streak — satu card untuk semua */}
+      <div className="ds-status">
+        <div className="ds-status-hdr">
+          <div>
+            <div className="ds-rank-num">#{myRank?.rank || "—"}</div>
+            <div className="ds-rank-sub">Ranking · Kelas {user.jenjang}</div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.15)", color: "#fff", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.1)" }} onClick={() => navigate("leaderboard")}><I n="trophy" s={13} /> Ranking</button>
-            <button className="btn btn-sm" style={{ background: "rgba(255,255,255,.12)", color: "#fff", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.08)" }} onClick={() => navigate("tugas")}><I n="book" s={13} /> Tugas</button>
+          <div className="ds-poin">
+            <div className="ds-poin-num">{stats.poin.toLocaleString("id-ID")}</div>
+            <div className="ds-poin-label">Total Poin</div>
           </div>
         </div>
-      </Card>
-      <div className="g3" style={{ marginBottom: 12 }}>
-        {[
-          { label: "Tugas selesai", val: stats.tugasSelesai, icon: "checkCircle", cls: "mini-icon-1" },
-          { label: "Nilai rata-rata", val: stats.nilaiRata || "—", icon: "chartBar", cls: "mini-icon-2" },
-          { label: "Total poin", val: stats.poin, icon: "medal", cls: "mini-icon-3" },
-        ].map(s => (
-          <Card key={s.label} style={{ textAlign: "center", padding: "14px 8px" }}>
-            <div className={`mini-icon ${s.cls}`}><I n={s.icon} s={18} /></div>
-            <div className="stat-num" style={{ fontSize: 17, fontWeight: 700 }}>{s.val}</div>
-            <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>{s.label}</div>
-          </Card>
-        ))}
-      </div>
-
-      {/* Progress menuju level berikutnya — isi ruang kosong */}
-      {(() => {
-        const prog = getLevelProgress(stats.poin || 0);
-        const lv = getLevel(stats.poin || 0);
-        return (
-          <Card style={{ marginBottom: 16, padding: "12px 16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <TierIcon tierId={lv.tierId} size={32} color={lv.color} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: lv.color }}>{lv.name}</span>
-                  {prog.next
-                    ? <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{prog.needed} poin lagi → {prog.next.name}</span>
-                    : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>LEVEL MAKS</span>}
-                </div>
-                <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${prog.pct}%`, background: lv.color, borderRadius: 99, transition: "width .5s" }} />
+        <div className="ds-status-body">
+          <div className="ds-level-row">
+            <TierIcon tierId={lv.tierId} size={32} color={lv.color} />
+            <div className="ds-level-info">
+              <div className="ds-level-top">
+                <span style={{ fontSize: 12, fontWeight: 700, color: lv.color }}>{lv.name}</span>
+                {prog.next
+                  ? <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{prog.needed} poin lagi → {prog.next.name}</span>
+                  : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>LEVEL MAKS</span>}
+              </div>
+              <div className="ds-level-bar">
+                <div className="ds-level-fill" style={{ width: `${prog.pct}%`, background: lv.color }} />
+              </div>
+            </div>
+            {(stats.streak || 0) > 0 && (
+              <div className="ds-streak">
+                <div>
+                  <div className="ds-streak-num"><I n="flame" s={14} />{stats.streak}</div>
+                  <div className="ds-streak-label">streak</div>
                 </div>
               </div>
-              {(stats.streak || 0) > 0 && (
-                <div style={{ textAlign: "center", flexShrink: 0, paddingLeft: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 3, color: "#dc2626", fontWeight: 800, fontSize: 16 }}>
-                    <I n="flame" s={16} />{stats.streak}
-                  </div>
-                  <div style={{ fontSize: 9, color: "var(--ink-3)" }}>streak</div>
-                </div>
-              )}
-            </div>
-          </Card>
-        );
-      })()}
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Stats — hanya data yang belum ada di status card */}
+      <div className="ds-stats">
+        <div className="ds-stat">
+          <div className="ds-stat-icon score"><I n="chartBar" s={16} /></div>
+          <div>
+            <div className="ds-stat-val">{stats.nilaiRata || "—"}</div>
+            <div className="ds-stat-label">Nilai rata-rata</div>
+          </div>
+        </div>
+        <div className="ds-stat">
+          <div className="ds-stat-icon tasks"><I n="checkCircle" s={16} /></div>
+          <div>
+            <div className="ds-stat-val">{stats.tugasSelesai}</div>
+            <div className="ds-stat-label">Tugas selesai</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tugas Aktif */}
       <div className="sh"><h2>Tugas aktif</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("tugas")}>Semua <I n="chevR" s={12} /></button></div>
       {tugas.length === 0 ? <div className="empty">Belum ada tugas aktif dari guru.</div> :
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-          {tugas.slice(0, 3).map(t => { const dl = fmtDl(t.deadline); const done = store.hasSub(user.id, t.id); return <button key={t.id} onClick={() => navigate("tugas-detail", { tugasId: t.id })} style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none" }}><Card><div style={{ display: "flex", alignItems: "center", gap: 12 }}><div style={{ width: 40, height: 40, borderRadius: "var(--r-sm)", background: done ? "var(--good-bg)" : "var(--accent-soft)", display: "grid", placeItems: "center", color: done ? "var(--good)" : "var(--accent-2)", flexShrink: 0 }}><I n={done ? "check" : "book"} s={18} /></div><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 600 }}>{t.judul}</div><div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel}</div></div>{done ? <span className="chip chip-good">Selesai</span> : <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}>{dl.label}</span>}</div></Card></button>; })}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+          {tugas.slice(0, 3).map(t => {
+            const dl = fmtDl(t.deadline);
+            const done = store.hasSub(user.id, t.id);
+            const poinMax = t.graded === false ? Math.round((t.poinMax || 0) * 0.2) : (t.poinMax || 0);
+            return (
+              <button key={t.id} onClick={() => navigate("tugas-detail", { tugasId: t.id })} style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+                <Card style={{ padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: "var(--r-sm)", background: done ? "var(--good-bg)" : "var(--accent-tint)", display: "grid", placeItems: "center", color: done ? "var(--good)" : "var(--accent)", flexShrink: 0 }}>
+                      <I n={done ? "check" : "book"} s={18} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: done ? "var(--ink-3)" : "var(--ink)" }}>{t.judul}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel}{!done && t.soal?.length ? ` · ${t.soal.length} soal` : ""}{!done && poinMax ? ` · +${poinMax} pt` : ""}</div>
+                    </div>
+                    {done ? <span className="chip chip-good">Selesai</span> : <span className={`chip ${dl.tone ? "chip-" + dl.tone : "chip-accent"}`}>{dl.label}</span>}
+                  </div>
+                </Card>
+              </button>
+            );
+          })}
         </div>}
+
+      {/* Top 3 Leaderboard */}
       <div className="sh"><h2>Top 3 Kelas {user.jenjang}</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("leaderboard")}>Semua <I n="chevR" s={12} /></button></div>
-      <Card pad="none" style={{ overflow: "hidden" }}>
+      <Card pad="none" style={{ overflow: "hidden", marginBottom: 20 }}>
         {lb.length === 0 ? <div className="empty">Belum ada ranking. Kerjakan tugas dulu!</div> :
-          lb.slice(0, 3).map(s => <div key={s.id} className="lb-row" style={{ gridTemplateColumns: "28px 34px 1fr auto" }}><div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : "top3"}`}>{s.rank}</div><UserAvatar userId={s.id} name={s.nama} size="sm" store={store} /><div><div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span>{s.nama}{s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span><LevelBadge poin={s.poin || 0} size="xs" showName={false} /></div><div className="lb-meta">{s.kelas}</div></div><div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div></div>)}
+          lb.slice(0, 3).map(s => (
+            <div key={s.id} className="lb-row" style={{ gridTemplateColumns: "28px 34px 1fr auto" }}>
+              <div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : "top3"}`}>{s.rank}</div>
+              <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
+              <div>
+                <div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span>{s.nama}{s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span>
+                  <LevelBadge poin={s.poin || 0} size="xs" showName={false} />
+                </div>
+                <div className="lb-meta">{s.kelas}</div>
+              </div>
+              <div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div>
+            </div>
+          ))}
       </Card>
     </div>
     {/* Tugas Hari Ini Popup */}
