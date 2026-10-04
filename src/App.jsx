@@ -2368,7 +2368,11 @@ function useStore() {
     const accRef = ref(db, "accounts");
     const u8 = onValue(accRef, snap => {
       const data = snap.val();
-      const list = data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : [];
+      // Strip password/sensitive fields — accounts sekarang readable oleh semua auth user
+      const list = data ? Object.entries(data).map(([id, v]) => {
+        const { password, ...safe } = v;
+        return { ...safe, id };
+      }) : [];
       setFbAccounts(list.filter(a => a.role !== "guru"));
     }, () => setFbAccounts([]));
     // Load guru profile dari /users/{GURU_UID}
