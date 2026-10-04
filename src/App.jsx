@@ -2754,21 +2754,24 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
         background: "var(--surface)", borderRadius: 20, width: "100%", maxWidth: 400,
         boxShadow: "0 20px 60px rgba(0,0,0,.25)", overflow: "hidden", maxHeight: "85vh", display: "flex", flexDirection: "column"
       }}>
-        {/* Header — compact */}
-        <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--line-soft)", position: "relative" }}>
+        {/* Header — teal gradient, slim */}
+        <div style={{
+          background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)",
+          padding: "12px 16px", position: "relative", borderRadius: "20px 20px 0 0"
+        }}>
           <button onClick={onClose} style={{
-            position: "absolute", top: 10, right: 12, background: "var(--surface-alt)",
-            border: "1px solid var(--line)", borderRadius: 99, width: 28, height: 28, display: "grid", placeItems: "center",
-            color: "var(--ink-3)", cursor: "pointer"
+            position: "absolute", top: 10, right: 12, background: "rgba(255,255,255,.18)",
+            border: "none", borderRadius: 99, width: 28, height: 28, display: "grid", placeItems: "center",
+            color: "#fff", cursor: "pointer", backdropFilter: "blur(4px)"
           }}><I n="x" s={14} /></button>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>Tugas Hari Ini</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>Tugas Hari Ini</div>
             <span style={{
-              fontSize: 11, fontWeight: 700, color: "#fff", background: "var(--bad)",
+              fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "#fff",
               borderRadius: 99, minWidth: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px"
             }}>{pendingTugas.length}</span>
           </div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>Ada {pendingTugas.length} tugas yang belum kamu kerjakan</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginTop: 2 }}>Ada {pendingTugas.length} tugas yang belum kamu kerjakan</div>
         </div>
         {/* Tugas list */}
         <div style={{ padding: "10px 14px 14px", overflowY: "auto", flex: 1 }}>
@@ -2783,12 +2786,13 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
               const totalSiswa = siswaList.length;
               const sudahKerjakan = store.getSubs().filter(s => s.tugasId === t.id).length;
               const pctDone = totalSiswa > 0 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
-              const isUrgent = dl.tone === "warn" || dl.tone === "bad";
+              // Bar color: merah kalau sedikit, teal Astrolab kalau ≥75%
+              const barColor = pctDone >= 75 ? "var(--accent)" : "var(--bad)";
               return (
                 <div key={t.id} style={{
-                  border: isUrgent ? "1.5px solid var(--warn)" : "1.5px solid var(--line)",
+                  border: "1.5px solid var(--line)",
                   borderRadius: 14, padding: "14px 16px",
-                  background: isUrgent ? "var(--warn-bg)" : "var(--surface)"
+                  background: "var(--surface)"
                 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                     <span style={{
@@ -2812,17 +2816,21 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
                       <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sudah mengerjakan</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{sudahKerjakan}/{totalSiswa}</span>
                     </div>
-                    <div style={{ height: 6, background: isUrgent ? "rgba(0,0,0,.08)" : "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
                       <div style={{
                         height: "100%", borderRadius: 99, transition: "width .4s",
                         width: totalSiswa > 0 ? `${pctDone}%` : "0%",
-                        background: pctDone >= 80 ? "var(--good)" : pctDone < 30 ? "var(--bad)" : "var(--accent)"
+                        background: barColor
                       }} />
                     </div>
                   </div>
-                  <button className="btn btn-primary btn-sm" style={{ width: "100%" }} onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }}>
-                    Kerjakan <I n="chevR" s={13} />
-                  </button>
+                  <button onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }} style={{
+                    width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
+                    background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+                    color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    boxShadow: "0 2px 8px rgba(13,107,122,.3)"
+                  }}>Kerjakan <span style={{ fontSize: 16 }}>→</span></button>
                 </div>
               );
             })}
@@ -2892,11 +2900,13 @@ function DashboardSiswa({ user, store, navigate }) {
   });
   const [showTugasPopup, setShowTugasPopup] = useState(false);
   const tugasPopupTriggered = useRef(false);
+  // Tunggu accounts loaded (fbAccounts) — kalau user siswa ada di jenjang, minimal 1 siswa harus muncul (dirinya sendiri)
+  const siswaReady = store.getAllSiswa(user.jenjang).length;
   useEffect(() => {
     if (tugasPopupTriggered.current || _tugasPopupShownThisSession) return;
-    if (store.loading) return; // tunggu data loaded
+    if (store.loading || siswaReady === 0) return; // tunggu tugas + accounts loaded
     if (pendingTugas.length > 0) { tugasPopupTriggered.current = true; setShowTugasPopup(true); }
-  }, [store.loading, pendingTugas.length]);
+  }, [store.loading, pendingTugas.length, siswaReady]);
   const closeTugasPopup = () => { _tugasPopupShownThisSession = true; setShowTugasPopup(false); };
 
   return <>
