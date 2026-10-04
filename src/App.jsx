@@ -2810,8 +2810,8 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
                     <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="fileText" s={12} />{soalCount} soal</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="target" s={12} />+{poinMax} pt</span>
                   </div>
-                  {/* Progress bar — selalu tampil */}
-                  <div style={{ marginBottom: 12 }}>
+                  {/* Progress bar — tampil kalau data siswa tersedia */}
+                  {totalSiswa > 0 && <div style={{ marginBottom: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sudah mengerjakan</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{sudahKerjakan}/{totalSiswa}</span>
@@ -2819,11 +2819,11 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
                     <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
                       <div style={{
                         height: "100%", borderRadius: 99, transition: "width .4s",
-                        width: totalSiswa > 0 ? `${pctDone}%` : "0%",
+                        width: `${pctDone}%`,
                         background: barColor
                       }} />
                     </div>
-                  </div>
+                  </div>}
                   <button onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }} style={{
                     width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
                     background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
@@ -2900,13 +2900,11 @@ function DashboardSiswa({ user, store, navigate }) {
   });
   const [showTugasPopup, setShowTugasPopup] = useState(false);
   const tugasPopupTriggered = useRef(false);
-  // Tunggu accounts loaded (fbAccounts) — kalau user siswa ada di jenjang, minimal 1 siswa harus muncul (dirinya sendiri)
-  const siswaReady = store.getAllSiswa(user.jenjang).length;
   useEffect(() => {
     if (tugasPopupTriggered.current || _tugasPopupShownThisSession) return;
-    if (store.loading || siswaReady === 0) return; // tunggu tugas + accounts loaded
+    if (store.loading) return; // tunggu data loaded
     if (pendingTugas.length > 0) { tugasPopupTriggered.current = true; setShowTugasPopup(true); }
-  }, [store.loading, pendingTugas.length, siswaReady]);
+  }, [store.loading, pendingTugas.length]);
   const closeTugasPopup = () => { _tugasPopupShownThisSession = true; setShowTugasPopup(false); };
 
   return <>
