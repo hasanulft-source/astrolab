@@ -2754,45 +2754,43 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
         background: "var(--surface)", borderRadius: 20, width: "100%", maxWidth: 400,
         boxShadow: "0 20px 60px rgba(0,0,0,.25)", overflow: "hidden", maxHeight: "85vh", display: "flex", flexDirection: "column"
       }}>
-        {/* Header */}
-        <div style={{
-          background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)",
-          padding: "20px 20px 18px", color: "#fff", position: "relative"
-        }}>
+        {/* Header — compact */}
+        <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--line-soft)", position: "relative" }}>
           <button onClick={onClose} style={{
-            position: "absolute", top: 12, right: 12, background: "rgba(255,255,255,.2)",
-            border: "none", borderRadius: 99, width: 28, height: 28, display: "grid", placeItems: "center",
-            color: "#fff", cursor: "pointer"
+            position: "absolute", top: 10, right: 12, background: "var(--surface-alt)",
+            border: "1px solid var(--line)", borderRadius: 99, width: 28, height: 28, display: "grid", placeItems: "center",
+            color: "var(--ink-3)", cursor: "pointer"
           }}><I n="x" s={14} /></button>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,.2)",
-              display: "grid", placeItems: "center"
-            }}><I n="book" s={18} /></div>
-            <div>
-              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.01em" }}>Tugas Hari Ini</div>
-              <div style={{ fontSize: 12, opacity: .8 }}>{pendingTugas.length} tugas menunggu</div>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "var(--ink)" }}>Tugas Hari Ini</div>
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: "#fff", background: "var(--bad)",
+              borderRadius: 99, minWidth: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px"
+            }}>{pendingTugas.length}</span>
           </div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>Ada {pendingTugas.length} tugas yang belum kamu kerjakan</div>
         </div>
         {/* Tugas list */}
-        <div style={{ padding: "12px 16px 16px", overflowY: "auto", flex: 1 }}>
+        <div style={{ padding: "10px 14px 14px", overflowY: "auto", flex: 1 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {pendingTugas.map(t => {
               const dl = fmtDl(t.deadline);
               const soalCount = t.soal?.length || 0;
-              // Progress kelas
+              const poinMax = t.graded === false ? Math.round((t.poinMax || 0) * 0.2) : (t.poinMax || 0);
+              // Progress kelas — selalu hitung
               const allSiswa = store.getAllSiswa(t.jenjang);
               const siswaList = Array.isArray(t.assignedTo) ? allSiswa.filter(s => t.assignedTo.includes(s.id)) : allSiswa;
               const totalSiswa = siswaList.length;
-              const sudahKerjakan = totalSiswa > 1 ? store.getSubs().filter(s => s.tugasId === t.id).length : 0;
-              const pctDone = totalSiswa > 1 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
+              const sudahKerjakan = store.getSubs().filter(s => s.tugasId === t.id).length;
+              const pctDone = totalSiswa > 0 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
+              const isUrgent = dl.tone === "warn" || dl.tone === "bad";
               return (
                 <div key={t.id} style={{
-                  border: "1.5px solid var(--line)", borderRadius: 14, padding: "14px 16px",
-                  background: "var(--surface)", transition: "border-color .15s"
+                  border: isUrgent ? "1.5px solid var(--warn)" : "1.5px solid var(--line)",
+                  borderRadius: 14, padding: "14px 16px",
+                  background: isUrgent ? "var(--warn-bg)" : "var(--surface)"
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                     <span style={{
                       fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "var(--accent-tint)",
                       padding: "3px 8px", borderRadius: 6, letterSpacing: ".03em", textTransform: "uppercase"
@@ -2804,27 +2802,24 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
                     }}><I n="clock" s={12} />{dl.label}</span>
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.4 }}>{t.judul}</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                    <I n="fileText" s={12} />{soalCount} soal
+                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="fileText" s={12} />{soalCount} soal</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="target" s={12} />+{poinMax} pt</span>
                   </div>
-                  {/* Progress bar */}
-                  {totalSiswa > 1 && (
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, color: "var(--ink-3)", display: "flex", alignItems: "center", gap: 4 }}>
-                          <I n="users" s={11} />{sudahKerjakan}/{totalSiswa} siswa
-                        </span>
-                        <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600 }}>{pctDone}%</span>
-                      </div>
-                      <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                        <div style={{
-                          height: "100%", borderRadius: 99, transition: "width .4s",
-                          width: `${pctDone}%`,
-                          background: pctDone >= 80 ? "var(--good)" : "var(--accent)"
-                        }} />
-                      </div>
+                  {/* Progress bar — selalu tampil */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sudah mengerjakan</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{sudahKerjakan}/{totalSiswa}</span>
                     </div>
-                  )}
+                    <div style={{ height: 6, background: isUrgent ? "rgba(0,0,0,.08)" : "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%", borderRadius: 99, transition: "width .4s",
+                        width: totalSiswa > 0 ? `${pctDone}%` : "0%",
+                        background: pctDone >= 80 ? "var(--good)" : pctDone < 30 ? "var(--bad)" : "var(--accent)"
+                      }} />
+                    </div>
+                  </div>
                   <button className="btn btn-primary btn-sm" style={{ width: "100%" }} onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }}>
                     Kerjakan <I n="chevR" s={13} />
                   </button>
@@ -2832,6 +2827,10 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
               );
             })}
           </div>
+        </div>
+        {/* Footer hint */}
+        <div style={{ padding: "8px 14px 12px", textAlign: "center", fontSize: 11, color: "var(--ink-4)" }}>
+          Kamu bisa menutup dan mengerjakan nanti
         </div>
       </div>
     </div>
