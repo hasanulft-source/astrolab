@@ -423,6 +423,64 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .ds-stat-val{font-family:var(--mono);font-size:18px;font-weight:700;line-height:1;}
 .ds-stat-label{font-size:10px;color:var(--ink-3);margin-top:2px;line-height:1.2;}
 
+/* DAFTAR TUGAS — Progress Summary */
+.dt-progress{display:flex;align-items:center;gap:14px;background:var(--surface);border-radius:var(--r);padding:14px 16px;border:1px solid var(--line-soft);box-shadow:var(--shadow-sm);margin-bottom:14px;}
+.dt-ring{width:52px;height:52px;flex-shrink:0;position:relative;}
+.dt-ring svg{transform:rotate(-90deg);}
+.dt-ring-text{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);}
+.dt-prog-info{flex:1;min-width:0;}
+.dt-prog-title{font-size:14px;font-weight:700;color:var(--ink);}
+.dt-prog-sub{font-size:12px;color:var(--ink-3);margin-top:2px;}
+/* DAFTAR TUGAS — Section Header */
+.dt-sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.dt-sh-title{font-size:13px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;}
+.dt-sh-count{font-size:12px;color:var(--ink-4);font-weight:500;}
+/* DAFTAR TUGAS — Compact Done Rows */
+.dt-done-list{border:1px solid var(--line-soft);border-radius:var(--r-sm);box-shadow:var(--shadow-sm);overflow:hidden;}
+.dt-done-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--line-soft);cursor:pointer;transition:background .1s;}
+.dt-done-row:last-child{border-bottom:none;}
+.dt-done-row:hover{background:var(--surface-alt);}
+.dt-done-check{width:22px;height:22px;border-radius:50%;background:var(--good-bg);color:var(--good);display:grid;place-items:center;flex-shrink:0;font-size:12px;}
+.dt-done-info{flex:1;min-width:0;}
+.dt-done-title{font-size:13px;font-weight:500;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dt-done-sub{font-size:11px;color:var(--ink-4);margin-top:1px;}
+.dt-done-score{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--good);flex-shrink:0;}
+.dt-show-more{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;background:var(--surface-alt);cursor:pointer;border-bottom:none;font-size:12px;font-weight:600;color:var(--accent);border-top:1px solid var(--line-soft);}
+.dt-show-more:hover{background:var(--accent-tint);}
+/* DAFTAR TUGAS — Arsip Row */
+.dt-arsip-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--line-soft);opacity:.6;}
+.dt-arsip-row:last-child{border-bottom:none;}
+.dt-arsip-icon{width:22px;height:22px;border-radius:50%;background:var(--bad-bg);color:var(--bad);display:grid;place-items:center;flex-shrink:0;font-size:11px;}
+
+/* PROFIL SISWA — Compact Hero */
+.ps-hero{background:var(--surface);padding:20px 16px 16px;text-align:center;border-bottom:1px solid var(--line-soft);margin-bottom:0;}
+.ps-name{font-size:18px;font-weight:700;color:var(--ink);margin-top:10px;}
+.ps-class{font-size:13px;color:var(--ink-3);margin-top:2px;}
+/* PROFIL SISWA — Level + Rank Row */
+.ps-lr-row{display:flex;gap:10px;padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--line-soft);}
+.ps-lr-card{flex:1;background:var(--surface-alt);border-radius:var(--r-sm);padding:10px 12px;text-align:center;}
+.ps-lr-val{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;gap:4px;}
+.ps-lr-label{font-size:10px;color:var(--ink-3);margin-top:4px;font-weight:500;text-transform:uppercase;letter-spacing:.03em;}
+/* PROFIL SISWA — Level Progress Inline */
+.ps-level{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--surface);border-bottom:1px solid var(--line-soft);}
+.ps-lv-icon{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex-shrink:0;}
+.ps-lv-info{flex:1;min-width:0;}
+.ps-lv-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+.ps-lv-name{font-size:13px;font-weight:600;}
+.ps-lv-xp{font-size:11px;color:var(--ink-4);font-family:var(--mono);}
+.ps-lv-bar{height:6px;background:var(--surface-alt);border-radius:99px;overflow:hidden;}
+.ps-lv-fill{height:100%;border-radius:99px;transition:width .5s ease;}
+/* PROFIL SISWA — Stats Grid */
+.ps-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:14px 16px;}
+.ps-stat{background:var(--surface);border-radius:var(--r-sm);padding:12px 8px;text-align:center;border:1px solid var(--line-soft);}
+.ps-stat-val{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1;}
+.ps-stat-label{font-size:10px;color:var(--ink-3);margin-top:4px;font-weight:500;}
+/* PROFIL SISWA — Badge Grid 4-col */
+.ps-badge-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 16px;}
+.ps-badge-cell{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;background:var(--surface);border-radius:var(--r-sm);border:1px solid var(--line-soft);text-align:center;}
+.ps-badge-cell.locked{opacity:.3;filter:grayscale(1);}
+.ps-badge-name{font-size:10px;font-weight:600;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+
 /* QUIZ STICKY FOOTER */
 .quiz-foot-sticky{position:sticky;bottom:0;z-index:50;padding:12px 16px;background:var(--surface);border-top:1px solid var(--line);display:flex;gap:10px;box-shadow:0 -4px 16px rgba(0,0,0,.04);}
 @supports (padding:env(safe-area-inset-bottom)){.quiz-foot-sticky{padding-bottom:calc(12px + env(safe-area-inset-bottom));}}
@@ -494,7 +552,8 @@ const IC = {
   plus: "M12 5v14M5 12h14",
   trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
   edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
-  chevL: "M15 18l-6-6 6-6", chevR: "M9 18l6-6-6-6", chevD: "M6 9l6 6 6-6",
+  chevL: "M15 18l-6-6 6-6", chevR: "M9 18l6-6-6-6", chevD: "M6 9l6 6 6-6", chevU: "M18 15l-6-6-6 6",
+  refresh: "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15",
   check: "M20 6L9 17l-5-5", x: "M18 6L6 18M6 6l12 12",
   clock: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
   target: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 18a6 6 0 100-12 6 6 0 000 12zM12 14a2 2 0 100-4 2 2 0 000 4z",
@@ -3412,6 +3471,7 @@ function DaftarTugas({ user, store, navigate }) {
   const isVII = user.jenjang === "VII";
   const [mapel, setMapel] = useState("IPA");
   const [showArsip, setShowArsip] = useState(false);
+  const [showAllDone, setShowAllDone] = useState(false);
 
   // Filter: (1) mapel & jenjang match, (2) kalau tugas personal (assignedTo array), siswa harus di-assign
   const semua = store.getTugas().filter(t => {
@@ -3426,50 +3486,61 @@ function DaftarTugas({ user, store, navigate }) {
     return tb - ta;
   };
 
-  // Split: aktif = deadline belum lewat ATAU sudah dikerjakan, arsip = lewat deadline & belum dikerjakan
-  const aktif = semua.filter(t => {
+  // Split: belum (belum dikerjakan, deadline ok), selesai, personal (latihan khusus), arsip (lewat & belum)
+  const belum = semua.filter(t => {
     const dl = fmtDl(t.deadline);
     const done = store.hasSub(user.id, t.id);
-    return done || dl.tone !== "bad";
+    return !done && dl.tone !== "bad" && !Array.isArray(t.assignedTo);
   }).sort(byNewest);
+
+  const selesai = semua.filter(t => store.hasSub(user.id, t.id) && !Array.isArray(t.assignedTo)).sort(byNewest);
+
+  const personal = semua.filter(t => Array.isArray(t.assignedTo)).sort(byNewest);
+
   const arsip = semua.filter(t => {
     const dl = fmtDl(t.deadline);
     const done = store.hasSub(user.id, t.id);
     return !done && dl.tone === "bad";
   }).sort(byNewest);
 
-  function TugasCard({ t }) {
+  // Susulan tasks — belum dikerjakan, deadline lewat tapi punya susulan aktif
+  const susulanList = semua.filter(t => {
     const dl = fmtDl(t.deadline);
     const done = store.hasSub(user.id, t.id);
-    const lewat = dl.tone === "bad";
+    return !done && dl.tone === "bad" && store.isSusulanAktif(t.id, user.id) && !Array.isArray(t.assignedTo);
+  }).sort(byNewest);
+
+  // Progress stats
+  const totalTugas = semua.filter(t => !Array.isArray(t.assignedTo)).length;
+  const totalSelesai = selesai.length;
+  const nilaiList = selesai.map(t => { const sub = store.getSubBy(user.id, t.id); return sub?.nilai || 0; });
+  const nilaiRata = nilaiList.length > 0 ? Math.round(nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length) : 0;
+  const circumference = 2 * Math.PI * 22; // r=22
+  const progressOffset = totalTugas > 0 ? circumference - (totalSelesai / totalTugas) * circumference : circumference;
+
+  // Active task card — for belum dikerjakan & susulan
+  function ActiveCard({ t }) {
+    const dl = fmtDl(t.deadline);
     const isPersonal = Array.isArray(t.assignedTo);
+    const susulanAktif = store.isSusulanAktif(t.id, user.id);
     return (
       <button onClick={() => navigate("tugas-detail", { tugasId: t.id })}
         style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none" }}>
-        <Card style={{ opacity: lewat ? 0.6 : 1, borderLeft: isPersonal ? "3px solid var(--accent-2)" : "none" }}>
+        <Card style={{ borderLeft: isPersonal ? "3px solid var(--accent-2)" : susulanAktif ? "3px solid var(--warn)" : "none" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
             <div style={{ width: 42, height: 42, borderRadius: "var(--r-sm)", flexShrink: 0, display: "grid", placeItems: "center",
-              background: done ? "var(--good-bg)" : lewat ? "var(--surface-alt)" : isPersonal ? "var(--accent-tint)" : "var(--accent-soft)",
-              color: done ? "var(--good)" : lewat ? "var(--ink-3)" : "var(--accent-2)" }}>
-              <I n={done ? "check" : lewat ? "clock" : isPersonal ? "star" : "book"} s={18} />
+              background: isPersonal ? "var(--accent-tint)" : susulanAktif ? "var(--warn-bg)" : "var(--accent-soft)",
+              color: isPersonal ? "var(--accent-2)" : susulanAktif ? "var(--warn)" : "var(--accent-2)" }}>
+              <I n={isPersonal ? "star" : "book"} s={18} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <span>{t.mapel}</span>
-                {isPersonal && <span style={{ background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", borderRadius: 3, fontWeight: 700, textTransform: "none", fontSize: 9, letterSpacing: 0 }}>✨ Latihan Khusus</span>}
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: lewat && !done ? "var(--ink-2)" : "var(--ink)" }}>{t.judul}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{t.judul}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                {done
-                  ? <span className="chip chip-good"><I n="check" s={10} /> Selesai</span>
-                  : lewat
-                    ? <span className="chip chip-bad"><I n="clock" s={10} /> Lewat deadline</span>
-                    : <>
-                        <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
-                        <span className="chip">+{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt</span>
-                        <span className="chip">{t.soal?.length || 0} soal</span>
-                      </>
-                }
+                {susulanAktif && <span className="chip chip-warn"><I n="refresh" s={10} /> Susulan</span>}
+                {isPersonal && <span className="chip chip-accent" style={{ fontSize: 10 }}>Latihan Khusus</span>}
+                <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
+                <span className="chip">+{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt</span>
+                <span className="chip">{t.soal?.length || 0} soal</span>
               </div>
             </div>
             <I n="chevR" s={16} style={{ color: "var(--ink-3)", marginTop: 12, flexShrink: 0 }} />
@@ -3478,6 +3549,10 @@ function DaftarTugas({ user, store, navigate }) {
       </button>
     );
   }
+
+  // Done rows visible — default 3, expandable
+  const DONE_LIMIT = 3;
+  const visibleDone = showAllDone ? selesai : selesai.slice(0, DONE_LIMIT);
 
   return <>
     <div className="page">
@@ -3490,37 +3565,144 @@ function DaftarTugas({ user, store, navigate }) {
         </div>
       )}
 
-      {/* Tugas aktif */}
-      {aktif.length === 0 && arsip.length === 0
+      {/* Empty state */}
+      {semua.length === 0
         ? <Card><div className="empty empty-box">
             <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", marginBottom: 8 }}><MapelIcon mapel={mapel} size={28} /></div>
             <h3>Belum ada tugas {mapel}</h3>
             <p>Tugas akan muncul di sini setelah guru membuat tugas untuk kelasmu.</p>
           </div></Card>
-        : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {aktif.map(t => <TugasCard key={t.id} t={t} />)}
-          </div>
-      }
-
-      {/* Tugas lewat deadline — collapsible */}
-      {arsip.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <button onClick={() => setShowArsip(s => !s)}
-            style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "8px 0", width: "100%" }}>
-            <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
-              <I n="clock" s={12} /> Lewat Deadline ({arsip.length})
-            </span>
-            <I n={showArsip ? "chevD" : "chevR"} s={12} style={{ color: "var(--ink-3)" }} />
-            <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-          </button>
-          {showArsip && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-              {arsip.map(t => <TugasCard key={t.id} t={t} />)}
+        : <>
+          {/* Progress Summary */}
+          {totalTugas > 0 && (
+            <div className="dt-progress">
+              <div className="dt-ring">
+                <svg width="52" height="52" viewBox="0 0 52 52">
+                  <circle cx="26" cy="26" r="22" fill="none" stroke="var(--line)" strokeWidth="5" />
+                  <circle cx="26" cy="26" r="22" fill="none" stroke={totalSelesai === totalTugas ? "var(--good)" : "var(--accent)"} strokeWidth="5"
+                    strokeDasharray={circumference} strokeDashoffset={progressOffset} strokeLinecap="round" />
+                </svg>
+                <div className="dt-ring-text">{totalSelesai}/{totalTugas}</div>
+              </div>
+              <div className="dt-prog-info">
+                <div className="dt-prog-title">{totalSelesai} dari {totalTugas} tugas selesai</div>
+                {nilaiRata > 0 && <div className="dt-prog-sub">Nilai rata-rata: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{nilaiRata}</span></div>}
+              </div>
             </div>
           )}
-        </div>
-      )}
+
+          {/* Belum dikerjakan */}
+          {(belum.length > 0 || susulanList.length > 0) && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="dt-sh">
+                <span className="dt-sh-title">Belum Dikerjakan</span>
+                <span className="dt-sh-count">{belum.length + susulanList.length} tugas</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {susulanList.map(t => <ActiveCard key={t.id} t={t} />)}
+                {belum.map(t => <ActiveCard key={t.id} t={t} />)}
+              </div>
+            </div>
+          )}
+
+          {/* Latihan Khusus (personal tasks) */}
+          {personal.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="dt-sh">
+                <span className="dt-sh-title">Latihan Khusus</span>
+                <span className="dt-sh-count">{personal.length} tugas</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {personal.map(t => {
+                  const done = store.hasSub(user.id, t.id);
+                  if (done) {
+                    const sub = store.getSubBy(user.id, t.id);
+                    return (
+                      <button key={t.id} onClick={() => navigate("tugas-detail", { tugasId: t.id })}
+                        style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none" }}>
+                        <div className="dt-done-list" style={{ borderLeft: "3px solid var(--accent-2)" }}>
+                          <div className="dt-done-row">
+                            <div className="dt-done-check"><I n="check" s={12} /></div>
+                            <div className="dt-done-info">
+                              <div className="dt-done-title">{t.judul}</div>
+                              <div className="dt-done-sub">Latihan Khusus · {t.soal?.length || 0} soal</div>
+                            </div>
+                            <div className="dt-done-score">{sub?.nilai || "—"}</div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  }
+                  return <ActiveCard key={t.id} t={t} />;
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Selesai — compact rows */}
+          {selesai.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="dt-sh">
+                <span className="dt-sh-title">Selesai</span>
+                <span className="dt-sh-count">{selesai.length} tugas</span>
+              </div>
+              <div className="dt-done-list">
+                {visibleDone.map(t => {
+                  const sub = store.getSubBy(user.id, t.id);
+                  return (
+                    <div key={t.id} className="dt-done-row" onClick={() => navigate("tugas-detail", { tugasId: t.id })}>
+                      <div className="dt-done-check"><I n="check" s={12} /></div>
+                      <div className="dt-done-info">
+                        <div className="dt-done-title">{t.judul}</div>
+                        <div className="dt-done-sub">{t.soal?.length || 0} soal · +{sub?.poinDapat || 0} poin</div>
+                      </div>
+                      <div className="dt-done-score">{sub?.nilai || "—"}</div>
+                    </div>
+                  );
+                })}
+                {selesai.length > DONE_LIMIT && !showAllDone && (
+                  <div className="dt-show-more" onClick={() => setShowAllDone(true)}>
+                    <I n="chevD" s={12} /> Lihat semua ({selesai.length} tugas)
+                  </div>
+                )}
+                {showAllDone && selesai.length > DONE_LIMIT && (
+                  <div className="dt-show-more" onClick={() => setShowAllDone(false)}>
+                    <I n="chevU" s={12} /> Tutup
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Arsip — lewat deadline, collapsible */}
+          {arsip.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <button onClick={() => setShowArsip(s => !s)}
+                style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "8px 0", width: "100%", fontFamily: "var(--font)" }}>
+                <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
+                  <I n="clock" s={12} /> Lewat Deadline ({arsip.length})
+                </span>
+                <I n={showArsip ? "chevD" : "chevR"} s={12} style={{ color: "var(--ink-3)" }} />
+                <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+              </button>
+              {showArsip && (
+                <div className="dt-done-list" style={{ opacity: 0.65 }}>
+                  {arsip.map(t => (
+                    <div key={t.id} className="dt-arsip-row" onClick={() => navigate("tugas-detail", { tugasId: t.id })} style={{ cursor: "pointer" }}>
+                      <div className="dt-arsip-icon"><I n="x" s={10} /></div>
+                      <div className="dt-done-info">
+                        <div className="dt-done-title">{t.judul}</div>
+                        <div className="dt-done-sub" style={{ color: "var(--bad)" }}>Deadline terlewat · {t.soal?.length || 0} soal</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      }
     </div>
   </>;
 }
@@ -4747,108 +4929,180 @@ function ProfilSiswa({ user, store, navigate }) {
       </div>
     )}
 
-    <div className="page">
-      <div className="dt"><div><h1>Profil</h1><p>Track record semester ini</p></div></div>
+    <div className="page" style={{ paddingTop: 0 }}>
+      {/* ─── Compact Profile Hero ─── */}
+      <div className="ps-hero">
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <Avatar name={user.nama} size="xl" photo={photo} />
+          <button onClick={() => setShowPhotoPicker(true)} style={{ position: "absolute", bottom: 0, right: -2, width: 24, height: 24, borderRadius: "50%", background: "var(--accent)", color: "#fff", border: "2px solid var(--surface)", cursor: "pointer", display: "grid", placeItems: "center" }}>
+            <I n="edit" s={11} />
+          </button>
+        </div>
+        <div className="ps-name">{user.nama}</div>
+        <div className="ps-class">Kelas {user.jenjang}{user.noAbsen ? ` · No. Absen ${user.noAbsen}` : ""}</div>
+      </div>
 
-      {/* Profile header card */}
-      <Card pad="lg" style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
-          <div style={{ position: "relative", flexShrink: 0 }}>
-            <Avatar name={user.nama} size="xl" photo={photo} />
-            <button onClick={() => setShowPhotoPicker(true)} style={{ position: "absolute", bottom: 0, right: 0, width: 24, height: 24, borderRadius: "50%", background: "var(--accent)", color: "#fff", border: "2px solid var(--surface)", cursor: "pointer", display: "grid", placeItems: "center" }}>
-              <I n="edit" s={11} />
-            </button>
+      {/* ─── Ranking + Streak Row ─── */}
+      <div className="ps-lr-row">
+        <div className="ps-lr-card">
+          <div className="ps-lr-val" style={{ color: "var(--accent)" }}>{myRank ? `#${myRank.rank}` : "—"}</div>
+          <div className="ps-lr-label">Ranking Kelas</div>
+        </div>
+        <div className="ps-lr-card">
+          <div className="ps-lr-val" style={{ color: (stats.streak || 0) > 0 ? "var(--bad)" : "var(--ink-4)" }}>
+            {(stats.streak || 0) > 0 && <I n="flame" s={16} />} {stats.streak || 0}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em" }}>{user.nama}</div>
-            <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>Kelas {user.jenjang}</div>
-            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {myRank && <span className="chip chip-accent">#{myRank.rank} Kelas {user.jenjang}</span>}
-              {(stats.streak || 0) > 0 && <span className="streak-pill"><I n="flame" s={11} /> {stats.streak}x streak</span>}
+          <div className="ps-lr-label">Hari Streak</div>
+        </div>
+      </div>
+
+      {/* ─── Level Progress Inline ─── */}
+      {(() => {
+        const lv = getLevel(stats.poin);
+        const prog = getLevelProgress(stats.poin);
+        return (
+          <div className="ps-level">
+            <div className="ps-lv-icon" style={{ background: lv.bg }}>
+              <TierIcon tierId={lv.tierId} size={24} color={lv.color} />
+            </div>
+            <div className="ps-lv-info">
+              <div className="ps-lv-top">
+                <span className="ps-lv-name" style={{ color: lv.color }}>{lv.name}</span>
+                <span className="ps-lv-xp">{stats.poin}{prog.next ? ` / ${lv.max + 1}` : ""} poin</span>
+              </div>
+              <div className="ps-lv-bar">
+                <div className="ps-lv-fill" style={{ width: `${prog.pct}%`, background: `linear-gradient(90deg, ${lv.color}, ${lv.accent || lv.color})` }} />
+              </div>
             </div>
           </div>
-        </div>
+        );
+      })()}
 
-        {/* Level progress */}
-        <LevelCard poin={stats.poin} />
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, paddingTop: 14, marginTop: 14, borderTop: "1px solid var(--line-soft)" }}>
-          {[{ v: stats.poin.toLocaleString("id-ID"), l: "total poin" }, { v: String(stats.tugasSelesai), l: "tugas selesai" }, { v: stats.nilaiRata || "—", l: "nilai rata" }].map(s => <div key={s.l} style={{ textAlign: "center" }}><div className="stat-num" style={{ fontSize: 22, fontWeight: 700 }}>{s.v}</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>{s.l}</div></div>)}
+      {/* ─── Stats Grid ─── */}
+      <div className="ps-stats">
+        <div className="ps-stat">
+          <div className="ps-stat-val" style={{ color: "var(--accent)" }}>{stats.poin.toLocaleString("id-ID")}</div>
+          <div className="ps-stat-label">Total Poin</div>
         </div>
-      </Card>
+        <div className="ps-stat">
+          <div className="ps-stat-val" style={{ color: "var(--good)" }}>{stats.nilaiRata || "—"}</div>
+          <div className="ps-stat-label">Rata-rata</div>
+        </div>
+        <div className="ps-stat">
+          <div className="ps-stat-val" style={{ color: "#1d4ed8" }}>{stats.tugasSelesai}</div>
+          <div className="ps-stat-label">Tugas Selesai</div>
+        </div>
+      </div>
 
       {/* ═══ CTA RAPOR PERKEMBANGAN ═══ */}
-      <button onClick={() => navigate("rapor")} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", marginBottom: 12 }}>
+      <button onClick={() => navigate("rapor")} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "0 16px", cursor: "pointer", marginBottom: 14 }}>
         <Card pad="none" style={{ overflow: "hidden", background: "linear-gradient(135deg, #0a525c 0%, #09637E 50%, #088395 100%)", color: "#fff" }}>
-          <div style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,0.15)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <I n="award" s={22} style={{ color: "#fff" }} />
+          <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.15)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <I n="award" s={20} style={{ color: "#fff" }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.02em" }}>Rapor Perkembangan</div>
-              <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>Lihat breakdown nilaimu per komponen semester ini</div>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Rapor Perkembangan</div>
+              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>Lihat perjalanan belajarmu</div>
             </div>
-            <I n="chevR" s={18} style={{ color: "rgba(255,255,255,0.7)", flexShrink: 0 }} />
+            <I n="chevR" s={16} style={{ color: "rgba(255,255,255,0.6)", flexShrink: 0 }} />
           </div>
         </Card>
       </button>
 
-      {/* Badges */}
-      <Card style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Badge Koleksi</div>
-        <BadgesRow badges={myBadges} emptyText="Belum ada badge. Terus kerjakan tugas!" />
-      </Card>
+      {/* ─── Badge Koleksi — 4-column grid ─── */}
+      <div style={{ padding: "0 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Badge Koleksi</span>
+          <span style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500 }}>{myBadges.length} dari {ALL_BADGES.length}</span>
+        </div>
+      </div>
+      <div className="ps-badge-grid">
+        {myBadges.map(id => {
+          const b = ALL_BADGES.find(x => x.id === id);
+          if (!b) return null;
+          return (
+            <div key={id} className="ps-badge-cell">
+              <BadgeIcon type={b.icon} rim={b.rim} size={42} />
+              <span className="ps-badge-name" style={{ color: b.color }}>{b.name}</span>
+            </div>
+          );
+        })}
+        {/* Locked slots to fill grid — show next unearned badges */}
+        {ALL_BADGES.filter(b => !myBadges.includes(b.id)).slice(0, Math.max(0, (4 - (myBadges.length % 4)) % 4)).map(b => (
+          <div key={b.id} className="ps-badge-cell locked">
+            <BadgeIcon type={b.icon} rim={b.rim} size={42} />
+            <span className="ps-badge-name" style={{ color: "var(--ink-4)" }}>{b.name}</span>
+          </div>
+        ))}
+        {myBadges.length === 0 && (
+          <div style={{ gridColumn: "1 / -1", padding: "12px 0", fontSize: 12, color: "var(--ink-4)", textAlign: "center" }}>
+            Belum ada badge. Terus kerjakan tugas!
+          </div>
+        )}
+      </div>
+
+      {/* ─── Poin Chart ─── */}
+      {stats.poinHistory?.length > 0 && (
+        <div style={{ padding: "0 16px", marginBottom: 14 }}>
+          <Card><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Perjalanan poin</div><PoinChart data={stats.poinHistory} /></Card>
+        </div>
+      )}
+
+      {/* ─── Riwayat Pengerjaan ─── */}
+      <div style={{ padding: "0 16px" }}>
+        <div className="sh"><h2>Riwayat pengerjaan</h2></div>
+        {subs.length === 0 ? <Card><div className="empty">Belum ada tugas yang dikerjakan.</div></Card> :
+          <Card pad="none" style={{ overflow: "hidden" }}><div style={{ padding: "4px 16px" }}>{subs.slice().reverse().map(s => {
+            const t = store.getTugas().find(x => x.id === s.tugasId);
+            const intervensi = s.riwayatIntervensi || [];
+            const lastIntervensi = intervensi.length > 0 ? intervensi[intervensi.length - 1] : null;
+            return (
+              <div key={s.id} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={16} /></div>
+                  <div className="row-main">
+                    <div className="row-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {t?.judul || "Tugas dihapus"}
+                      {lastIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diperbarui guru</span>}
+                    </div>
+                    <div className="row-sub">{new Date(s.submittedAt).toLocaleDateString("id-ID")} · nilai {s.nilai}</div>
+                  </div>
+                  <div className="stat-num" style={{ fontSize: 14, fontWeight: 600, color: "var(--good)" }}>+{s.poinDapat}</div>
+                </div>
+                {lastIntervensi && (
+                  <div style={{ marginLeft: 48, padding: "6px 10px", background: "var(--accent-tint)", borderRadius: 6, fontSize: 11, lineHeight: 1.55 }}>
+                    <div style={{ color: "var(--accent-2)", fontWeight: 600 }}>
+                      Nilai diubah: {lastIntervensi.nilaiSebelum} → {lastIntervensi.nilaiSetelah}
+                    </div>
+                    <div style={{ color: "var(--ink-2)", marginTop: 2 }}>
+                      <b>Alasan:</b> {lastIntervensi.alasan}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}</div></Card>}
+      </div>
 
       {/* Fitur Lapor Kejadian — cuma untuk siswa VII (kelas wali) */}
       {laporEnabled && (
-        <Card style={{ marginBottom: 12, background: "linear-gradient(135deg, var(--accent-tint) 0%, var(--surface) 60%)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <I n="flag" s={18} />
+        <div style={{ padding: "0 16px", marginTop: 14 }}>
+          <Card style={{ background: "linear-gradient(135deg, var(--accent-tint) 0%, var(--surface) 60%)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--bad-bg)", color: "var(--bad)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <I n="flag" s={16} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Lapor Kejadian</div>
+                <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1, lineHeight: 1.4 }}>Laporkan kejadian di kelas secara anonim</div>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowLapor(true)} style={{ flexShrink: 0 }}>Lapor</button>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-1)" }}>Lapor Kejadian di Kelas</div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.45 }}>Cerita kejadian ke wali kelas. Rahasia terjaga.</div>
-            </div>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowLapor(true)} style={{ flexShrink: 0 }}>Lapor</button>
-          </div>
-        </Card>
+          </Card>
+        </div>
       )}
 
-      {stats.poinHistory?.length > 0 && <Card style={{ marginBottom: 12 }}><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Perjalanan poin</div><PoinChart data={stats.poinHistory} /></Card>}
-
-      <div className="sh"><h2>Riwayat pengerjaan</h2></div>
-      {subs.length === 0 ? <Card><div className="empty">Belum ada tugas yang dikerjakan.</div></Card> :
-        <Card pad="none" style={{ overflow: "hidden" }}><div style={{ padding: "4px 16px" }}>{subs.slice().reverse().map(s => {
-          const t = store.getTugas().find(x => x.id === s.tugasId);
-          const intervensi = s.riwayatIntervensi || [];
-          const lastIntervensi = intervensi.length > 0 ? intervensi[intervensi.length - 1] : null;
-          return (
-            <div key={s.id} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={16} /></div>
-                <div className="row-main">
-                  <div className="row-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {t?.judul || "Tugas dihapus"}
-                    {lastIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diperbarui guru</span>}
-                  </div>
-                  <div className="row-sub">{new Date(s.submittedAt).toLocaleDateString("id-ID")} · nilai {s.nilai}</div>
-                </div>
-                <div className="stat-num" style={{ fontSize: 14, fontWeight: 600, color: "var(--good)" }}>+{s.poinDapat}</div>
-              </div>
-              {lastIntervensi && (
-                <div style={{ marginLeft: 48, padding: "6px 10px", background: "var(--accent-tint)", borderRadius: 6, fontSize: 11, lineHeight: 1.55 }}>
-                  <div style={{ color: "var(--accent-2)", fontWeight: 600 }}>
-                    Nilai diubah: {lastIntervensi.nilaiSebelum} → {lastIntervensi.nilaiSetelah}
-                  </div>
-                  <div style={{ color: "var(--ink-2)", marginTop: 2 }}>
-                    <b>Alasan:</b> {lastIntervensi.alasan}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}</div></Card>}
       {showLapor && <LaporModal user={user} store={store} onClose={() => setShowLapor(false)} />}
     </div>
   </>;
