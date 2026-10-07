@@ -634,6 +634,97 @@ function useStore() {
     return nilaiAkhirData[key] || { siswaId, mapel, jenjang, periode, sumatif: {}, kuis: {}, uts: null, uas: null, portofolio: null };
   };
 
+  // ─── AKSES REQUEST (siswa minta akses tugas yang sudah lewat deadline) ───
+  // Key: `${tugasId}_${siswaId}`. Status: "pending" | "approved" | "rejected"
+  const [aksesRequests, setAksesRequests] = useState({});
+  useEffect(() => {
+    const arRef = ref(db, "aksesRequests");
+    const uAR = onValue(arRef, snap => setAksesRequests(snap.val() || {}));
+    return () => uAR();
+  }, []);
+
+  const getAksesRequest = (tugasId, siswaId) => aksesRequests[`${tugasId}_${siswaId}`] || null;
+
+  const requestAkses = async (tugasId, siswaId, siswaName, tugasJudul) => {
+    const key = `${tugasId}_${siswaId}`;
+    const guruId = fbGuru?.id || "fata";
+    await set(ref(db, `aksesRequests/${key}`), {
+      tugasId, siswaId, siswaName, tugasJudul,
+      status: "pending", requestedAt: Date.now()
+    });
+    // Kirim system message ke guru
+    const tid = getThreadId(siswaId, guruId);
+    const msgRef = push(ref(db, `messages/${tid}`));
+    await set(msgRef, {
+      fromId: siswaId, toId: guruId,
+      text: `Meminta akses susulan untuk tugas "${tugasJudul}"`,
+      ts: Date.now(),
+      type: "akses-request",
+      meta: { tugasId, tugasJudul, siswaId, siswaName }
+    });
+    // Push notification ke guru
+    callPush("send", {
+      targetAccountId: guruId,
+      title: `${siswaName} minta akses tugas`,
+      body: tugasJudul,
+      tag: `akses-${key}`
+    }).catch(() => {});
+  };
+
+  const approveAkses = async (tugasId, siswaId, deadlineBaru, nilaiMaks = null) => {
+    const key = `${tugasId}_${siswaId}`;
+    const req = aksesRequests[key];
+    if (!req) return;
+    // Update request status
+    await update(ref(db, `aksesRequests/${key}`), { status: "approved", respondedAt: Date.now() });
+    // Buat susulan via existing system
+    await addSusulan(tugasId, siswaId, deadlineBaru, "Permintaan akses disetujui", nilaiMaks);
+    // Kirim confirmation message
+    const guruId = fbGuru?.id || "fata";
+    const tid = getThreadId(siswaId, guruId);
+    const msgRef = push(ref(db, `messages/${tid}`));
+    const capText = nilaiMaks ? ` (nilai maks: ${nilaiMaks})` : "";
+    const dlText = new Date(deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+    await set(msgRef, {
+      fromId: guruId, toId: siswaId,
+      text: `Akses diizinkan untuk tugas "${req.tugasJudul}". Deadline baru: ${dlText}${capText}.`,
+      ts: Date.now(),
+      type: "akses-response",
+      meta: { tugasId, status: "approved" }
+    });
+    // Push notification ke siswa
+    callPush("send", {
+      targetAccountId: siswaId,
+      title: "Akses Tugas Diizinkan!",
+      body: `"${req.tugasJudul}" — deadline baru: ${dlText}`,
+      tag: `akses-${key}`
+    }).catch(() => {});
+  };
+
+  const rejectAkses = async (tugasId, siswaId) => {
+    const key = `${tugasId}_${siswaId}`;
+    const req = aksesRequests[key];
+    if (!req) return;
+    await update(ref(db, `aksesRequests/${key}`), { status: "rejected", respondedAt: Date.now() });
+    // Kirim rejection message
+    const guruId = fbGuru?.id || "fata";
+    const tid = getThreadId(siswaId, guruId);
+    const msgRef = push(ref(db, `messages/${tid}`));
+    await set(msgRef, {
+      fromId: guruId, toId: siswaId,
+      text: `Permintaan akses untuk tugas "${req.tugasJudul}" ditolak.`,
+      ts: Date.now(),
+      type: "akses-response",
+      meta: { tugasId, status: "rejected" }
+    });
+    callPush("send", {
+      targetAccountId: siswaId,
+      title: "Permintaan Akses Ditolak",
+      body: `"${req.tugasJudul}"`,
+      tag: `akses-${key}`
+    }).catch(() => {});
+  };
+
   // ─── SUSULAN (akses submit personal setelah deadline utama lewat) ───
   // Beda dari "Perpanjang" (class-wide, force majeure kayak mati lampu/bencana):
   // susulan cuma buka akses untuk 1 siswa tertentu (misal sakit/izin lomba), siswa lain tetap tertutup.
@@ -1419,7 +1510,7 @@ function useStore() {
     return toArchive.length;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri };
 }
 
 // ─── LOGIN ───
@@ -1521,7 +1612,7 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
             color: "#fff", cursor: "pointer", backdropFilter: "blur(4px)"
           }}><I n="x" s={14} /></button>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>Tugas Hari Ini</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>Tugas Belum Dikerjakan</div>
             <span style={{
               fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "#fff",
               borderRadius: 99, minWidth: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px"
@@ -1534,6 +1625,9 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {pendingTugas.map(t => {
               const dl = fmtDl(t.deadline);
+              const isOverdue = dl.tone === "bad";
+              const hasSusulan = store.isSusulanAktif(t.id, user.id);
+              const aksReq = store.getAksesRequest(t.id, user.id);
               const soalCount = t.soal?.length || 0;
               const poinMax = t.graded === false ? Math.round((t.poinMax || 0) * 0.2) : (t.poinMax || 0);
               // Progress kelas — selalu hitung
@@ -1544,17 +1638,23 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
               const pctDone = totalSiswa > 0 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
               // Bar color: merah kalau sedikit, teal Astrolab kalau ≥75%
               const barColor = pctDone >= 75 ? "var(--accent)" : "var(--bad)";
+              // Determine button state for overdue tugas
+              const showMintaAkses = isOverdue && !hasSusulan && (!aksReq || aksReq.status === "rejected");
+              const showPending = isOverdue && !hasSusulan && aksReq?.status === "pending";
+              const showApproved = isOverdue && !hasSusulan && aksReq?.status === "approved";
               return (
                 <div key={t.id} style={{
-                  border: "1.5px solid var(--line)",
+                  border: isOverdue && !hasSusulan ? "1.5px solid var(--bad)" : "1.5px solid var(--line)",
                   borderRadius: 14, padding: "14px 16px",
                   background: "var(--surface)"
                 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                     <span style={{
-                      fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "var(--accent-tint)",
+                      fontSize: 10, fontWeight: 700,
+                      color: isOverdue && !hasSusulan ? "var(--bad)" : "var(--accent)",
+                      background: isOverdue && !hasSusulan ? "rgba(220,53,69,.08)" : "var(--accent-tint)",
                       padding: "3px 8px", borderRadius: 6, letterSpacing: ".03em", textTransform: "uppercase"
-                    }}>{t.mapel}</span>
+                    }}>{isOverdue && !hasSusulan ? "Terlambat" : t.mapel}</span>
                     <span style={{
                       fontSize: 11, fontWeight: 600,
                       color: dl.tone === "bad" ? "var(--bad)" : dl.tone === "warn" ? "var(--warn)" : "var(--ink-3)",
@@ -1580,13 +1680,33 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
                       }} />
                     </div>
                   </div>}
-                  <button onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }} style={{
-                    width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-                    background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
-                    color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    boxShadow: "0 2px 8px rgba(13,107,122,.3)"
-                  }}>Kerjakan <span style={{ fontSize: 16 }}>→</span></button>
+                  {/* Button: Kerjakan / Minta Akses / Menunggu / Approved */}
+                  {showMintaAkses ? (
+                    <button onClick={() => {
+                      store.requestAkses(t.id, user.id, user.namaDisplay || user.nama, t.judul);
+                    }} style={{
+                      width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
+                      background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)",
+                      color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      boxShadow: "0 2px 8px rgba(192,57,43,.3)"
+                    }}>Minta Akses <I n="send" s={14} /></button>
+                  ) : showPending ? (
+                    <button disabled style={{
+                      width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
+                      background: "var(--surface-alt)", color: "var(--ink-3)",
+                      fontWeight: 700, fontSize: 14, cursor: "not-allowed",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+                    }}><I n="clock" s={14} /> Menunggu Persetujuan...</button>
+                  ) : (
+                    <button onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }} style={{
+                      width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
+                      background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+                      color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      boxShadow: "0 2px 8px rgba(13,107,122,.3)"
+                    }}>Kerjakan <span style={{ fontSize: 16 }}>→</span></button>
+                  )}
                 </div>
               );
             })}
@@ -1651,8 +1771,12 @@ function DashboardSiswa({ user, store, navigate }) {
   const pendingTugas = allTugas.filter(t => {
     if (store.hasSub(user.id, t.id)) return false; // sudah dikerjakan
     const lewat = fmtDl(t.deadline).tone === "bad";
-    if (lewat && !store.isSusulanAktif(t.id, user.id)) return false; // lewat tanpa susulan = skip
-    return true;
+    if (!lewat) return true; // belum lewat → tampil
+    if (store.isSusulanAktif(t.id, user.id)) return true; // punya susulan aktif → tampil
+    // Lewat deadline: tampilkan kecuali sudah ditolak aksesnya
+    const aksReq = store.getAksesRequest(t.id, user.id);
+    if (aksReq && aksReq.status === "rejected") return false; // ditolak → hilang dari popup
+    return true; // belum minta / pending / approved → tampil
   });
   const [showTugasPopup, setShowTugasPopup] = useState(false);
   const tugasPopupTriggered = useRef(false);

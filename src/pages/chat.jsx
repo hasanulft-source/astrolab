@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { I } from '../components/icons';
-import { fmtLastSeen, withTimeout } from '../utils/helpers';
+import { fmtLastSeen, withTimeout, getFirstName } from '../utils/helpers';
 import { UserAvatar, OnlineDot, Card } from '../components/visual';
 import { LevelBadge } from '../components/gamification';
 
@@ -102,6 +102,149 @@ function fmtTime(ts) {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
 
+// ─── Mini modal: guru set deadline + nilai maks saat approve akses ───
+function ApproveAksesModal({ meta, onApprove, onClose }) {
+  // Default deadline = 3 hari dari sekarang
+  const defaultDl = new Date(Date.now() + 3 * 86400000);
+  const fmtDate = d => d.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+  const [deadline, setDeadline] = useState(fmtDate(defaultDl));
+  const [nilaiMaks, setNilaiMaks] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!deadline) return;
+    setSaving(true);
+    const dlDate = new Date(deadline).toISOString();
+    const cap = nilaiMaks.trim() ? Number(nilaiMaks) : null;
+    await onApprove(meta.tugasId, meta.siswaId, dlDate, cap);
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 350 }}>
+      <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontSize: 16, marginBottom: 4 }}>Izinkan Akses Susulan</h3>
+        <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16 }}>
+          <b>{meta.siswaName}</b> meminta akses untuk mengerjakan <b>"{meta.tugasJudul}"</b>
+        </p>
+        <div className="fg" style={{ marginBottom: 12 }}>
+          <label className="lbl">Deadline Baru *</label>
+          <input className="inp" type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)} />
+        </div>
+        <div className="fg" style={{ marginBottom: 16 }}>
+          <label className="lbl">Nilai Maksimal (opsional)</label>
+          <input className="inp" type="number" min={0} max={100} placeholder="Contoh: 80 (kosongkan = tanpa batas)"
+            value={nilaiMaks} onChange={e => setNilaiMaks(e.target.value)} />
+          <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 4 }}>Kosongkan jika tidak ingin membatasi nilai</div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={submit} disabled={saving || !deadline}>
+            {saving ? "Menyimpan..." : "Izinkan Akses"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── System message card for akses-request / akses-response ───
+function AksesMessageCard({ m, user, store }) {
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const isGuru = user.role === "guru";
+  const meta = m.meta || {};
+
+  // Check current status from aksesRequests (live state, not message snapshot)
+  const aksReq = store.getAksesRequest?.(meta.tugasId, meta.siswaId || m.fromId);
+  const liveStatus = aksReq?.status;
+
+  if (m.type === "akses-request") {
+    const isPending = liveStatus === "pending";
+    const isApproved = liveStatus === "approved";
+    const isRejected = liveStatus === "rejected";
+
+    return (
+      <div style={{
+        background: "var(--surface)", border: "1.5px solid var(--line)",
+        borderRadius: 14, padding: "12px 14px", maxWidth: 300, width: "100%"
+      }}>
+        {showApproveModal && (
+          <ApproveAksesModal
+            meta={meta}
+            onApprove={store.approveAkses}
+            onClose={() => setShowApproveModal(false)}
+          />
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center",
+            background: isApproved ? "rgba(16,185,129,.1)" : isRejected ? "rgba(220,53,69,.08)" : "rgba(245,158,11,.1)"
+          }}>
+            <I n={isApproved ? "check" : isRejected ? "x" : "clock"} s={14}
+              style={{ color: isApproved ? "var(--good)" : isRejected ? "var(--bad)" : "var(--warn)" }} />
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
+            color: isApproved ? "var(--good)" : isRejected ? "var(--bad)" : "var(--warn)"
+          }}>
+            {isApproved ? "Diizinkan" : isRejected ? "Ditolak" : "Permintaan Akses"}
+          </div>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5, marginBottom: 8 }}>{m.text}</div>
+        <div className="msg-time" style={{ marginBottom: isGuru && isPending ? 10 : 0 }}>{fmtTime(m.ts)}</div>
+
+        {/* Guru action buttons — only show if still pending */}
+        {isGuru && isPending && (
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button onClick={() => setShowApproveModal(true)} style={{
+              flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
+              background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+              color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 4
+            }}><I n="check" s={14} /> Izinkan</button>
+            <button onClick={async () => {
+              setRejecting(true);
+              await store.rejectAkses(meta.tugasId, meta.siswaId);
+              setRejecting(false);
+            }} disabled={rejecting} style={{
+              flex: 1, padding: "9px 0", borderRadius: 10, border: "1.5px solid var(--bad)",
+              background: "transparent", color: "var(--bad)", fontWeight: 700, fontSize: 13,
+              cursor: rejecting ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 4
+            }}>{rejecting ? "..." : <><I n="x" s={14} /> Tolak</>}</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (m.type === "akses-response") {
+    const isApproved = meta.status === "approved";
+    return (
+      <div style={{
+        background: isApproved ? "rgba(16,185,129,.06)" : "rgba(220,53,69,.04)",
+        border: `1.5px solid ${isApproved ? "rgba(16,185,129,.2)" : "rgba(220,53,69,.15)"}`,
+        borderRadius: 14, padding: "12px 14px", maxWidth: 300, width: "100%"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+          <I n={isApproved ? "check" : "x"} s={14}
+            style={{ color: isApproved ? "var(--good)" : "var(--bad)" }} />
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
+            color: isApproved ? "var(--good)" : "var(--bad)"
+          }}>
+            {isApproved ? "Akses Diizinkan" : "Akses Ditolak"}
+          </div>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5, marginBottom: 4 }}>{m.text}</div>
+        <div className="msg-time">{fmtTime(m.ts)}</div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function ChatThread({ user, contact, store, onBack }) {
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -165,6 +308,17 @@ function ChatThread({ user, contact, store, onBack }) {
           const sender = allAcc.find(a => a.id === m.fromId) || { namaDisplay: m.fromId };
           const prevMsg = msgs[i - 1];
           const showName = !isMe && (!prevMsg || prevMsg.fromId !== m.fromId);
+
+          // System messages — akses-request & akses-response
+          if (m.type === "akses-request" || m.type === "akses-response") {
+            return (
+              <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", width: "100%" }}>
+                {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
+                <AksesMessageCard m={m} user={user} store={store} />
+              </div>
+            );
+          }
+
           return (
             <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
               {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
