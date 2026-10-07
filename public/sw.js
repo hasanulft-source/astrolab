@@ -1,35 +1,46 @@
-// Astrolab Service Worker — v3 (dengan FCM support)
-const CACHE_NAME = "astrolab-v3";
+// Astrolab Classroom — Service Worker for Push Notifications
+// Handles incoming push events and notification clicks
 
+self.addEventListener("push", (event) => {
+  let data = { title: "Astrolab Classroom", body: "Notifikasi baru", url: "/" };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch (e) {
+    // fallback if payload isn't JSON
+    data.body = event.data ? event.data.text() : data.body;
+  }
+
+  const options = {
+    body: data.body,
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: data.tag || "astrolab-" + Date.now(),
+    data: { url: data.url || "/" },
+    vibrate: [200, 100, 200],
+    requireInteraction: false,
+  };
+
+  event.waitUntil(self.registration.showNotification(data.title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      // Focus existing tab if open
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise open new tab
+      return clients.openWindow(url);
+    })
+  );
+});
+
+// Activate immediately — no caching, just push handling
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-// Network first — fallback cache
-// Skip: Firebase Realtime DB, FCM, googleapis
-self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
-  const url = e.request.url;
-  if (
-    url.includes("firebasedatabase") ||
-    url.includes("firebaseio") ||
-    url.includes("fcm.googleapis") ||
-    url.includes("firebase-messaging") ||
-    url.includes("gstatic.com/firebasejs")
-  ) return;
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
-});
+self.addEventListener("activate", (event) => event.waitUntil(clients.claim()));

@@ -96,3 +96,59 @@ export function fuzzyMatchText(input, expected) {
   return a.length > 0 && a === b;
 }
 
+export async function compressImage(file, maxWidth = 800, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const b64 = canvas.toDataURL("image/jpeg", quality);
+        resolve(b64);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export const SKIP_PREFIXES = new Set([
+  "muhammad","muhamad","ahmad","ahmed","abdul","abdu","abd",
+  "nur","noor","siti","sitti","st","hj","h","dra","dr","ir",
+  "m","a","r","s","n","d","f","z","e","y","k","l","t","w","b","c","g","j","o","p","q","u","v","x"
+]);
+
+export function genSiswaId(nama, usedIds = new Set()) {
+  const words = nama.trim().toLowerCase().split(/\s+/).map(w => w.replace(/\./g, ""));
+  const meaningful = words.find(w => w.length > 1 && !SKIP_PREFIXES.has(w)) || words[words.length - 1];
+  let baseId = meaningful.replace(/[^a-z]/g, "");
+  let finalId = baseId;
+  let counter = 2;
+  while (usedIds.has(finalId)) { finalId = `${baseId}${counter}`; counter++; }
+  return finalId;
+}
+
+// Get meaningful first name (skip "M.", "Muh.", "Abd.", "Siti", dll)
+export function getFirstName(nama) {
+  if (!nama) return "";
+  const words = nama.trim().split(/\s+/);
+  // Cari kata pertama yang meaningful (skip prefix religius/initials)
+  const meaningful = words.find(w => {
+    const clean = w.toLowerCase().replace(/\./g, "");
+    return clean.length > 1 && !SKIP_PREFIXES.has(clean);
+  });
+  return meaningful || words[0] || "";
+}
+
+export function genPassword(id) {
+  const num = Math.floor(Math.random() * 900) + 100;
+  return `${id}${num}`;
+}
