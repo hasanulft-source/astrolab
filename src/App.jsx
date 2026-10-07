@@ -1594,7 +1594,118 @@ function LoginScreen({ onLogin }) {
 let _tugasPopupShownThisSession = false;
 
 function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
+  const [loadingAkses, setLoadingAkses] = useState({});
+  const [aksesError, setAksesError] = useState({});
   if (!pendingTugas.length) return null;
+
+  // Pisahkan: aktif dulu, overdue di bawah
+  const aktifList = pendingTugas.filter(t => {
+    const lewat = fmtDl(t.deadline).tone === "bad";
+    return !lewat || store.isSusulanAktif(t.id, user.id);
+  });
+  const overdueList = pendingTugas.filter(t => {
+    const lewat = fmtDl(t.deadline).tone === "bad";
+    return lewat && !store.isSusulanAktif(t.id, user.id);
+  });
+
+  const handleMintaAkses = async (tugasId, tugasJudul) => {
+    setLoadingAkses(prev => ({ ...prev, [tugasId]: true }));
+    setAksesError(prev => ({ ...prev, [tugasId]: null }));
+    try {
+      await store.requestAkses(tugasId, user.id, user.namaDisplay || user.nama, tugasJudul);
+    } catch (e) {
+      console.error("[MintaAkses] error:", e);
+      setAksesError(prev => ({ ...prev, [tugasId]: "Gagal mengirim permintaan. Coba lagi." }));
+    } finally {
+      setLoadingAkses(prev => ({ ...prev, [tugasId]: false }));
+    }
+  };
+
+  const renderCard = (t, isOverdueCard) => {
+    const dl = fmtDl(t.deadline);
+    const aksReq = store.getAksesRequest(t.id, user.id);
+    const soalCount = t.soal?.length || 0;
+    const poinMax = t.graded === false ? Math.round((t.poinMax || 0) * 0.2) : (t.poinMax || 0);
+    const allSiswa = store.getAllSiswa(t.jenjang);
+    const siswaList = Array.isArray(t.assignedTo) ? allSiswa.filter(s => t.assignedTo.includes(s.id)) : allSiswa;
+    const totalSiswa = siswaList.length;
+    const sudahKerjakan = store.getSubs().filter(s => s.tugasId === t.id).length;
+    const pctDone = totalSiswa > 0 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
+    const barColor = pctDone >= 75 ? "var(--accent)" : "var(--bad)";
+    const showMintaAkses = isOverdueCard && (!aksReq || aksReq.status === "rejected");
+    const showPending = isOverdueCard && aksReq?.status === "pending";
+    const isLoading = loadingAkses[t.id];
+    const errMsg = aksesError[t.id];
+    return (
+      <div key={t.id} style={{
+        border: isOverdueCard ? "1.5px solid var(--bad)" : "1.5px solid var(--line)",
+        borderRadius: 14, padding: "14px 16px",
+        background: "var(--surface)"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            color: isOverdueCard ? "var(--bad)" : "var(--accent)",
+            background: isOverdueCard ? "rgba(220,53,69,.08)" : "var(--accent-tint)",
+            padding: "3px 8px", borderRadius: 6, letterSpacing: ".03em", textTransform: "uppercase"
+          }}>{isOverdueCard ? "Terlambat" : t.mapel}</span>
+          <span style={{
+            fontSize: 11, fontWeight: 600,
+            color: dl.tone === "bad" ? "var(--bad)" : dl.tone === "warn" ? "var(--warn)" : "var(--ink-3)",
+            display: "flex", alignItems: "center", gap: 4
+          }}><I n="clock" s={12} />{dl.label}</span>
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.4 }}>{t.judul}</div>
+        <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="fileText" s={12} />{soalCount} soal</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="target" s={12} />+{poinMax} pt</span>
+        </div>
+        {totalSiswa > 0 && <div style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sudah mengerjakan</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{sudahKerjakan}/{totalSiswa}</span>
+          </div>
+          <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
+            <div style={{
+              height: "100%", borderRadius: 99, transition: "width .4s",
+              width: `${pctDone}%`,
+              background: barColor
+            }} />
+          </div>
+        </div>}
+        {/* Button */}
+        {showMintaAkses ? (
+          <>
+            <button onClick={() => handleMintaAkses(t.id, t.judul)} disabled={isLoading} style={{
+              width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
+              background: isLoading ? "var(--surface-alt)" : "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)",
+              color: isLoading ? "var(--ink-3)" : "#fff", fontWeight: 700, fontSize: 14,
+              cursor: isLoading ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              boxShadow: isLoading ? "none" : "0 2px 8px rgba(192,57,43,.3)"
+            }}>{isLoading ? "Mengirim..." : <>Minta Akses <I n="send" s={14} /></>}</button>
+            {errMsg && <div style={{ fontSize: 11, color: "var(--bad)", marginTop: 6, textAlign: "center" }}>{errMsg}</div>}
+          </>
+        ) : showPending ? (
+          <button disabled style={{
+            width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
+            background: "var(--surface-alt)", color: "var(--ink-3)",
+            fontWeight: 700, fontSize: 14, cursor: "not-allowed",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+          }}><I n="clock" s={14} /> Menunggu Persetujuan...</button>
+        ) : (
+          <button onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }} style={{
+            width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
+            background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+            color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            boxShadow: "0 2px 8px rgba(13,107,122,.3)"
+          }}>Kerjakan <span style={{ fontSize: 16 }}>→</span></button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 250 }}>
       <div onClick={e => e.stopPropagation()} style={{
@@ -1620,97 +1731,31 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginTop: 2 }}>Ada {pendingTugas.length} tugas yang belum kamu kerjakan</div>
         </div>
-        {/* Tugas list */}
+        {/* Tugas list — aktif dulu, lalu overdue di bawah */}
         <div style={{ padding: "10px 14px 14px", overflowY: "auto", flex: 1 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {pendingTugas.map(t => {
-              const dl = fmtDl(t.deadline);
-              const isOverdue = dl.tone === "bad";
-              const hasSusulan = store.isSusulanAktif(t.id, user.id);
-              const aksReq = store.getAksesRequest(t.id, user.id);
-              const soalCount = t.soal?.length || 0;
-              const poinMax = t.graded === false ? Math.round((t.poinMax || 0) * 0.2) : (t.poinMax || 0);
-              // Progress kelas — selalu hitung
-              const allSiswa = store.getAllSiswa(t.jenjang);
-              const siswaList = Array.isArray(t.assignedTo) ? allSiswa.filter(s => t.assignedTo.includes(s.id)) : allSiswa;
-              const totalSiswa = siswaList.length;
-              const sudahKerjakan = store.getSubs().filter(s => s.tugasId === t.id).length;
-              const pctDone = totalSiswa > 0 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
-              // Bar color: merah kalau sedikit, teal Astrolab kalau ≥75%
-              const barColor = pctDone >= 75 ? "var(--accent)" : "var(--bad)";
-              // Determine button state for overdue tugas
-              const showMintaAkses = isOverdue && !hasSusulan && (!aksReq || aksReq.status === "rejected");
-              const showPending = isOverdue && !hasSusulan && aksReq?.status === "pending";
-              const showApproved = isOverdue && !hasSusulan && aksReq?.status === "approved";
-              return (
-                <div key={t.id} style={{
-                  border: isOverdue && !hasSusulan ? "1.5px solid var(--bad)" : "1.5px solid var(--line)",
-                  borderRadius: 14, padding: "14px 16px",
-                  background: "var(--surface)"
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700,
-                      color: isOverdue && !hasSusulan ? "var(--bad)" : "var(--accent)",
-                      background: isOverdue && !hasSusulan ? "rgba(220,53,69,.08)" : "var(--accent-tint)",
-                      padding: "3px 8px", borderRadius: 6, letterSpacing: ".03em", textTransform: "uppercase"
-                    }}>{isOverdue && !hasSusulan ? "Terlambat" : t.mapel}</span>
-                    <span style={{
-                      fontSize: 11, fontWeight: 600,
-                      color: dl.tone === "bad" ? "var(--bad)" : dl.tone === "warn" ? "var(--warn)" : "var(--ink-3)",
-                      display: "flex", alignItems: "center", gap: 4
-                    }}><I n="clock" s={12} />{dl.label}</span>
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.4 }}>{t.judul}</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="fileText" s={12} />{soalCount} soal</span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="target" s={12} />+{poinMax} pt</span>
-                  </div>
-                  {/* Progress bar — tampil kalau data siswa tersedia */}
-                  {totalSiswa > 0 && <div style={{ marginBottom: 12 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sudah mengerjakan</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{sudahKerjakan}/{totalSiswa}</span>
-                    </div>
-                    <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                      <div style={{
-                        height: "100%", borderRadius: 99, transition: "width .4s",
-                        width: `${pctDone}%`,
-                        background: barColor
-                      }} />
-                    </div>
-                  </div>}
-                  {/* Button: Kerjakan / Minta Akses / Menunggu / Approved */}
-                  {showMintaAkses ? (
-                    <button onClick={() => {
-                      store.requestAkses(t.id, user.id, user.namaDisplay || user.nama, t.judul);
-                    }} style={{
-                      width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-                      background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)",
-                      color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      boxShadow: "0 2px 8px rgba(192,57,43,.3)"
-                    }}>Minta Akses <I n="send" s={14} /></button>
-                  ) : showPending ? (
-                    <button disabled style={{
-                      width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-                      background: "var(--surface-alt)", color: "var(--ink-3)",
-                      fontWeight: 700, fontSize: 14, cursor: "not-allowed",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6
-                    }}><I n="clock" s={14} /> Menunggu Persetujuan...</button>
-                  ) : (
-                    <button onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }} style={{
-                      width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-                      background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
-                      color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      boxShadow: "0 2px 8px rgba(13,107,122,.3)"
-                    }}>Kerjakan <span style={{ fontSize: 16 }}>→</span></button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {/* Tugas aktif (belum lewat deadline) */}
+          {aktifList.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {aktifList.map(t => renderCard(t, false))}
+            </div>
+          )}
+          {/* Separator */}
+          {aktifList.length > 0 && overdueList.length > 0 && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10, margin: "16px 0 12px",
+              color: "var(--ink-4)", fontSize: 11, fontWeight: 600
+            }}>
+              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+              Lewat Deadline
+              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+            </div>
+          )}
+          {/* Tugas overdue */}
+          {overdueList.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {overdueList.map(t => renderCard(t, true))}
+            </div>
+          )}
         </div>
         {/* Footer hint */}
         <div style={{ padding: "8px 14px 12px", textAlign: "center", fontSize: 11, color: "var(--ink-4)" }}>
