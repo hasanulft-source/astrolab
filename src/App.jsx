@@ -259,6 +259,26 @@ function useStore() {
   const addTugas = async (t) => {
     const newRef = push(ref(db, "tugas"));
     await set(newRef, { ...t, createdAt: new Date().toISOString(), status: t.scheduledAt ? "scheduled" : "aktif" });
+    // Push notification ke siswa (skip jika scheduled — belum aktif)
+    if (!t.scheduledAt) {
+      try {
+        let siswaIds;
+        if (t.assignedTo && t.assignedTo.length > 0) {
+          siswaIds = t.assignedTo;
+        } else {
+          siswaIds = getAllSiswa(t.jenjang || undefined).map(s => s.id);
+        }
+        if (siswaIds.length > 0) {
+          const deadlineText = t.deadline ? ` (Deadline: ${t.deadline})` : "";
+          callPush("sendBulk", {
+            targetAccountIds: siswaIds,
+            title: "Tugas Baru: " + (t.judul || "Tanpa Judul"),
+            body: (t.jenjang || "") + deadlineText,
+            tag: "tugas-" + newRef.key,
+          });
+        }
+      } catch (e) { console.warn("[Push] tugas notify failed:", e.message); }
+    }
   };
   const deleteTugas = async (id) => { await remove(ref(db, `tugas/${id}`)); };
   const updateTugas = async (id, patch) => { await update(ref(db, `tugas/${id}`), patch); };
@@ -520,6 +540,18 @@ function useStore() {
     const now = Date.now();
     const newRef = push(ref(db, "broadcasts"));
     await set(newRef, { pesan, target, createdAt: now, expiresAt: now + durasiHari * 86400000, durasiHari });
+    // Push notification ke siswa target
+    try {
+      const siswaIds = getAllSiswa(target === "semua" ? undefined : target).map(s => s.id);
+      if (siswaIds.length > 0) {
+        callPush("sendBulk", {
+          targetAccountIds: siswaIds,
+          title: "Pengumuman Baru",
+          body: pesan.length > 100 ? pesan.slice(0, 97) + "..." : pesan,
+          tag: "broadcast-" + newRef.key,
+        });
+      }
+    } catch (e) { console.warn("[Push] broadcast notify failed:", e.message); }
   };
   const editBroadcast = async (id, pesan, target, durasiHari) => {
     const now = Date.now();
