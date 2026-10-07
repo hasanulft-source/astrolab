@@ -364,7 +364,7 @@ export function ChatScreen({ user, store, params = {} }) {
     }
   }, [params.openChat, contacts.length]);
   const broadcasts = isGuru
-    ? store.getBroadcasts("semua") // guru lihat semua
+    ? store.getAllBroadcasts() // guru lihat semua broadcast (semua target)
     : store.getBroadcasts(user.jenjang);
 
   async function handleSaveBc({ pesan, target, durasi }) {

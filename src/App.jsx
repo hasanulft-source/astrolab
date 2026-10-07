@@ -559,6 +559,7 @@ function useStore() {
   };
   const deleteBroadcast = async (id) => { await remove(ref(db, `broadcasts/${id}`)); };
   const getBroadcasts = (jenjang) => broadcasts.filter(b => b.target === "semua" || b.target === jenjang);
+  const getAllBroadcasts = () => broadcasts;
 
   // ─── LAPORAN SISWA (semi-anonim, guru-only read) ───
   // Data model: { kategori, kategoriLain?, deskripsi, pelaporId, pelaporNama, jenjang, kelas, createdAt, status, catatanGuru? }
@@ -1510,7 +1511,7 @@ function useStore() {
     return toArchive.length;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri };
 }
 
 // ─── LOGIN ───
@@ -2261,7 +2262,7 @@ function DaftarTugas({ user, store, navigate }) {
                   <circle cx="26" cy="26" r="22" fill="none" stroke={totalSelesai === totalTugas ? "var(--good)" : "var(--accent)"} strokeWidth="5"
                     strokeDasharray={circumference} strokeDashoffset={progressOffset} strokeLinecap="round" />
                 </svg>
-                <div className="dt-ring-text">{totalSelesai}/{totalTugas}</div>
+                <div className="dt-ring-text" style={`${totalSelesai}/${totalTugas}`.length > 4 ? { fontSize: 12 } : undefined}>{totalSelesai}/{totalTugas}</div>
               </div>
               <div className="dt-prog-info">
                 <div className="dt-prog-title">{totalSelesai} dari {totalTugas} tugas selesai</div>
