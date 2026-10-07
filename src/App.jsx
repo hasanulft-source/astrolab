@@ -8550,18 +8550,21 @@ function LaporanDetailModal({ report, store, kategoriLabel, onClose, onDelete })
 // ─── PUSH NOTIFICATIONS HOOK ───
 function usePushNotifications(user) {
   const subscriptionRef = useRef(null);
+  const [pushPermission, setPushPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "denied"
+  );
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
 
+  // Check if browser supports push
+  const pushSupported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+  // Register SW and subscribe if already granted
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !pushSupported) return;
     let cancelled = false;
 
     async function setupPush() {
-      // 1. Check browser support
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        console.warn("[Push] Not supported in this browser");
-        return;
-      }
-      // 2. Register service worker
+      // Register service worker
       let reg;
       try {
         reg = await navigator.serviceWorker.register("/sw.js");
@@ -8571,17 +8574,54 @@ function usePushNotifications(user) {
         return;
       }
       if (cancelled) return;
-      // 3. Check/request notification permission
-      let permission = Notification.permission;
-      if (permission === "default") {
-        permission = await Notification.requestPermission();
-      }
-      if (permission !== "granted") {
-        console.warn("[Push] Permission not granted:", permission);
+
+      const perm = Notification.permission;
+      setPushPermission(perm);
+
+      // If already granted, subscribe silently
+      if (perm === "granted") {
+        try {
+          let sub = await reg.pushManager.getSubscription();
+          if (!sub) {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            });
+          }
+          if (cancelled) return;
+          subscriptionRef.current = sub;
+          await callPush("subscribe", { accountId: user.id, subscription: sub.toJSON() });
+        } catch (e) {
+          console.warn("[Push] Subscribe failed:", e.message);
+        }
+        // Clear badge when app is opened
+        if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
         return;
       }
-      // 4. Subscribe to push
+
+      // If "default" (not yet decided), show our custom prompt
+      if (perm === "default") {
+        setShowPushPrompt(true);
+      }
+    }
+
+    // Clear badge whenever app becomes visible
+    const onVisible = () => { if (!document.hidden && navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {}); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    setupPush();
+    return () => { cancelled = true; document.removeEventListener("visibilitychange", onVisible); };
+  }, [user?.id]);
+
+  // Called when user clicks "Izinkan" in our custom popup
+  const requestPushPermission = async () => {
+    if (!pushSupported) return;
+    const perm = await Notification.requestPermission();
+    setPushPermission(perm);
+    setShowPushPrompt(false);
+    if (perm === "granted") {
       try {
+        const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
           sub = await reg.pushManager.subscribe({
@@ -8589,18 +8629,15 @@ function usePushNotifications(user) {
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
           });
         }
-        if (cancelled) return;
         subscriptionRef.current = sub;
-        // 5. Send subscription to server
-        await callPush("subscribe", { accountId: user.id, subscription: sub.toJSON() });
+        await callPush("subscribe", { accountId: user?.id, subscription: sub.toJSON() });
       } catch (e) {
-        console.warn("[Push] Subscribe failed:", e.message);
+        console.warn("[Push] Subscribe after grant failed:", e.message);
       }
     }
+  };
 
-    setupPush();
-    return () => { cancelled = true; };
-  }, [user?.id]);
+  const dismissPushPrompt = () => setShowPushPrompt(false);
 
   // Unsubscribe: call on logout to remove this device's subscription
   const unsubscribePush = async () => {
@@ -8614,7 +8651,7 @@ function usePushNotifications(user) {
     }
   };
 
-  return { unsubscribePush };
+  return { unsubscribePush, pushPermission, showPushPrompt, requestPushPermission, dismissPushPrompt };
 }
 
 // ─── NOTIFICATIONS HOOK ───
@@ -8823,7 +8860,7 @@ function AppInner() {
   const [params, setParams] = useState({});
   const store = useStore();
   const { notifs, dismissNotif } = useNotifications(user, store, route);
-  const { unsubscribePush } = usePushNotifications(user);
+  const { unsubscribePush, showPushPrompt, requestPushPermission, dismissPushPrompt } = usePushNotifications(user);
   function navigate(r, p = {}) { setRoute(r); setParams(p); window.scrollTo(0, 0); }
 
   // Firebase Auth — session persist otomatis
@@ -8966,6 +9003,31 @@ function AppInner() {
         {!hideNav && <BottomNav user={user} route={route} navigate={navigate} store={store} />}
       </div>}
     <NotifToastContainer notifs={notifs} onDismiss={dismissNotif} />
+    {/* Push notification permission prompt — shows every login until allowed */}
+    {showPushPrompt && (
+      <div className="modal-overlay" onClick={dismissPushPrompt} style={{ zIndex: 9999 }}>
+        <div className="modal" style={{ maxWidth: 360, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)", color: "#fff", display: "grid", placeItems: "center", margin: "0 auto 14px", fontSize: 28 }}>
+            🔔
+          </div>
+          <h3 style={{ fontSize: 17, margin: "0 0 8px" }}>Aktifkan Notifikasi</h3>
+          <p style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6, marginBottom: 20 }}>
+            Dapatkan pengingat deadline tugas, pesan dari {user?.role === "guru" ? "siswa" : "guru"}, dan info penting lainnya langsung di HP kamu.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button onClick={requestPushPermission} style={{
+              width: "100%", padding: "12px 0", borderRadius: 12, border: "none",
+              background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+              color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer"
+            }}>Izinkan Notifikasi</button>
+            <button onClick={dismissPushPrompt} style={{
+              width: "100%", padding: "10px 0", borderRadius: 12, border: "none",
+              background: "transparent", color: "var(--ink-3)", fontSize: 13, cursor: "pointer"
+            }}>Nanti saja</button>
+          </div>
+        </div>
+      </div>
+    )}
   </>;
 }
 

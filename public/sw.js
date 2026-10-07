@@ -17,15 +17,26 @@ self.addEventListener("push", (event) => {
     tag: data.tag || "astrolab-" + Date.now(),
     data: { url: data.url || "/" },
     vibrate: [200, 100, 200],
-    requireInteraction: false,
+    requireInteraction: true,
+    renotify: true,
   };
 
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  event.waitUntil(
+    self.registration.showNotification(data.title, options).then(() => {
+      // Set badge count on app icon (supported on Android Chrome 81+, iOS Safari 16.4+)
+      if (self.navigator?.setAppBadge) {
+        self.navigator.setAppBadge().catch(() => {});
+      }
+    })
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url || "/";
+
+  // Clear badge when user taps notification
+  if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {

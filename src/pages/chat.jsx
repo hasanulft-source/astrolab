@@ -208,9 +208,10 @@ function AksesMessageCard({ m, user, store }) {
               await store.rejectAkses(meta.tugasId, meta.siswaId);
               setRejecting(false);
             }} disabled={rejecting} style={{
-              flex: 1, padding: "9px 0", borderRadius: 10, border: "1.5px solid var(--bad)",
-              background: "transparent", color: "var(--bad)", fontWeight: 700, fontSize: 13,
-              cursor: rejecting ? "not-allowed" : "pointer",
+              flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
+              background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)",
+              color: "#fff", fontWeight: 700, fontSize: 13,
+              cursor: rejecting ? "not-allowed" : "pointer", opacity: rejecting ? .6 : 1,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 4
             }}>{rejecting ? "..." : <><I n="x" s={14} /> Tolak</>}</button>
           </div>
