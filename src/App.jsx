@@ -2041,11 +2041,6 @@ function LeaderboardScreen({ user, store }) {
   const subsAll = store.getSubs();
   const oneWeekAgo = Date.now() - 7 * 24 * 3600000;
 
-  // Helper: subs minggu ini per siswa
-  function weekSubs(siswaId) {
-    return subsAll.filter(s => s.siswaId === siswaId && s.submittedAt && new Date(s.submittedAt).getTime() >= oneWeekAgo);
-  }
-
   // 1. Top Performer — poin tertinggi
   const topPerformer = [...lb].sort((a, b) => (b.poin || 0) - (a.poin || 0))[0];
 
@@ -3630,7 +3625,7 @@ function ProfilSiswa({ user, store, navigate }) {
           </div>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginTop: 12, marginBottom: 8 }}>UPLOAD FOTO</div>
           <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: "1.5px dashed var(--line)", borderRadius: "var(--r-sm)", cursor: "pointer", fontSize: 13, color: "var(--ink-2)" }}>
-            <I n="user" s={18} /> Pilih foto dari device (maks 2MB)
+            <I n="user" s={18} /> Pilih foto dari device (maks 5MB)
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
           {photo && (
@@ -6840,7 +6835,7 @@ function ProfilGuru({ user, store, navigate }) {
           </div>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginTop: 12, marginBottom: 8 }}>UPLOAD FOTO</div>
           <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: "1.5px dashed var(--line)", borderRadius: "var(--r-sm)", cursor: "pointer", fontSize: 13, color: "var(--ink-2)" }}>
-            <I n="user" s={18} /> Pilih foto dari device (maks 2MB)
+            <I n="user" s={18} /> Pilih foto dari device (maks 5MB)
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
           </label>
           {photo && <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { withTimeout(store.savePhoto(user.uid || user.id, null)).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>Hapus foto profil</button>}
@@ -9015,7 +9010,7 @@ class ErrorBoundary extends Component {
     return { hasError: true, error };
   }
   componentDidCatch(error, info) {
-    // Silent log untuk production
+    console.error("[ErrorBoundary]", error, info);
   }
   render() {
     if (this.state.hasError) {

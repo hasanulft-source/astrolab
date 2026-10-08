@@ -1,7 +1,7 @@
 // Astrolab — Bank Soal (Question Bank)
 // Extracted from App.jsx (Wave 5)
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { I } from '../components/icons';
 import { Confirm, Card } from '../components/visual';
 import { downloadTemplateSoal, importSoalFromExcel } from '../utils/excel';

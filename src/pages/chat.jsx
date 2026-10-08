@@ -1,11 +1,22 @@
 // Astrolab — Chat & Broadcast
 // Extracted from App.jsx (Wave 5)
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { I } from '../components/icons';
 import { fmtLastSeen, withTimeout, getFirstName } from '../utils/helpers';
 import { UserAvatar, OnlineDot, Card } from '../components/visual';
 import { LevelBadge } from '../components/gamification';
+
+// ─── Read receipt: double checkmark (grey = sent, blue = read) ───
+function ReadCheck({ read }) {
+  const c = read ? "#53bdeb" : "#8696a0";
+  return (
+    <svg width="16" height="11" viewBox="0 0 16 11" style={{ marginLeft: 3, flexShrink: 0, verticalAlign: "text-bottom" }}>
+      <path d="M11.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L4.2 8.36 2.19 6.27a.46.46 0 0 0-.34-.16.46.46 0 0 0-.34.16.43.43 0 0 0-.1.34c0 .12.05.23.15.32l2.34 2.43a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16L11.15 1.27a.46.46 0 0 0-.08-.62z" fill={c}/>
+      <path d="M15.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L8.2 8.36l-1.2-1.25-.35.43 1.22 1.28a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16l6.55-8.09a.46.46 0 0 0-.08-.62z" fill={c}/>
+    </svg>
+  );
+}
 
 function BroadcastBox({ broadcasts, isGuru, onEdit, onDelete }) {
   if (!broadcasts.length) return null;
@@ -334,7 +345,10 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
               {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
               <div className={`msg ${isMe ? "msg-me" : "msg-them"}`}>
                 {m.text}
-                <div className="msg-time">{fmtTime(m.ts)}</div>
+                <div className="msg-time" style={{ display: "inline-flex", alignItems: "center", gap: 0 }}>
+                  {fmtTime(m.ts)}
+                  {isMe && <ReadCheck read={!!m.read} />}
+                </div>
               </div>
             </div>
           );
@@ -429,7 +443,9 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
           <div style={{ fontSize: 12, color: unread > 0 ? "var(--ink-2)" : "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, fontWeight: unread > 0 ? 600 : 400 }}>
             {store.isOnline(c.id)
               ? <span style={{ color: "#0d9488", fontWeight: 500, fontSize: 11 }}>Online</span>
-              : last ? (last.fromId === user.id ? `Kamu: ${last.text}` : last.text)
+              : last ? (last.fromId === user.id
+                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}><ReadCheck read={!!last.read} /> Kamu: {last.text}</span>
+                  : last.text)
                 : (() => { const ls = fmtLastSeen(store.getLastSeen(c.id)); return ls ? <span style={{ fontSize: 11 }}>Terakhir online {ls}</span> : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`); })()
             }
           </div>
