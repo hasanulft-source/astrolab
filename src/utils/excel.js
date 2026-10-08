@@ -17,22 +17,33 @@ async function loadExcelJS() {
 
 // Convert ExcelJS worksheet → array of objects (mimics SheetJS sheet_to_json).
 // Each object uses the header row values as keys.
+// Uses ws.eachRow() instead of ws.rowCount (which can be 0 after wb.xlsx.load).
 function excelSheetToJson(ws, { defval = undefined } = {}) {
-  if (!ws || ws.rowCount < 2) return [];
-  const headerRow = ws.getRow(1);
-  const headers = [];
-  headerRow.eachCell({ includeEmpty: true }, (cell, col) => {
-    headers[col] = (cell.value ?? "").toString().trim();
+  if (!ws) return [];
+  // Collect all rows via eachRow — reliable even when rowCount is wrong
+  const allRows = [];
+  ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    allRows.push(row);
   });
+  if (allRows.length < 2) return []; // need header + at least 1 data row
+
+  // Row 0 in allRows = header row
+  const headers = [];
+  allRows[0].eachCell({ includeEmpty: true }, (cell, col) => {
+    let v = cell.value;
+    if (v && typeof v === "object" && v.richText) v = v.richText.map(p => p.text).join("");
+    headers[col] = (v ?? "").toString().trim();
+  });
+
+  // Remaining rows = data
   const rows = [];
-  for (let r = 2; r <= ws.rowCount; r++) {
-    const row = ws.getRow(r);
+  for (let i = 1; i < allRows.length; i++) {
+    const row = allRows[i];
     let empty = true;
     const obj = {};
     headers.forEach((h, col) => {
       if (!h) return;
       let v = row.getCell(col).value;
-      // ExcelJS wraps rich text in { richText: [...] }
       if (v && typeof v === "object" && v.richText) {
         v = v.richText.map(p => p.text).join("");
       }
