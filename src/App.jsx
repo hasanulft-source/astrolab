@@ -12,7 +12,7 @@ import { IC, I } from './components/icons';
 import { shuffle, fmtDl, uid, getTahunAjaran, getSemesterAktif, getPeriodeAktif, getPeriodeOptions, fmtLastSeen, withTimeout, fuzzyMatchText, compressImage, SKIP_PREFIXES, genSiswaId, getFirstName, genPassword } from './utils/helpers';
 import { getFlameTheme, FlameAnimated, StreakCometSVG, StreakCard, Avatar, UserAvatar, OnlineDot, Confirm, LogoBold, ConfettiRain, CelebrationAvatar, MapelIcon, Card } from './components/visual';
 import { TIERS, LEVELS, getLevel, getTier, getLevelProgress, TierIcon, LevelBadge, BADGE_RIMS, BadgeGlyph, BadgeIcon, AUTO_BADGES, MANUAL_BADGES, ALL_BADGES, checkAutoBadges, LevelCard, BadgeChip, BadgesRow, PoinChart } from './components/gamification';
-import { downloadTemplateSoal, exportNilai, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, backupFromStore, importSoalFromExcel } from './utils/excel';
+import { downloadTemplateSoal, exportNilai, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, backupFromStore, importSoalFromExcel, parseNilaiAkhirExcel } from './utils/excel';
 import { LaporanModal } from './utils/laporan';
 import { ChatScreen } from './pages/chat';
 import { BankSoal, PilihDariBankSoalModal } from './pages/banksoal';
@@ -1396,6 +1396,62 @@ function useStore() {
     return () => u7();
   }, []);
   const getBadges = (sid) => Object.keys(badgesData[sid] || {});
+
+  // ─── RANK SNAPSHOTS — untuk movement indicator ▲▼ ───
+  const [rankSnapshots, setRankSnapshots] = useState({});
+  useEffect(() => {
+    const rsRef = ref(db, "rankSnapshots");
+    const u8 = onValue(rsRef, snap => { setRankSnapshots(snap.val() || {}); });
+    return () => u8();
+  }, []);
+  const getRankSnapshot = (jenjang) => rankSnapshots[jenjang] || {};
+  const saveRankSnapshot = async (jenjang) => {
+    const lb = getLeaderboard(jenjang);
+    const snap = {};
+    lb.forEach(s => { snap[s.id] = s.rank; });
+    snap._savedAt = Date.now();
+    await update(ref(db, `rankSnapshots/${jenjang}`), snap);
+  };
+  const getRankMovement = (jenjang, siswaId) => {
+    const snap = getRankSnapshot(jenjang);
+    if (!snap[siswaId]) return null; // no previous data
+    const lb = getLeaderboard(jenjang);
+    const current = lb.find(s => s.id === siswaId);
+    if (!current) return null;
+    return snap[siswaId] - current.rank; // positive = naik, negative = turun
+  };
+
+  // ─── SEMESTER SETTINGS ───
+  const [semesterSettings, setSemesterSettings] = useState({});
+  useEffect(() => {
+    const ssRef = ref(db, "settings/semester");
+    const u9 = onValue(ssRef, snap => { setSemesterSettings(snap.val() || {}); });
+    return () => u9();
+  }, []);
+  // Return semester aktif: pakai override guru kalau ada, kalau gak auto-detect
+  const getActivePeriode = () => {
+    if (semesterSettings.override) return semesterSettings.override;
+    return getPeriodeAktif();
+  };
+  const setSemesterOverride = async (periode) => {
+    // periode = null untuk balik ke auto-detect
+    await update(ref(db, "settings/semester"), {
+      override: periode || null,
+      updatedAt: Date.now()
+    });
+  };
+  const closeSemester = async (periode) => {
+    const closed = semesterSettings.closedPeriodes || [];
+    if (!closed.includes(periode)) {
+      await update(ref(db, "settings/semester"), {
+        closedPeriodes: [...closed, periode],
+        closedAt: Date.now()
+      });
+    }
+  };
+  const isSemesterClosed = (periode) => {
+    return (semesterSettings.closedPeriodes || []).includes(periode);
+  };
   // Kasih badge + otomatis nambah poin ke stats siswa (poin diambil dari ALL_BADGES.poin).
   // Auto badges = 50 poin (murni skill), manual badges = 15 poin (subjektif guru, porsi lebih kecil
   // biar leaderboard akademik gak terlalu goyah cuma dari badge behavioral).
@@ -1511,7 +1567,7 @@ function useStore() {
     return toArchive.length;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings };
 }
 
 // ─── LOGIN ───
@@ -1955,12 +2011,28 @@ function DashboardSiswa({ user, store, navigate }) {
 }
 
 // ─── LEADERBOARD ───
+function RankMovement({ move }) {
+  if (move === null || move === undefined || move === 0) return null;
+  const up = move > 0;
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
+      color: up ? "var(--good)" : "var(--bad)",
+      display: "inline-flex", alignItems: "center", gap: 1, marginLeft: 4
+    }}>
+      {up ? "▲" : "▼"}{Math.abs(move)}
+    </span>
+  );
+}
+
 function LeaderboardScreen({ user, store }) {
   const isGuru = user.role === "guru";
   const [tab, setTab] = useState(isGuru ? "VII" : user.jenjang);
   const lb = store.getLeaderboard(tab);
   const myRow = lb.find(s => s.id === user.id);
   const myInTop = myRow && myRow.rank <= 10;
+  const snapshot = store.getRankSnapshot(tab);
+  const hasSnapshot = Object.keys(snapshot).filter(k => k !== "_savedAt").length > 0;
 
   // Prestasi minggu ini — 5 nominasi dengan metrik BERBEDA
   const subsAll = store.getSubs();
@@ -2030,6 +2102,12 @@ function LeaderboardScreen({ user, store }) {
         <button className={`tab ${tab === "VII" ? "active" : ""}`} onClick={() => setTab("VII")}>Kelas VII</button>
         <button className={`tab ${tab === "VIII" ? "active" : ""}`} onClick={() => setTab("VIII")}>Kelas VIII</button>
       </div>
+      {isGuru && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <button className="btn btn-soft btn-sm" onClick={async () => { await store.saveRankSnapshot(tab); }} style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+          <I n="refresh" s={12} /> Simpan Snapshot Ranking
+        </button>
+      </div>}
+      {hasSnapshot && snapshot._savedAt && <div style={{ fontSize: 10, color: "var(--ink-4)", textAlign: "right", marginBottom: 8, marginTop: -4 }}>Perubahan dari {new Date(snapshot._savedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</div>}
 
       {lb.length === 0 ? <Card><div className="empty empty-box"><I n="trophy" s={32} /><h3>Belum ada ranking</h3><p>Ranking muncul setelah siswa menyelesaikan tugas pertama.</p></div></Card> : <>
 
@@ -2052,7 +2130,7 @@ function LeaderboardScreen({ user, store }) {
                       : <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
                     }
                     <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingInline: 4 }}>{getFirstName(s.nama)}</div>
-                    <div className="stat-num" style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>{s.poin.toLocaleString("id-ID")} pt</div>
+                    <div className="stat-num" style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.poin.toLocaleString("id-ID")} pt{hasSnapshot && <RankMovement move={store.getRankMovement(tab, s.id)} />}</div>
                     <div className={isFirst ? "podium-1" : ""} style={{
                       height: podH,
                       background: podBg,
@@ -2082,7 +2160,9 @@ function LeaderboardScreen({ user, store }) {
               <div style={{ fontSize: 13, fontWeight: 700 }}>Top 10 · Kelas {tab}</div>
               <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{lb.length} siswa</div>
             </div>
-            {lb.slice(0, 10).map(s => (
+            {lb.slice(0, 10).map(s => {
+              const move = hasSnapshot ? store.getRankMovement(tab, s.id) : null;
+              return (
               <div key={s.id} className={`lb-row ${!isGuru && s.id === user.id ? "me" : ""}`}>
                 <div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : s.rank === 3 ? "top3" : ""}`}>{s.rank}</div>
                 <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
@@ -2090,6 +2170,7 @@ function LeaderboardScreen({ user, store }) {
                   <div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span>{s.nama}{!isGuru && s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span>
                     <LevelBadge poin={s.poin || 0} size="xs" showName={false} />
+                    <RankMovement move={move} />
                   </div>
                   <div className="lb-meta">
                     {s.kelas}
@@ -2098,16 +2179,37 @@ function LeaderboardScreen({ user, store }) {
                 </div>
                 <div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div>
               </div>
-            ))}
-            {!isGuru && !myInTop && myRow && (
-              <><div className="divider">· · ·</div>
-              <div className="lb-row me">
-                <div className="lb-rank">{myRow.rank}</div>
-                <UserAvatar userId={myRow.id} name={myRow.nama} size="md" store={store} />
-                <div style={{ minWidth: 0 }}><div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span>{myRow.nama}<span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span></span><LevelBadge poin={myRow.poin || 0} size="xs" showName={false} /></div><div className="lb-meta">{myRow.kelas}</div></div>
-                <div className="lb-pts">{myRow.poin.toLocaleString("id-ID")}</div>
-              </div></>
-            )}
+              );
+            })}
+            {!isGuru && !myInTop && myRow && (() => {
+              const myIdx = lb.findIndex(s => s.id === user.id);
+              const start = Math.max(0, myIdx - 2);
+              const end = Math.min(lb.length, myIdx + 3);
+              const neighbours = lb.slice(start, end);
+              return <>
+                <div className="divider">· · ·</div>
+                <div style={{ fontSize: 10, color: "var(--ink-3)", padding: "4px 14px 2px", fontWeight: 600, letterSpacing: ".03em" }}>Ranking di sekitarmu</div>
+                {neighbours.map(s => {
+                  const isMe = s.id === user.id;
+                  const move = hasSnapshot ? store.getRankMovement(tab, s.id) : null;
+                  return (
+                    <div key={s.id} className={`lb-row ${isMe ? "me" : ""}`}>
+                      <div className="lb-rank">{s.rank}</div>
+                      <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span>{s.nama}{isMe && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span>
+                          <LevelBadge poin={s.poin || 0} size="xs" showName={false} />
+                          <RankMovement move={move} />
+                        </div>
+                        <div className="lb-meta">{s.kelas}</div>
+                      </div>
+                      <div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div>
+                    </div>
+                  );
+                })}
+              </>;
+            })()}
           </Card>
 
           {/* Prestasi minggu ini */}
@@ -2397,8 +2499,10 @@ function DetailTugas({ user, store, tugasId, navigate }) {
   const lewat = dl.tone === "bad";
   const susulan = store.getSusulan(t.id, user.id);
   const susulanAktif = store.isSusulanAktif(t.id, user.id);
-  // Bisa kerjakan kalau: normal (belum lewat), ATAU lewat tapi punya susulan personal yang masih aktif
-  const bisa = !done && t.status === "aktif" && t.soal?.length > 0 && (!lewat || susulanAktif);
+  // Cek apakah periode tugas sudah ditutup
+  const periodeTutup = t.periode && store.isSemesterClosed(t.periode);
+  // Bisa kerjakan kalau: normal (belum lewat), ATAU lewat tapi punya susulan personal yang masih aktif, DAN periode belum ditutup
+  const bisa = !done && t.status === "aktif" && t.soal?.length > 0 && (!lewat || susulanAktif) && !periodeTutup;
 
   // ── Social Proof: hitung progres kelas ──
   const _spAllSiswa = store.getAllSiswa(t.jenjang);
@@ -2411,6 +2515,19 @@ function DetailTugas({ user, store, tugasId, navigate }) {
     <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas")}><I n="chevL" s={18} /></button><div className="topbar-title">Detail Tugas</div><div style={{ width: 36 }} /></div>
     <div className="page">
       <div className="dt"><div><h1>{t.judul}</h1><p>{t.mapel}</p></div></div>
+
+      {/* Banner periode ditutup */}
+      {periodeTutup && !done && (
+        <Card pad="md" style={{ marginBottom: 12, background: "#fef3c7", border: "1.5px solid #f59e0b" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f59e0b", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="lock" s={16} /></div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, color: "#92400e", fontSize: 13 }}>Periode sudah ditutup</div>
+              <div style={{ fontSize: 11, color: "#78350f", marginTop: 2, lineHeight: 1.5 }}>Tugas dari {t.periode} tidak bisa dikerjakan lagi karena semesternya sudah ditutup oleh guru.</div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Banner Latihan Khusus — cuma muncul untuk tugas personal */}
       {Array.isArray(t.assignedTo) && (
@@ -4072,6 +4189,8 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
       // Kalau array (personal), simpan array-nya.
       assignedTo: isPersonal ? form.assignedTo : null,
       graded: form.graded,
+      // Auto-tag periode aktif saat tugas dibuat (atau pertahankan existing kalau edit)
+      periode: existing?.periode || store.getActivePeriode(),
     };
     if (editId) store.updateTugas(editId, data); else store.addTugas(data);
     setSaved(true); setTimeout(() => navigate("home-guru"), 1200);
@@ -4276,7 +4395,7 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
                   if (imported.length === 0) { alert("Tidak ada soal yang berhasil diimpor. Pastikan format file sesuai template."); return; }
                   setSoal(s => [...s, ...imported]);
                   alert(`✅ Berhasil mengimpor ${imported.length} soal!`);
-                } catch { alert("Gagal membaca file. Pastikan file .xlsx sesuai format template."); }
+                } catch (err) { console.error("Import soal error:", err); alert("Gagal membaca file: " + (err?.message || "Pastikan file .xlsx sesuai format template.")); }
                 e.target.value = "";
               }} />
             </label>
@@ -6478,7 +6597,7 @@ function RaporSiswa({ user, store, navigate }) {
   const [loading, setLoading] = useState(true);
   const [nilaiData, setNilaiData] = useState({});
   const [boostData, setBoostData] = useState({});
-  const periode = getPeriodeAktif();
+  const periode = store.getActivePeriode();
   const mapels = user.jenjang === "VII" ? ["IPA", "Informatika"] : ["IPA"];
   const sanitize = (s) => s.replace(/[.#$/[\]]/g, "-");
 
@@ -6794,6 +6913,62 @@ function ProfilGuru({ user, store, navigate }) {
                 ? <textarea className="inp" value={form.motto} onChange={e => set("motto", e.target.value)} rows={2} placeholder="Tulis kalimat favoritmu..." style={{ fontSize: 13, padding: "6px 10px" }} />
                 : <div style={{ fontSize: 14, color: profil.motto ? "var(--ink)" : "var(--ink-4)", fontStyle: profil.motto ? "italic" : "normal" }}>{profil.motto || "Belum diisi"}</div>}
             </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Pengaturan Semester */}
+      <Card style={{ marginBottom: 12, marginTop: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Pengaturan Semester</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <I n="clock" s={15} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 3 }}>Periode Aktif</div>
+              <select className="inp" value={store.getActivePeriode()} onChange={e => {
+                const val = e.target.value;
+                const autoDetected = getPeriodeAktif();
+                store.setSemesterOverride(val === autoDetected ? null : val);
+              }} style={{ fontSize: 13, padding: "6px 10px" }}>
+                {getPeriodeOptions().map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 4 }}>
+                Auto-detect: <b>{getPeriodeAktif()}</b>
+                {store.semesterSettings?.override && <> · <button onClick={() => store.setSemesterOverride(null)} style={{ fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Reset ke auto</button></>}
+              </div>
+            </div>
+          </div>
+          {/* Tutup Semester */}
+          <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>Tutup Semester</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.5, marginBottom: 10 }}>
+              Menandai periode sebagai selesai. Siswa tidak bisa lagi mengerjakan tugas dari periode tertutup.
+            </div>
+            {(() => {
+              const activePeriode = store.getActivePeriode();
+              const isClosed = store.isSemesterClosed(activePeriode);
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>
+                    {activePeriode}
+                    {isClosed && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: "var(--ink-4)", background: "var(--bg)", padding: "2px 8px", borderRadius: 99 }}>Sudah ditutup</span>}
+                  </div>
+                  {!isClosed ? (
+                    <button className="btn btn-outline btn-sm" onClick={() => {
+                      if (confirm(`Tutup "${activePeriode}"? Siswa tidak bisa mengerjakan tugas dari periode ini setelah ditutup.`)) {
+                        store.closeSemester(activePeriode);
+                      }
+                    }}>
+                      <I n="lock" s={13} /> Tutup Periode
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 11, color: "var(--good)", fontWeight: 600 }}>✓ Tertutup</span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </Card>
@@ -7343,11 +7518,22 @@ function ImportSiswaModal({ store, onClose, onSuccess }) {
     if (!file) return;
     setErr("");
     try {
-      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs");
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (!window.ExcelJS) {
+        await new Promise((res, rej) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+          s.onload = res; s.onerror = () => rej(new Error("Gagal memuat ExcelJS"));
+          document.head.appendChild(s);
+        });
+      }
+      const wbx = new window.ExcelJS.Workbook();
+      await wbx.xlsx.load(await file.arrayBuffer());
+      const ws = wbx.worksheets[0];
+      if (!ws) throw new Error("File tidak memiliki sheet.");
+      const data = [];
+      ws.eachRow((row, rowNum) => {
+        data.push(row.values.slice(1)); // row.values is 1-indexed, slice(1) to make 0-indexed
+      });
       // Skip header row, parse nama
       const parsed = data.slice(1)
         .filter(r => r[0]?.toString().trim())
@@ -7691,7 +7877,7 @@ function BottomNav({ user, route, navigate, store }) {
 function NilaiAkhirPage({ store }) {
   const [mapel, setMapel] = useState("IPA");
   const [jenjang, setJenjang] = useState("VII");
-  const [periode, setPeriode] = useState(getPeriodeAktif());
+  const [periode, setPeriode] = useState(store.getActivePeriode());
   const periodeOptions = getPeriodeOptions();
   const [addModal, setAddModal] = useState(null); // "sumatif" | "kuis" | null
   const [deleteTarget, setDeleteTarget] = useState(null); // { tipe, label } | null
@@ -8955,7 +9141,7 @@ function AppInner() {
       else if (route === "buat-tugas") screen = <BuatTugas store={store} navigate={navigate} presetAssignedTo={params.presetAssignedTo} presetJenjang={params.presetJenjang} />;
       else if (route === "edit-tugas") screen = <BuatTugas store={store} navigate={navigate} editId={params.tugasId} />;
       else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
-      else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
+      else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
       else if (route === "kelas") screen = <KelasView store={store} navigate={navigate} />;
       else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
@@ -8976,7 +9162,7 @@ function AppInner() {
       else if (route === "profil") screen = <ProfilSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "rapor") screen = <RaporSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
-      else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} />;
+      else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
       else screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
     }
   }
@@ -8989,6 +9175,7 @@ function AppInner() {
             <div className="hdr-name"><b>Astrolab</b><small style={{ fontSize: 10, opacity: .65 }}>Our Classroom</small></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 10, opacity: .7, background: "rgba(255,255,255,.15)", padding: "3px 8px", borderRadius: 99, fontWeight: 600, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{store.getActivePeriode()}</span>
             <span style={{ fontSize: 12, opacity: .85 }}>{user.role === "guru" ? "Guru" : `Kelas ${user.jenjang}`}</span>
             <button onClick={() => navigate(user.role === "guru" ? "profil-guru" : "profil")} style={{ background: "none", border: "none", cursor: "pointer", borderRadius: "50%", padding: 0, display: "flex" }}>
               <Avatar name={user.nama} size="sm" photo={store.getPhoto(user.uid || user.id)} />

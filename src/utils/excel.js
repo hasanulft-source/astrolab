@@ -1,14 +1,51 @@
 // Astrolab — Excel & Export Utilities
 // Extracted from App.jsx (Wave 3)
 
-function loadXLSX() {
-  return new Promise((resolve) => {
-    if (window.XLSX) { resolve(window.XLSX); return; }
+// Centralized ExcelJS loader — used for ALL Excel read/write operations.
+// SheetJS removed from public CDNs (403), ExcelJS 4.4.0 on cdnjs is the replacement.
+async function loadExcelJS() {
+  if (window.ExcelJS) return window.ExcelJS;
+  await new Promise((res, rej) => {
     const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    s.onload = () => resolve(window.XLSX);
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+    s.onload = res;
+    s.onerror = () => rej(new Error("Gagal memuat library ExcelJS dari CDN."));
     document.head.appendChild(s);
   });
+  return window.ExcelJS;
+}
+
+// Convert ExcelJS worksheet → array of objects (mimics SheetJS sheet_to_json).
+// Each object uses the header row values as keys.
+function excelSheetToJson(ws, { defval = undefined } = {}) {
+  if (!ws || ws.rowCount < 2) return [];
+  const headerRow = ws.getRow(1);
+  const headers = [];
+  headerRow.eachCell({ includeEmpty: true }, (cell, col) => {
+    headers[col] = (cell.value ?? "").toString().trim();
+  });
+  const rows = [];
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    let empty = true;
+    const obj = {};
+    headers.forEach((h, col) => {
+      if (!h) return;
+      let v = row.getCell(col).value;
+      // ExcelJS wraps rich text in { richText: [...] }
+      if (v && typeof v === "object" && v.richText) {
+        v = v.richText.map(p => p.text).join("");
+      }
+      if (v === null || v === undefined) {
+        obj[h] = defval !== undefined ? defval : undefined;
+      } else {
+        obj[h] = v;
+        empty = false;
+      }
+    });
+    if (!empty) rows.push(obj);
+  }
+  return rows;
 }
 
 
@@ -26,15 +63,7 @@ function downloadBase64Excel(b64, filename) {
 }
 
 export async function downloadTemplateSoal() {
-  if (!window.ExcelJS) {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
-      s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
-    });
-  }
-  const ExcelJS = window.ExcelJS;
+  const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   wb.creator = "Astrolab · Our Classroom";
 
@@ -305,15 +334,7 @@ export async function downloadTemplateSoal() {
 }
 
 export async function exportNilai(store, jenjang) {
-  if (!window.ExcelJS) {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
-      s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
-    });
-  }
-  const ExcelJS = window.ExcelJS;
+  const ExcelJS = await loadExcelJS();
   const siswaList = store.getAllSiswa(jenjang);
   const tugasList = store.getTugas().filter(t => t.jenjang === jenjang);
   const subs = store.getSubs();
@@ -428,17 +449,16 @@ export async function exportNilai(store, jenjang) {
   }
 }
 export async function importSoalFromExcel(file) {
-  const XLSX = await loadXLSX();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: "binary" });
-        const soal = [];
+  const ExcelJS = await loadExcelJS();
+  const buf = await file.arrayBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  const soal = [];
 
-        wb.SheetNames.forEach(name => {
-          const ws = wb.Sheets[name];
-          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+  wb.eachSheet((ws, sheetId) => {
+    try {
+      const name = ws.name;
+      const rows = excelSheetToJson(ws, { defval: "" });
           if (!rows.length) return;
 
           // Deteksi tipe dari nama sheet
@@ -522,30 +542,19 @@ export async function importSoalFromExcel(file) {
               soal.push({ id: uid(), type: "refleksi", pertanyaan: pertanyaan.toString(), labelKolom1, labelKolom2, labelKolom3, labelKolom4, panduanNilai, poin, pembahasan, tags });
             }
           });
-        });
 
-        resolve(soal);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsBinaryString(file);
+    } catch (sheetErr) {
+      // skip malformed sheets silently
+    }
   });
+
+  return soal;
 }
 
 // Template dinamis: kolom sesuai struktur BAB/Kuis yang AKTIF saat ini (bukan fixed),
 // pre-filled dengan nilai yang sudah ada, supaya guru tinggal edit di Excel lalu upload balik.
 export async function downloadTemplateNilaiAkhir(store, mapel, jenjang, periode, siswaList, babKolom, kuisKolom) {
-  if (!window.ExcelJS) {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
-      s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
-    });
-  }
-  const ExcelJS = window.ExcelJS;
+  const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   wb.creator = "Astrolab · Our Classroom";
 
@@ -587,56 +596,39 @@ export async function downloadTemplateNilaiAkhir(store, mapel, jenjang, periode,
 
 // Parse file Excel hasil edit guru — cocokkan kolom by header name (bukan posisi),
 // supaya tetap jalan walau guru re-order kolom di Excel.
-async function parseNilaiAkhirExcel(file) {
-  const XLSX = await loadXLSX();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: "binary" });
-        const wsName = wb.SheetNames[0];
-        const ws = wb.Sheets[wsName];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        const result = rows.map(row => {
-          const siswaId = (row["ID Siswa"] || "").toString().trim();
-          if (!siswaId) return null;
-          const sumatif = {}, kuis = {};
-          let uts = null, uas = null, portofolio = null;
-          Object.keys(row).forEach(colName => {
-            const raw = row[colName];
-            if (raw === "" || raw === undefined || raw === null) return;
-            const num = Number(raw);
-            if (isNaN(num)) return; // skip non-numeric junk, jangan crash
-            if (colName.startsWith("[Sumatif] ")) sumatif[colName.replace("[Sumatif] ", "")] = num;
-            else if (colName.startsWith("[Kuis] ")) kuis[colName.replace("[Kuis] ", "")] = num;
-            else if (colName === "UTS") uts = num;
-            else if (colName === "UAS") uas = num;
-            else if (colName === "Portofolio") portofolio = num;
-          });
-          return { siswaId, sumatif, kuis, uts, uas, portofolio };
-        }).filter(Boolean);
-        resolve(result);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsBinaryString(file);
-  });
+export async function parseNilaiAkhirExcel(file) {
+  const ExcelJS = await loadExcelJS();
+  const buf = await file.arrayBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  const ws = wb.worksheets[0];
+  if (!ws) throw new Error("File tidak memiliki sheet.");
+  const rows = excelSheetToJson(ws, { defval: "" });
+  const result = rows.map(row => {
+    const siswaId = (row["ID Siswa"] || "").toString().trim();
+    if (!siswaId) return null;
+    const sumatif = {}, kuis = {};
+    let uts = null, uas = null, portofolio = null;
+    Object.keys(row).forEach(colName => {
+      const raw = row[colName];
+      if (raw === "" || raw === undefined || raw === null) return;
+      const num = Number(raw);
+      if (isNaN(num)) return;
+      if (colName.startsWith("[Sumatif] ")) sumatif[colName.replace("[Sumatif] ", "")] = num;
+      else if (colName.startsWith("[Kuis] ")) kuis[colName.replace("[Kuis] ", "")] = num;
+      else if (colName === "UTS") uts = num;
+      else if (colName === "UAS") uas = num;
+      else if (colName === "Portofolio") portofolio = num;
+    });
+    return { siswaId, sumatif, kuis, uts, uas, portofolio };
+  }).filter(Boolean);
+  return result;
 }
 
 // 2 sheet: (1) Rekap ringkas — semua siswa, kolom avg per komponen + nilai akhir, siap cetak.
 // (2) Detail — breakdown lengkap tiap BAB/Kuis individual per siswa, untuk arsip guru.
 export async function exportRekapNilaiAkhir(store, mapel, jenjang, periode, siswaList, babKolom, kuisKolom) {
-  if (!window.ExcelJS) {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
-      s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
-    });
-  }
-  const ExcelJS = window.ExcelJS;
+  const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   wb.creator = "Astrolab · Our Classroom";
 
