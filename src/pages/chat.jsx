@@ -343,9 +343,9 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
           return (
             <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
               {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
-              <div className={`msg ${isMe ? "msg-me" : "msg-them"}`} style={{ position: "relative", paddingBottom: 18 }}>
+              <div className={`msg ${isMe ? "msg-me" : "msg-them"}`}>
                 {m.text}
-                <span className="msg-time" style={{ position: "absolute", bottom: 5, right: 10, marginTop: 0, display: "inline-flex", alignItems: "center", gap: 2 }}>
+                <span className="msg-time" style={{ display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 8, marginTop: 0, position: "relative", top: 3 }}>
                   {fmtTime(m.ts)}
                   {isMe && <ReadCheck read={!!m.read} />}
                 </span>
