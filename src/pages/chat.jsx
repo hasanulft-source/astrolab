@@ -9,7 +9,7 @@ import { LevelBadge } from '../components/gamification';
 
 // ─── Read receipt: double checkmark (grey = sent, blue = read) ───
 function ReadCheck({ read }) {
-  const c = read ? "#53bdeb" : "#8696a0";
+  const c = read ? "#0E6B7A" : "#8696a0";
   return (
     <svg width="16" height="11" viewBox="0 0 16 11" style={{ marginLeft: 3, flexShrink: 0, verticalAlign: "text-bottom" }}>
       <path d="M11.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L4.2 8.36 2.19 6.27a.46.46 0 0 0-.34-.16.46.46 0 0 0-.34.16.43.43 0 0 0-.1.34c0 .12.05.23.15.32l2.34 2.43a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16L11.15 1.27a.46.46 0 0 0-.08-.62z" fill={c}/>
