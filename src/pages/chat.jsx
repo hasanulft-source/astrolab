@@ -9,11 +9,11 @@ import { LevelBadge } from '../components/gamification';
 
 // ─── Read receipt: double checkmark (grey = sent, blue = read) ───
 function ReadCheck({ read }) {
-  const c = read ? "#0E6B7A" : "#8696a0";
+  const c = read ? "#0E6B7A" : "#b0b8bf";
   return (
-    <svg width="16" height="11" viewBox="0 0 16 11" style={{ marginLeft: 3, flexShrink: 0, verticalAlign: "text-bottom" }}>
-      <path d="M11.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L4.2 8.36 2.19 6.27a.46.46 0 0 0-.34-.16.46.46 0 0 0-.34.16.43.43 0 0 0-.1.34c0 .12.05.23.15.32l2.34 2.43a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16L11.15 1.27a.46.46 0 0 0-.08-.62z" fill={c}/>
-      <path d="M15.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L8.2 8.36l-1.2-1.25-.35.43 1.22 1.28a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16l6.55-8.09a.46.46 0 0 0-.08-.62z" fill={c}/>
+    <svg width="20" height="13" viewBox="0 0 16 11" style={{ marginLeft: 3, flexShrink: 0, verticalAlign: "text-bottom" }}>
+      <path d="M11.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L4.2 8.36 2.19 6.27a.46.46 0 0 0-.34-.16.46.46 0 0 0-.34.16.43.43 0 0 0-.1.34c0 .12.05.23.15.32l2.34 2.43a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16L11.15 1.27a.46.46 0 0 0-.08-.62z" fill={c} stroke={c} strokeWidth=".6"/>
+      <path d="M15.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L8.2 8.36l-1.2-1.25-.35.43 1.22 1.28a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16l6.55-8.09a.46.46 0 0 0-.08-.62z" fill={c} stroke={c} strokeWidth=".6"/>
     </svg>
   );
 }
