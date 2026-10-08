@@ -150,7 +150,7 @@ function ApproveAksesModal({ meta, onApprove, onClose }) {
 }
 
 // ─── System message card for akses-request / akses-response ───
-function AksesMessageCard({ m, user, store }) {
+function AksesMessageCard({ m, user, store, navigate }) {
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const isGuru = user.role === "guru";
@@ -222,6 +222,7 @@ function AksesMessageCard({ m, user, store }) {
 
   if (m.type === "akses-response") {
     const isApproved = meta.status === "approved";
+    const showKerjakan = isApproved && !isGuru && navigate && meta.tugasId;
     return (
       <div style={{
         background: isApproved ? "rgba(16,185,129,.06)" : "rgba(220,53,69,.04)",
@@ -238,7 +239,15 @@ function AksesMessageCard({ m, user, store }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5, marginBottom: 4 }}>{m.text}</div>
-        <div className="msg-time">{fmtTime(m.ts)}</div>
+        <div className="msg-time" style={{ marginBottom: showKerjakan ? 10 : 0 }}>{fmtTime(m.ts)}</div>
+        {showKerjakan && (
+          <button onClick={() => navigate("tugas-detail", { tugasId: meta.tugasId })} style={{
+            width: "100%", padding: "9px 0", borderRadius: 10, border: "none",
+            background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+            color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 5
+          }}><I n="book" s={14} /> Kerjakan</button>
+        )}
       </div>
     );
   }
@@ -246,7 +255,7 @@ function AksesMessageCard({ m, user, store }) {
   return null;
 }
 
-function ChatThread({ user, contact, store, onBack }) {
+function ChatThread({ user, contact, store, onBack, navigate }) {
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const msgs = store.getThread(user.id, contact.id);
@@ -315,7 +324,7 @@ function ChatThread({ user, contact, store, onBack }) {
             return (
               <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", width: "100%" }}>
                 {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
-                <AksesMessageCard m={m} user={user} store={store} />
+                <AksesMessageCard m={m} user={user} store={store} navigate={navigate} />
               </div>
             );
           }
@@ -348,7 +357,7 @@ function ChatThread({ user, contact, store, onBack }) {
   );
 }
 
-export function ChatScreen({ user, store, params = {} }) {
+export function ChatScreen({ user, store, params = {}, navigate }) {
   const [activeContact, setActiveContact] = useState(null);
   const [tab, setTab] = useState("VII");
   const [showBcModal, setShowBcModal] = useState(false);
@@ -395,7 +404,7 @@ export function ChatScreen({ user, store, params = {} }) {
   };
 
   if (activeContact) {
-    return <ChatThread user={user} contact={activeContact} store={store} onBack={() => setActiveContact(null)} />;
+    return <ChatThread user={user} contact={activeContact} store={store} onBack={() => setActiveContact(null)} navigate={navigate} />;
   }
 
   const ContactItem = ({ c }) => {
