@@ -34,6 +34,7 @@ button,input,select,textarea{font-family:var(--font);}
 .hdr-mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.2);display:grid;place-items:center;backdrop-filter:blur(4px);}
 .hdr-name b{font-size:13px;font-weight:700;display:block;line-height:1.2;}
 .hdr-name small{font-size:10px;opacity:.7;}
+@media(max-width:767px){.hdr{padding:0 12px;}.hdr-name small{display:none;}.hdr-role{display:none;}}
 .body{flex:1;display:flex;}
 
 /* SIDEBAR */

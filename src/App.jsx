@@ -1895,9 +1895,12 @@ function DashboardSiswa({ user, store, navigate }) {
   return <>
     <div className="page">
       {/* Greeting */}
-      <div style={{ paddingTop: 14, paddingBottom: 16 }}>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greeting}!</div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0, lineHeight: 1.2 }}>Halo, {user.namaDisplay}</h1>
+      <div style={{ paddingTop: 14, paddingBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greeting}!</div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0, lineHeight: 1.2 }}>Halo, {user.namaDisplay}</h1>
+        </div>
+        <span style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-tint)", padding: "4px 10px", borderRadius: 99, fontWeight: 600, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{store.getActivePeriode()}</span>
       </div>
 
       {/* Status Card: Ranking + Poin + Level + Streak — satu card untuk semua */}
@@ -4682,10 +4685,13 @@ function DashboardGuru({ store, navigate }) {
     {showLaporan && <LaporanModal store={store} onClose={() => setShowLaporan(false)} />}
     <div className="page">
       {/* Greeting */}
-      <div style={{ paddingTop: 12, paddingBottom: 12 }}>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta</h1>
-        <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
+      <div style={{ paddingTop: 12, paddingBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 3 }}>{greetingGuru}!</div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", margin: 0 }}>Halo, Pak Fatta</h1>
+          <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>M. Hasanul Fatta, S.Pd.</p>
+        </div>
+        <span style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-tint)", padding: "4px 10px", borderRadius: 99, fontWeight: 600, letterSpacing: ".02em", whiteSpace: "nowrap", marginTop: 4 }}>{store.getActivePeriode()}</span>
       </div>
       <div className="dt" style={{ paddingTop: 0, marginBottom: 8 }}>
         <div />
@@ -9175,8 +9181,7 @@ function AppInner() {
             <div className="hdr-name"><b>Astrolab</b><small style={{ fontSize: 10, opacity: .65 }}>Our Classroom</small></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 10, opacity: .7, background: "rgba(255,255,255,.15)", padding: "3px 8px", borderRadius: 99, fontWeight: 600, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{store.getActivePeriode()}</span>
-            <span style={{ fontSize: 12, opacity: .85 }}>{user.role === "guru" ? "Guru" : `Kelas ${user.jenjang}`}</span>
+            <span className="hdr-role" style={{ fontSize: 12, opacity: .85 }}>{user.role === "guru" ? "Guru" : `Kelas ${user.jenjang}`}</span>
             <button onClick={() => navigate(user.role === "guru" ? "profil-guru" : "profil")} style={{ background: "none", border: "none", cursor: "pointer", borderRadius: "50%", padding: 0, display: "flex" }}>
               <Avatar name={user.nama} size="sm" photo={store.getPhoto(user.uid || user.id)} />
             </button>
