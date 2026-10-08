@@ -1,6 +1,8 @@
 // Astrolab — Excel & Export Utilities
 // Extracted from App.jsx (Wave 3)
 
+import { uid, getTahunAjaran } from './helpers.js';
+
 // Centralized ExcelJS loader — used for ALL Excel read/write operations.
 // SheetJS removed from public CDNs (403), ExcelJS 4.4.0 on cdnjs is the replacement.
 async function loadExcelJS() {
