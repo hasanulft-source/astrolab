@@ -37,7 +37,7 @@ function BroadcastBox({ broadcasts, isGuru, onEdit, onDelete }) {
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-2)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 5 }}>
                 Pengumuman · {b.target === "semua" ? "Semua Kelas" : `Kelas ${b.target}`}
               </div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)", lineHeight: 1.55 }}>{b.pesan}</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{b.pesan}</div>
               <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>{fmtSisa(b.expiresAt)}</div>
             </div>
             {isGuru && (
@@ -160,6 +160,24 @@ function ApproveAksesModal({ meta, onApprove, onClose }) {
   );
 }
 
+// ─── Completion badge for akses cards ───
+function AksesDoneBadge({ sub }) {
+  if (!sub) return null;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 5, marginTop: 8,
+      padding: "7px 10px", borderRadius: 10,
+      background: "rgba(16,185,129,.08)", border: "1px solid rgba(16,185,129,.18)"
+    }}>
+      <I n="check" s={13} style={{ color: "var(--good)" }} />
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--good)" }}>Sudah Dikerjakan</span>
+      {typeof sub.nilai === "number" && (
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginLeft: "auto" }}>Nilai: {sub.nilai}</span>
+      )}
+    </div>
+  );
+}
+
 // ─── System message card for akses-request / akses-response ───
 function AksesMessageCard({ m, user, store, navigate }) {
   const [showApproveModal, setShowApproveModal] = useState(false);
@@ -170,6 +188,10 @@ function AksesMessageCard({ m, user, store, navigate }) {
   // Check current status from aksesRequests (live state, not message snapshot)
   const aksReq = store.getAksesRequest?.(meta.tugasId, meta.siswaId || m.fromId);
   const liveStatus = aksReq?.status;
+
+  // Check if student already completed this tugas (for completion indicator)
+  const siswaId = meta.siswaId || (m.type === "akses-request" ? m.fromId : (isGuru ? m.toId : user.id));
+  const sub = meta.tugasId ? store.getSubBy?.(siswaId, meta.tugasId) : null;
 
   if (m.type === "akses-request") {
     const isPending = liveStatus === "pending";
@@ -203,11 +225,11 @@ function AksesMessageCard({ m, user, store, navigate }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5, marginBottom: 8 }}>{m.text}</div>
-        <div className="msg-time" style={{ marginBottom: isGuru && isPending ? 10 : 0 }}>{fmtTime(m.ts)}</div>
+        <div className="msg-time">{fmtTime(m.ts)}</div>
 
         {/* Guru action buttons — only show if still pending */}
         {isGuru && isPending && (
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button onClick={() => setShowApproveModal(true)} style={{
               flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
               background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
@@ -227,13 +249,17 @@ function AksesMessageCard({ m, user, store, navigate }) {
             }}>{rejecting ? "..." : <><I n="x" s={14} /> Tolak</>}</button>
           </div>
         )}
+
+        {/* Completion indicator — shown when approved and student has submitted */}
+        {isApproved && <AksesDoneBadge sub={sub} />}
       </div>
     );
   }
 
   if (m.type === "akses-response") {
     const isApproved = meta.status === "approved";
-    const showKerjakan = isApproved && !isGuru && navigate && meta.tugasId;
+    const sudahDikerjakan = isApproved && !!sub;
+    const showKerjakan = isApproved && !isGuru && navigate && meta.tugasId && !sudahDikerjakan;
     return (
       <div style={{
         background: isApproved ? "rgba(16,185,129,.06)" : "rgba(220,53,69,.04)",
@@ -250,15 +276,18 @@ function AksesMessageCard({ m, user, store, navigate }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5, marginBottom: 4 }}>{m.text}</div>
-        <div className="msg-time" style={{ marginBottom: showKerjakan ? 10 : 0 }}>{fmtTime(m.ts)}</div>
+        <div className="msg-time">{fmtTime(m.ts)}</div>
         {showKerjakan && (
           <button onClick={() => navigate("tugas-detail", { tugasId: meta.tugasId })} style={{
-            width: "100%", padding: "9px 0", borderRadius: 10, border: "none",
+            width: "100%", padding: "9px 0", borderRadius: 10, border: "none", marginTop: 8,
             background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
             color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 5
           }}><I n="book" s={14} /> Kerjakan</button>
         )}
+
+        {/* Completion indicator — shown when approved and student has submitted */}
+        {sudahDikerjakan && <AksesDoneBadge sub={sub} />}
       </div>
     );
   }
@@ -425,6 +454,16 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
     const last = store.getLastMsg(user.id, c.id);
     const thread = store.getThread(user.id, c.id);
     const unread = thread.filter(m => m.toId === user.id && !m.read).length;
+    const online = store.isOnline(c.id);
+    const ls = fmtLastSeen(store.getLastSeen(c.id));
+
+    // Shorter preview for system messages (akses)
+    const previewText = last
+      ? (last.type === "akses-request" ? "Permintaan akses tugas"
+        : last.type === "akses-response" ? (last.meta?.status === "approved" ? "Akses diizinkan" : "Akses ditolak")
+        : last.text)
+      : null;
+
     return (
       <div className={`chat-item ${unread > 0 ? "unread" : ""}`} onClick={() => setActiveContact(c)}>
         <div style={{ position: "relative", flexShrink: 0 }}>
@@ -432,22 +471,31 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
           {unread > 0 && <div style={{ position: "absolute", top: -2, right: -2, width: 18, height: 18, borderRadius: "50%", background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, display: "grid", placeItems: "center", fontFamily: "var(--mono)", border: "2px solid var(--surface)" }}>{unread > 9 ? "9+" : unread}</div>}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-            <div style={{ fontSize: 14, fontWeight: unread > 0 ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {/* Line 1: name + badge | timestamp */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: unread > 0 ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nama}</span>
-              {c.role === "guru" && <span style={{ fontSize: 10, background: "var(--accent-soft)", color: "var(--accent-2)", borderRadius: 99, padding: "1px 6px", fontWeight: 600 }}>Guru</span>}
-              {c.role !== "guru" && <LevelBadge poin={(store.getStats(c.id).poin) || 0} size="xs" showName={false} />}
+              {c.role === "guru" && <span style={{ fontSize: 10, background: "var(--accent-soft)", color: "var(--accent-2)", borderRadius: 99, padding: "1px 6px", fontWeight: 600, flexShrink: 0 }}>Guru</span>}
+              {c.role !== "guru" && <span style={{ flexShrink: 0 }}><LevelBadge poin={(store.getStats(c.id).poin) || 0} size="xs" showName={false} /></span>}
             </div>
             {last && <div style={{ fontSize: 11, color: "var(--ink-4)", flexShrink: 0 }}>{fmtTime(last.ts)}</div>}
           </div>
-          <div style={{ fontSize: 12, color: unread > 0 ? "var(--ink-2)" : "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, fontWeight: unread > 0 ? 600 : 400 }}>
-            {store.isOnline(c.id)
-              ? <span style={{ color: "#0d9488", fontWeight: 500, fontSize: 11 }}>Online</span>
-              : last ? (last.fromId === user.id
-                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}><ReadCheck read={!!last.read} /> Kamu: {last.text}</span>
-                  : last.text)
-                : (() => { const ls = fmtLastSeen(store.getLastSeen(c.id)); return ls ? <span style={{ fontSize: 11 }}>Terakhir online {ls}</span> : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`); })()
-            }
+          {/* Line 2: message preview | online/last-seen */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: unread > 0 ? "var(--ink-2)" : "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: unread > 0 ? 600 : 400, flex: 1, minWidth: 0 }}>
+              {previewText
+                ? (last.fromId === user.id
+                    ? <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}><ReadCheck read={!!last.read} /> Kamu: {previewText}</span>
+                    : previewText)
+                : (c.role === "guru" ? "IPA & Informatika" : `Kelas ${c.jenjang}`)
+              }
+            </div>
+            <div style={{ flexShrink: 0, fontSize: 10, lineHeight: 1 }}>
+              {online
+                ? <span style={{ color: "var(--good)", fontWeight: 600 }}>Online</span>
+                : ls ? <span style={{ color: "var(--ink-4)" }}>{ls}</span> : null
+              }
+            </div>
           </div>
         </div>
         {unread === 0 && <I n="chevR" s={14} style={{ color: "var(--ink-4)", flexShrink: 0 }} />}

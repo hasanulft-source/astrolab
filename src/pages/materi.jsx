@@ -562,6 +562,7 @@ export function LatihanMandiri({ user, store, navigate }) {
 }
 
 export function MateriManager({ store, navigate }) {
+  const [jenTab, setJenTab] = useState("VII");
   const [showUpload, setShowUpload] = useState(false);
   const [form, setForm] = useState({ judul: "", mapel: "IPA", jenjang: "VII", bab: "" });
   const [pdfFile, setPdfFile] = useState(null);
@@ -576,6 +577,12 @@ export function MateriManager({ store, navigate }) {
   useEffect(() => {
     store.archiveOldMateri().catch(() => {});
   }, []);
+
+  // Open upload with pre-selected jenjang from active tab
+  function openUpload() {
+    setForm(f => ({ ...f, jenjang: jenTab }));
+    setShowUpload(true);
+  }
 
   async function handleUpload() {
     if (!form.judul.trim()) return alert("Judul wajib diisi");
@@ -598,7 +605,7 @@ export function MateriManager({ store, navigate }) {
         urutan: materiList.filter(m => m.mapel === form.mapel && m.jenjang === form.jenjang && m.bab === form.bab.trim()).length,
       }, hdPages, loPages);
       setShowUpload(false);
-      setForm({ judul: "", mapel: "IPA", jenjang: "VII", bab: "" });
+      setForm({ judul: "", mapel: "IPA", jenjang: jenTab, bab: "" });
       setPdfFile(null);
       setConverting(false);
       setProgress("");
@@ -616,22 +623,49 @@ export function MateriManager({ store, navigate }) {
     } catch (e) { alert("Gagal hapus: " + e.message); }
   }
 
-  // Group by mapel → jenjang → bab
+  // Filter by active jenjang tab, then group by mapel → bab
+  const filtered = materiList.filter(m => m.jenjang === jenTab);
   const grouped = {};
-  materiList.forEach(m => {
-    const mk = `${m.mapel} ${m.jenjang}`;
-    if (!grouped[mk]) grouped[mk] = {};
+  filtered.forEach(m => {
+    const mapel = m.mapel || "Lainnya";
+    if (!grouped[mapel]) grouped[mapel] = {};
     const bab = m.bab || "Umum";
-    if (!grouped[mk][bab]) grouped[mk][bab] = [];
-    grouped[mk][bab].push(m);
+    if (!grouped[mapel][bab]) grouped[mapel][bab] = [];
+    grouped[mapel][bab].push(m);
+  });
+  const mapelKeys = Object.keys(grouped).sort();
+
+  // Counts per jenjang for tab badges
+  const countVII = materiList.filter(m => m.jenjang === "VII").length;
+  const countVIII = materiList.filter(m => m.jenjang === "VIII").length;
+
+  const jTabStyle = (active) => ({
+    flex: 1, padding: "10px 0", fontSize: 13, fontWeight: active ? 700 : 500,
+    color: active ? "var(--accent)" : "var(--ink-3)",
+    borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
+    background: "none", border: "none", borderTop: "none", borderLeft: "none", borderRight: "none",
+    cursor: "pointer", transition: "all .15s", letterSpacing: ".01em",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+  });
+  const badgeStyle = (active) => ({
+    fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
+    background: active ? "var(--accent)" : "var(--surface-alt)",
+    color: active ? "#fff" : "var(--ink-3)",
+    borderRadius: 10, padding: "1px 7px", lineHeight: "16px"
   });
 
   return <div>
     <div className="topbar">
       <button className="topbar-back" onClick={() => navigate("home-guru")}><I n="chevL" s={18} /></button>
-      <div className="topbar-title">Materi Latihan Mandiri</div>
-      <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }} onClick={() => setShowUpload(true)}><I n="plus" s={22} /></button>
+      <div className="topbar-title">Materi</div>
+      <button style={{ background: "var(--accent)", border: "none", cursor: "pointer", color: "#fff", borderRadius: 8, width: 32, height: 32, display: "grid", placeItems: "center" }} onClick={openUpload} title="Upload materi baru"><I n="plus" s={18} /></button>
     </div>
+    {/* Jenjang tab bar */}
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+      <button style={jTabStyle(jenTab === "VII")} onClick={() => setJenTab("VII")}>Kelas VII <span style={badgeStyle(jenTab === "VII")}>{countVII}</span></button>
+      <button style={jTabStyle(jenTab === "VIII")} onClick={() => setJenTab("VIII")}>Kelas VIII <span style={badgeStyle(jenTab === "VIII")}>{countVIII}</span></button>
+    </div>
+
     <div style={{ padding: 16 }}>
       {/* Upload modal */}
       {showUpload && <div className="modal-overlay" onClick={() => !converting && setShowUpload(false)}>
@@ -671,32 +705,44 @@ export function MateriManager({ store, navigate }) {
       {/* Delete confirm */}
       {confirmDelete && <Confirm title="Hapus Materi" desc={`Hapus "${confirmDelete.judul}"? Siswa tidak bisa mengakses materi ini lagi.`} onOk={() => doDelete(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />}
 
-      {/* Materi list */}
-      {materiList.length === 0 ? (
-        <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi</h3><p>Upload PDF untuk materi latihan mandiri siswa.</p><button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowUpload(true)}><I n="upload" s={14} /> Upload PDF</button></div></Card>
+      {/* Materi list — grouped by mapel → bab within active jenjang tab */}
+      {filtered.length === 0 ? (
+        <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi Kelas {jenTab}</h3><p>Upload PDF untuk materi latihan mandiri siswa.</p><button className="btn btn-primary" style={{ marginTop: 14 }} onClick={openUpload}><I n="upload" s={14} /> Upload PDF</button></div></Card>
       ) : (
-        Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0])).map(([mk, babs]) => (
-          <div key={mk} style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mk}</div>
-            {Object.entries(babs).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, items]) => (
-              <div key={bab} style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab}</div>
-                {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", marginBottom: 6 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                      <I n="book" s={16} style={{ color: "var(--accent-2)" }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{m.judul}</div>
-                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>{m.pageCount} halaman · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{m.createdAt && Date.now() - m.createdAt < 7*86400000 ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4, letterSpacing: ".03em" }}>HD</span> : <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, color: "var(--ink-3)", background: "var(--surface-alt)", padding: "1px 5px", borderRadius: 4 }}>Arsip</span>}</div>
-                    </div>
-                    <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
-                  </div>
-                ))}
+        <>
+          {mapelKeys.map(mapel => (
+            <div key={mapel} style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-2)", letterSpacing: ".04em", textTransform: "uppercase", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 20, height: 20, borderRadius: 6, background: "var(--accent-tint)", display: "inline-grid", placeItems: "center" }}><I n="book" s={12} style={{ color: "var(--accent-2)" }} /></span>
+                {mapel}
+                <span style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-3)", fontFamily: "var(--mono)", marginLeft: 2 }}>({grouped[mapel] ? Object.values(grouped[mapel]).flat().length : 0})</span>
               </div>
-            ))}
-          </div>
-        ))
+              {Object.entries(grouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, items]) => (
+                <div key={bab} style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab}</div>
+                  {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", marginBottom: 6 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                        <I n="book" s={16} style={{ color: "var(--accent-2)" }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{m.judul}</div>
+                        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>{m.pageCount} halaman · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{m.createdAt && Date.now() - m.createdAt < 7*86400000 ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4, letterSpacing: ".03em" }}>HD</span> : <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, color: "var(--ink-3)", background: "var(--surface-alt)", padding: "1px 5px", borderRadius: 4 }}>Arsip</span>}</div>
+                      </div>
+                      <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
+          {/* Add more button at bottom */}
+          <button onClick={openUpload} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "14px 0", border: "2px dashed var(--line)", borderRadius: "var(--r)", background: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 13, fontWeight: 600, transition: "all .15s" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--ink-3)"; }}>
+            <I n="plus" s={16} /> Tambah Materi Kelas {jenTab}
+          </button>
+        </>
       )}
     </div>
   </div>;
