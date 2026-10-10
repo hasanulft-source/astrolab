@@ -2015,15 +2015,16 @@ function DashboardSiswa({ user, store, navigate }) {
 
 // ─── LEADERBOARD ───
 function RankMovement({ move }) {
-  if (move === null || move === undefined || move === 0) return null;
+  if (move === null || move === undefined) return null;
   const up = move > 0;
+  const same = move === 0;
   return (
     <span style={{
       fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
-      color: up ? "var(--good)" : "var(--bad)",
+      color: same ? "var(--ink-3)" : up ? "var(--good)" : "var(--bad)",
       display: "inline-flex", alignItems: "center", gap: 1, marginLeft: 4
     }}>
-      {up ? "▲" : "▼"}{Math.abs(move)}
+      {same ? "=" : up ? "▲" : "▼"}{same ? "" : Math.abs(move)}
     </span>
   );
 }
