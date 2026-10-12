@@ -206,17 +206,21 @@ function renderNilaiAkhirGabungan(mapelResults, jenisLaporan = "semester") {
 
   const finalRow = jenisLaporan === "tengahSemester"
     ? (() => {
-        // Hitung ulang nilai akhir tanpa SAS
+        // Hitung nilai akhir dari komponen yang TERISI saja (tanpa SAS), re-normalize bobot
         return `<tr style="background:#f0fdfa">
           <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
           ${mapelResults.map(m => {
             const komps = m.result.komponen.filter(c => c.label !== "SAS");
-            const totalBobot = komps.reduce((a, c) => a + c.bobot, 0);
-            const allFilled = komps.every(c => typeof c.val === "number");
-            const na = allFilled ? Math.round(komps.reduce((a, c) => a + (c.val * (c.bobot / totalBobot)), 0) * 100) / 100 : null;
+            const filled = komps.filter(c => typeof c.val === "number");
+            const allFilled = filled.length === komps.length;
+            if (filled.length === 0) {
+              return `<td style="text-align:center;font-weight:800;font-size:14px;color:#94a3b8">—</td>`;
+            }
+            const filledBobot = filled.reduce((a, c) => a + c.bobot, 0);
+            const na = Math.round(filled.reduce((a, c) => a + (c.val * (c.bobot / filledBobot)), 0) * 100) / 100;
             return `<td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
-              ${na !== null ? na : "—"}
-              ${!allFilled ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">belum lengkap</div>' : ""}
+              ${na}
+              ${!allFilled ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">*proyeksi</div>' : ""}
             </td>`;
           }).join("")}
         </tr>`;
