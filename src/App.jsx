@@ -460,38 +460,15 @@ function useStore() {
 
   const [messages, setMessages] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
-  const msgsAccum = useRef({});
 
-  // Per-thread listeners — only download threads involving the current user.
-  // Old approach listened to ALL of ref("messages") which downloaded every thread
-  // for every user, causing massive RTDB bandwidth on every single message.
   useEffect(() => {
-    if (!currentUser?.id) return;
-    const myId = currentUser.id;
-    // Compute thread IDs for all contacts
-    const allSiswa = getAllAccounts().filter(a => a.role === "siswa");
-    const guruId = fbGuru?.id || "fata";
-    let contactIds;
-    if (currentUser.role === "guru") {
-      contactIds = allSiswa.map(a => a.id);
-    } else {
-      const sekelas = allSiswa.filter(a => a.id !== myId && a.jenjang === currentUser.jenjang).map(a => a.id);
-      contactIds = [guruId, ...sekelas];
-    }
-    // Dedupe thread IDs (in case of overlap)
-    const threadIds = [...new Set(contactIds.map(cid => [myId, cid].sort().join("__")))];
-
-    // Reset accumulator for clean re-subscribe
-    msgsAccum.current = {};
-    const unsubs = threadIds.map(tid => {
-      return onValue(ref(db, `messages/${tid}`), snap => {
-        msgsAccum.current[tid] = snap.val() || {};
-        setMessages(prev => ({ ...prev, [tid]: msgsAccum.current[tid] }));
-      }, () => {});
-    });
-
-    return () => { unsubs.forEach(u => u()); msgsAccum.current = {}; setMessages({}); };
-  }, [currentUser?.uid, fbAccounts.length]);
+    if (!currentUser) return; // Tunggu user login dulu
+    const msgsRef = ref(db, "messages");
+    const u4 = onValue(msgsRef, snap => {
+      setMessages(snap.val() || {});
+    }, () => setMessages({}));
+    return () => u4();
+  }, [currentUser?.uid]);
 
   // CHAT — threadId = sorted pair of IDs e.g. "akhdan__fata"
   const getThreadId = (id1, id2) => [id1, id2].sort().join("__");
@@ -500,18 +477,15 @@ function useStore() {
     const raw = messages[tid] || {};
     return Object.entries(raw).map(([k, v]) => ({ ...v, key: k })).sort((a, b) => a.ts - b.ts);
   };
-  const sendMessage = async (fromId, toId, text, opts = {}) => {
-    if (!text.trim() && !opts.imageData) return;
+  const sendMessage = async (fromId, toId, text) => {
+    if (!text.trim()) return;
     const tid = getThreadId(fromId, toId);
     const newRef = push(ref(db, `messages/${tid}`));
-    const msg = { fromId, toId, text: text.trim(), ts: Date.now() };
-    if (opts.type) msg.type = opts.type;
-    if (opts.imageData) msg.imageData = opts.imageData;
-    await set(newRef, msg);
+    await set(newRef, { fromId, toId, text: text.trim(), ts: Date.now() });
     // Push notification to recipient (fire-and-forget)
     const sender = getAllAccounts().find(a => a.id === fromId) || (fbGuru?.id === fromId ? fbGuru : null);
     const senderName = sender?.namaDisplay || sender?.nama || fromId;
-    const preview = opts.type === "image" ? "📷 Foto" : (text.trim().length > 80 ? text.trim().slice(0, 80) + "..." : text.trim());
+    const preview = text.trim().length > 80 ? text.trim().slice(0, 80) + "..." : text.trim();
     callPush("send", { targetAccountId: toId, title: `Pesan dari ${senderName}`, body: preview, tag: `msg-${tid}` }).catch(() => {});
   };
   const getUnreadCount = (myId) => {
@@ -8893,95 +8867,86 @@ function useNotifications(user, store, route) {
     setNotifs(n => n.filter(x => x.id !== id));
   }
 
-  // ─── Tugas/Submission/Message notifications via STORE STATE (no duplicate Firebase listeners) ───
-  // Previously each of these created its own onValue listener, duplicating downloads.
-  // Now we watch store data that's already synced by the main store listeners.
-  const tugasList = store.getTugas();
-  const subsList = store.getSubs();
-
-  // Detect new tugas (for siswa)
-  const prevTugasIds = useRef(null);
+  // Listen tugas baru (untuk siswa) — skip kalau lagi di halaman tugas
   useEffect(() => {
     if (!user || user.role !== "siswa") return;
-    const currentIds = new Set(tugasList.map(t => t.id));
-    // First render — just snapshot, don't notify
-    if (prevTugasIds.current === null) { prevTugasIds.current = currentIds; return; }
-    tugasList.forEach(t => {
-      if (prevTugasIds.current.has(t.id)) return; // not new
-      if (!t.createdAt) return;
-      if (new Date(t.createdAt).getTime() < bootTime) return;
-      if (t.jenjang !== user.jenjang || t.status !== "aktif") return;
-      const eventKey = `tugas_${t.id}`;
-      if (seenIds.has(eventKey)) return;
-      const r = routeRef.current;
-      if (r === "tugas" || r === "tugas-detail" || r === "kerjakan") return;
-      seenIds.add(eventKey);
-      pushNotif({ type: "tugas", title: "Tugas baru!", message: `${t.judul} · ${t.mapel}` });
-    });
-    prevTugasIds.current = currentIds;
-  }, [tugasList.length]);
-
-  // Detect new submissions (for guru)
-  const prevSubIds = useRef(null);
-  useEffect(() => {
-    if (!user || user.role !== "guru") return;
-    const currentIds = new Set(subsList.map(s => s.id));
-    if (prevSubIds.current === null) { prevSubIds.current = currentIds; return; }
-    subsList.forEach(s => {
-      if (prevSubIds.current.has(s.id)) return;
-      if (!s.submittedAt) return;
-      if (new Date(s.submittedAt).getTime() < bootTime) return;
-      const eventKey = `sub_${s.id}`;
-      if (seenIds.has(eventKey)) return;
-      if (routeRef.current === "analisis-tugas") return;
-      seenIds.add(eventKey);
-      const st = storeRef.current;
-      const siswa = st.getAllSiswa().find(x => x.id === s.siswaId);
-      const tugas = st.getTugas().find(x => x.id === s.tugasId);
-      const siswaName = siswa?.nama || s.siswaId;
-      const tugasName = tugas?.judul || "Tugas";
-      const nilaiStr = s.nilai != null ? ` · ${s.nilai}/100` : "";
-      pushNotif({ type: "submission", title: "Submission baru", message: `${siswaName} kumpul ${tugasName}${nilaiStr}` });
-    });
-    prevSubIds.current = currentIds;
-  }, [subsList.length]);
-
-  // Detect new messages — watch store's getThread data (already synced by per-thread listeners)
-  const prevMsgKeys = useRef(null);
-  useEffect(() => {
-    if (!user?.id) return;
-    // Collect all message keys across user's threads
-    const contacts = store.getContacts(user.id, user.jenjang, user.role);
-    const allKeys = new Set();
-    const newMsgs = [];
-    contacts.forEach(c => {
-      const thread = store.getThread(user.id, c.id);
-      thread.forEach(msg => {
-        allKeys.add(msg.key);
-        if (prevMsgKeys.current && !prevMsgKeys.current.has(msg.key)) {
-          newMsgs.push({ ...msg, contactId: c.id });
-        }
+    const tugasRef = ref(db, "tugas");
+    const unsub = onValue(tugasRef, snap => {
+      const data = snap.val() || {};
+      Object.entries(data).forEach(([id, t]) => {
+        if (!t.createdAt) return;
+        const createdMs = new Date(t.createdAt).getTime();
+        if (createdMs < bootTime) return;
+        if (t.jenjang !== user.jenjang) return;
+        if (t.status !== "aktif") return;
+        const eventKey = `tugas_${id}`;
+        if (seenIds.has(eventKey)) return;
+        // Skip notif kalau lagi di halaman tugas — JANGAN tandai seen, biar muncul begitu pindah
+        const r = routeRef.current;
+        if (r === "tugas" || r === "tugas-detail" || r === "kerjakan") return;
+        seenIds.add(eventKey);
+        pushNotif({ type: "tugas", title: "Tugas baru!", message: `${t.judul} · ${t.mapel}` });
       });
     });
-    if (prevMsgKeys.current === null) { prevMsgKeys.current = allKeys; return; }
-    newMsgs.forEach(msg => {
-      if (msg.ts < bootTime) return;
-      if (msg.fromId === user.id) return;
-      if (msg.toId !== user.id) return;
-      const eventKey = `msg_${msg.key}`;
-      if (seenIds.has(eventKey)) return;
-      if (routeRef.current === "chat") return;
-      seenIds.add(eventKey);
-      const st = storeRef.current;
-      const siswaList = st.getAllSiswa();
-      const guru = st.fbGuru;
-      const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
-      const senderName = sender?.namaDisplay || sender?.nama || msg.fromId;
-      const text = msg.type === "image" ? "📷 Foto" : (msg.text || "");
-      pushNotif({ type: "pesan", title: `Pesan dari ${senderName}`, message: text.length > 60 ? text.slice(0, 60) + "..." : text });
+    return () => unsub();
+  }, [user?.uid, user?.role]);
+
+  // Listen submission baru (untuk guru) — skip hanya kalau lagi analisis detail tugas
+  useEffect(() => {
+    if (!user || user.role !== "guru") return;
+    const subsRef = ref(db, "submissions");
+    const unsub = onValue(subsRef, snap => {
+      const data = snap.val() || {};
+      Object.entries(data).forEach(([id, s]) => {
+        if (!s.submittedAt) return;
+        const subMs = new Date(s.submittedAt).getTime();
+        if (subMs < bootTime) return;
+        const eventKey = `sub_${id}`;
+        if (seenIds.has(eventKey)) return;
+        // Hanya suppress di halaman analisis detail tugas (bukan home dashboard)
+        if (routeRef.current === "analisis-tugas") return;
+        seenIds.add(eventKey);
+        // Pakai storeRef untuk data terbaru, dengan fallback kalau belum load
+        const st = storeRef.current;
+        const siswa = st.getAllSiswa().find(x => x.id === s.siswaId);
+        const tugas = st.getTugas().find(x => x.id === s.tugasId);
+        const siswaName = siswa?.nama || s.siswaId;
+        const tugasName = tugas?.judul || "Tugas";
+        const nilaiStr = s.nilai != null ? ` · ${s.nilai}/100` : "";
+        pushNotif({ type: "submission", title: "Submission baru", message: `${siswaName} kumpul ${tugasName}${nilaiStr}` });
+      });
     });
-    prevMsgKeys.current = allKeys;
-  });
+    return () => unsub();
+  }, [user?.uid, user?.role]);
+
+  // Listen pesan baru — skip kalau lagi di halaman chat
+  useEffect(() => {
+    if (!user || !user.id) return;
+    const msgsRef = ref(db, "messages");
+    const unsub = onValue(msgsRef, snap => {
+      const data = snap.val() || {};
+      Object.entries(data).forEach(([tid, thread]) => {
+        if (!tid.includes(user.id)) return;
+        Object.entries(thread).forEach(([msgId, msg]) => {
+          if (msg.ts < bootTime) return;
+          if (msg.fromId === user.id) return;
+          if (msg.toId !== user.id) return;
+          const eventKey = `msg_${tid}_${msgId}`;
+          if (seenIds.has(eventKey)) return;
+          if (routeRef.current === "chat") return;
+          seenIds.add(eventKey);
+          const st = storeRef.current;
+          const siswaList = st.getAllSiswa();
+          const guru = st.fbGuru;
+          const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
+          const senderName = sender?.namaDisplay || sender?.nama || msg.fromId;
+          const text = msg.text || "";
+          pushNotif({ type: "pesan", title: `Pesan dari ${senderName}`, message: text.length > 60 ? text.slice(0, 60) + "..." : text });
+        });
+      });
+    });
+    return () => unsub();
+  }, [user?.uid, user?.id]);
 
   // Listen badge baru (untuk siswa)
   useEffect(() => {
