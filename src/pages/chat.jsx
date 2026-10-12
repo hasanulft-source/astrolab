@@ -327,6 +327,8 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
   const [imgPreview, setImgPreview] = useState(null);
   const [imgData, setImgData] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+  const [imgError, setImgError] = useState(null);
+  const [isCompressing, setIsCompressing] = useState(false);
   const fileRef = useRef(null);
   const msgs = store.getThread(user.id, contact.id);
 
@@ -345,29 +347,33 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
   async function handleImagePick(e) {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert("Gambar maksimal 5MB"); return; }
+    setImgError(null);
+    setIsCompressing(true);
     try {
       const compressed = await compressImageChat(file);
       setImgData(compressed);
       setImgPreview(compressed);
     } catch {
-      alert("Gagal memproses gambar. Coba foto lain.");
+      setImgError("Gagal memproses gambar. Coba foto lain.");
+    } finally {
+      setIsCompressing(false);
     }
     e.target.value = "";
   }
 
-  function clearImage() { setImgPreview(null); setImgData(null); }
+  function clearImage() { setImgPreview(null); setImgData(null); setImgError(null); }
 
   async function send() {
     // Image send
     if (imgData) {
       setIsSending(true);
+      setImgError(null);
       try {
         await withTimeout(store.sendMessage(user.id, contact.id, text.trim(), { type: "image", imageData: imgData }), 20000);
         clearImage();
         setText("");
       } catch (e) {
-        alert("Gagal mengirim foto.\n\n" + (e?.message || "Coba lagi."));
+        setImgError("Gagal mengirim foto. " + (e?.message || "Coba lagi."));
       } finally {
         setIsSending(false);
       }
@@ -488,6 +494,29 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
         })}
         <div id="chat-msgs-end" />
       </div>
+
+      {/* Error banner — visible inline, no alert() dependency */}
+      {imgError && (
+        <div style={{
+          padding: "8px 16px", background: "#fef2f2", borderTop: "1px solid #fecaca",
+          display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#b91c1c"
+        }}>
+          <I n="alert" s={16} />
+          <span style={{ flex: 1 }}>{imgError}</span>
+          <button onClick={() => setImgError(null)} style={{ background: "none", border: "none", color: "#b91c1c", cursor: "pointer", fontWeight: 700, fontSize: 16, padding: "0 4px" }}>&times;</button>
+        </div>
+      )}
+
+      {/* Compressing indicator */}
+      {isCompressing && (
+        <div style={{
+          padding: "10px 16px", background: "var(--surface-alt)", borderTop: "1px solid var(--line)",
+          display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink-3)"
+        }}>
+          <span className="dot-pulse" style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", animation: "pulse .8s ease infinite alternate" }} />
+          Memproses foto...
+        </div>
+      )}
 
       {/* Image preview strip — shown when image selected, before sending */}
       {imgPreview && (
