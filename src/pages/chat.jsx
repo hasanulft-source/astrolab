@@ -1,9 +1,35 @@
 // Astrolab — Chat & Broadcast
 // Extracted from App.jsx (Wave 5)
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { I } from '../components/icons';
 import { fmtLastSeen, withTimeout, getFirstName } from '../utils/helpers';
+
+// Inlined here to avoid changing the module import graph.
+// Importing compressImage from helpers.js triggers a Rolldown TDZ bug
+// due to module initialization ordering between App.jsx, chat.jsx, and banksoal.jsx.
+async function compressImageChat(file, maxWidth = 600, quality = 0.5) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 import { UserAvatar, OnlineDot, Card } from '../components/visual';
 import { LevelBadge } from '../components/gamification';
 
@@ -298,7 +324,14 @@ function AksesMessageCard({ m, user, store, navigate }) {
 function ChatThread({ user, contact, store, onBack, navigate }) {
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [imgPreview, setImgPreview] = useState(null);
+  const [imgData, setImgData] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+  const fileRef = useRef(null);
   const msgs = store.getThread(user.id, contact.id);
+
+  // Image sending only allowed between siswa↔guru
+  const isGuruThread = contact.role === "guru" || user.role === "guru";
 
   useEffect(() => {
     store.markRead(user.id, contact.id);
@@ -309,7 +342,38 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
     if (el) el.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
 
+  async function handleImagePick(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert("Gambar maksimal 5MB"); return; }
+    try {
+      const compressed = await compressImageChat(file);
+      setImgData(compressed);
+      setImgPreview(compressed);
+    } catch {
+      alert("Gagal memproses gambar. Coba foto lain.");
+    }
+    e.target.value = "";
+  }
+
+  function clearImage() { setImgPreview(null); setImgData(null); }
+
   async function send() {
+    // Image send
+    if (imgData) {
+      setIsSending(true);
+      try {
+        await withTimeout(store.sendMessage(user.id, contact.id, text.trim(), { type: "image", imageData: imgData }), 20000);
+        clearImage();
+        setText("");
+      } catch (e) {
+        alert("Gagal mengirim foto.\n\n" + (e?.message || "Coba lagi."));
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+    // Text send
     if (!text.trim() || isSending) return;
     const t = text;
     setText("");
@@ -317,15 +381,32 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
     try {
       await withTimeout(store.sendMessage(user.id, contact.id, t));
     } catch (e) {
-      setText(t); // restore text agar bisa coba kirim ulang
+      setText(t);
       alert("Pesan gagal terkirim.\n\n" + (e?.message || "Coba lagi."));
     } finally {
       setIsSending(false);
     }
   }
 
+  const canSend = imgData || text.trim();
+
   return (
     <div className="chat-thread">
+      {/* Lightbox — full screen image viewer */}
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", zIndex: 999,
+          display: "grid", placeItems: "center", cursor: "zoom-out", padding: 16
+        }}>
+          <img src={lightbox} alt="" style={{ maxWidth: "92vw", maxHeight: "85vh", borderRadius: 8, objectFit: "contain" }} />
+          <button onClick={() => setLightbox(null)} style={{
+            position: "absolute", top: 16, right: 16, width: 36, height: 36, borderRadius: "50%",
+            background: "rgba(255,255,255,.15)", color: "#fff", border: "none", fontSize: 20,
+            cursor: "pointer", display: "grid", placeItems: "center"
+          }}>&times;</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="chat-thread-hdr">
         <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
@@ -369,6 +450,29 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
             );
           }
 
+          // Image messages
+          if (m.type === "image" && m.imageData) {
+            return (
+              <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
+                <div className={`msg ${isMe ? "msg-me" : "msg-them"}`} style={{ padding: 4, maxWidth: 260 }}>
+                  <img
+                    src={m.imageData} alt="Foto"
+                    onClick={() => setLightbox(m.imageData)}
+                    style={{ borderRadius: 8, width: "100%", maxWidth: 252, cursor: "pointer", display: "block" }}
+                  />
+                  {m.text && <div style={{ padding: "5px 8px 2px", fontSize: 13, lineHeight: 1.4 }}>{m.text}</div>}
+                  <div style={{ padding: "2px 8px 4px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 2 }}>
+                    <span className="msg-time" style={{ marginTop: 0 }}>
+                      {fmtTime(m.ts)}
+                      {isMe && <ReadCheck read={!!m.read} />}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
               {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
@@ -385,14 +489,46 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
         <div id="chat-msgs-end" />
       </div>
 
+      {/* Image preview strip — shown when image selected, before sending */}
+      {imgPreview && (
+        <div style={{
+          padding: "8px 16px", background: "var(--surface-alt)", borderTop: "1px solid var(--line)",
+          display: "flex", alignItems: "flex-end", gap: 10
+        }}>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <img src={imgPreview} alt="Preview" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 10, border: "1.5px solid var(--line)" }} />
+            <button onClick={clearImage} style={{
+              position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: "50%",
+              background: "var(--ink)", color: "#fff", border: "2px solid var(--surface-alt)",
+              fontSize: 13, lineHeight: 1, cursor: "pointer", display: "grid", placeItems: "center", padding: 0
+            }}>&times;</button>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", flex: 1, lineHeight: 1.4 }}>
+            Foto siap dikirim. Tambahkan keterangan di bawah (opsional).
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <div className="chat-input-wrap">
-        <textarea className="chat-input" rows={1} placeholder="Tulis pesan..." value={text}
+        {isGuruThread && (
+          <>
+            <button onClick={() => fileRef.current?.click()} disabled={isSending} style={{
+              width: 40, height: 40, borderRadius: "50%", background: "transparent",
+              color: "var(--ink-3)", border: "none", cursor: isSending ? "default" : "pointer",
+              display: "grid", placeItems: "center", flexShrink: 0, opacity: isSending ? .4 : 1
+            }}>
+              <I n="camera" s={20} />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleImagePick} />
+          </>
+        )}
+        <textarea className="chat-input" rows={1} placeholder={imgPreview ? "Tambah keterangan..." : "Tulis pesan..."} value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
           style={{ boxShadow: "var(--shadow-sm)" }}
         />
-        <button onClick={send} disabled={!text.trim() || isSending} style={{ width: 40, height: 40, borderRadius: "50%", background: (text.trim() && !isSending) ? "var(--accent)" : "var(--surface-alt)", color: (text.trim() && !isSending) ? "#fff" : "var(--ink-4)", border: "none", cursor: (text.trim() && !isSending) ? "pointer" : "default", display: "grid", placeItems: "center", flexShrink: 0, transition: "all .15s" }}>
+        <button onClick={send} disabled={!canSend || isSending} style={{ width: 40, height: 40, borderRadius: "50%", background: (canSend && !isSending) ? "var(--accent)" : "var(--surface-alt)", color: (canSend && !isSending) ? "#fff" : "var(--ink-4)", border: "none", cursor: (canSend && !isSending) ? "pointer" : "default", display: "grid", placeItems: "center", flexShrink: 0, transition: "all .15s" }}>
           <I n="send" s={16} />
         </button>
       </div>
@@ -457,10 +593,11 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
     const online = store.isOnline(c.id);
     const ls = fmtLastSeen(store.getLastSeen(c.id));
 
-    // Shorter preview for system messages (akses)
+    // Shorter preview for system/image messages
     const previewText = last
       ? (last.type === "akses-request" ? "Permintaan akses tugas"
         : last.type === "akses-response" ? (last.meta?.status === "approved" ? "Akses diizinkan" : "Akses ditolak")
+        : last.type === "image" ? "📷 Foto"
         : last.text)
       : null;
 

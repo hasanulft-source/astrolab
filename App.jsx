@@ -500,15 +500,18 @@ function useStore() {
     const raw = messages[tid] || {};
     return Object.entries(raw).map(([k, v]) => ({ ...v, key: k })).sort((a, b) => a.ts - b.ts);
   };
-  const sendMessage = async (fromId, toId, text) => {
-    if (!text.trim()) return;
+  const sendMessage = async (fromId, toId, text, opts = {}) => {
+    if (!text.trim() && !opts.imageData) return;
     const tid = getThreadId(fromId, toId);
     const newRef = push(ref(db, `messages/${tid}`));
-    await set(newRef, { fromId, toId, text: text.trim(), ts: Date.now() });
+    const msg = { fromId, toId, text: text.trim(), ts: Date.now() };
+    if (opts.type) msg.type = opts.type;
+    if (opts.imageData) msg.imageData = opts.imageData;
+    await set(newRef, msg);
     // Push notification to recipient (fire-and-forget)
     const sender = getAllAccounts().find(a => a.id === fromId) || (fbGuru?.id === fromId ? fbGuru : null);
     const senderName = sender?.namaDisplay || sender?.nama || fromId;
-    const preview = text.trim().length > 80 ? text.trim().slice(0, 80) + "..." : text.trim();
+    const preview = opts.type === "image" ? "📷 Foto" : (text.trim().length > 80 ? text.trim().slice(0, 80) + "..." : text.trim());
     callPush("send", { targetAccountId: toId, title: `Pesan dari ${senderName}`, body: preview, tag: `msg-${tid}` }).catch(() => {});
   };
   const getUnreadCount = (myId) => {
@@ -8974,7 +8977,7 @@ function useNotifications(user, store, route) {
       const guru = st.fbGuru;
       const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
       const senderName = sender?.namaDisplay || sender?.nama || msg.fromId;
-      const text = msg.text || "";
+      const text = msg.type === "image" ? "📷 Foto" : (msg.text || "");
       pushNotif({ type: "pesan", title: `Pesan dari ${senderName}`, message: text.length > 60 ? text.slice(0, 60) + "..." : text });
     });
     prevMsgKeys.current = allKeys;
