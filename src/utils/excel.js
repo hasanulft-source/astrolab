@@ -266,7 +266,7 @@ export async function downloadTemplateSoal() {
     "   setelah deadline. Kosongkan kalau tidak perlu.",
     "",
     "Tags (opsional): label untuk filter di Bank Soal. Pisah dengan koma.",
-    "   Contoh: 'bab-3, UTS, energi' atau 'astronomi, tata-surya'.",
+    "   Contoh: 'bab-3, STS, energi' atau 'astronomi, tata-surya'.",
     "   Tips: gunakan tag konsisten supaya gampang dicari.",
     "",
     "=== TIPE SOAL ===",
@@ -566,8 +566,8 @@ export async function downloadTemplateNilaiAkhir(store, mapel, jenjang, periode,
     { header: "ID Siswa", key: "id", width: 14 },
     { header: "Nama", key: "nama", width: 24 },
     ...babKolom.map((k, i) => ({ header: `[Sumatif] ${k}`, key: `bab_${i}`, width: 18 })),
-    { header: "UTS", key: "uts", width: 10 },
-    { header: "UAS", key: "uas", width: 10 },
+    { header: "STS", key: "uts", width: 10 },
+    { header: "SAS", key: "uas", width: 10 },
     ...kuisKolom.map((k, i) => ({ header: `[Kuis] ${k}`, key: `kuis_${i}`, width: 18 })),
     { header: "Portofolio", key: "portofolio", width: 12 },
   ];
@@ -617,8 +617,8 @@ export async function parseNilaiAkhirExcel(file) {
       if (isNaN(num)) return;
       if (colName.startsWith("[Sumatif] ")) sumatif[colName.replace("[Sumatif] ", "")] = num;
       else if (colName.startsWith("[Kuis] ")) kuis[colName.replace("[Kuis] ", "")] = num;
-      else if (colName === "UTS") uts = num;
-      else if (colName === "UAS") uas = num;
+      else if (colName === "STS" || colName === "UTS") uts = num;
+      else if (colName === "SAS" || colName === "UAS") uas = num;
       else if (colName === "Portofolio") portofolio = num;
     });
     return { siswaId, sumatif, kuis, uts, uas, portofolio };
@@ -643,8 +643,8 @@ export async function exportRekapNilaiAkhir(store, mapel, jenjang, periode, sisw
     { header: "Nama", key: "nama", width: 26 },
     { header: "Sumatif (10%)", key: "sumatif", width: 14 },
     { header: "Tugas Astrolab (20%)", key: "tugas", width: 18 },
-    { header: "UTS (20%)", key: "uts", width: 12 },
-    { header: "UAS (20%)", key: "uas", width: 12 },
+    { header: "STS (20%)", key: "uts", width: 12 },
+    { header: "SAS (20%)", key: "uas", width: 12 },
     { header: "Kuis (10%)", key: "kuis", width: 12 },
     { header: "Portofolio (20%)", key: "portofolio", width: 14 },
     { header: "NILAI AKHIR", key: "final", width: 14 },

@@ -169,25 +169,59 @@ const LAPORAN_CSS = `
 // Helper: render 1 tabel gabungan Nilai Akhir — kolom per mapel berdampingan (hemat kertas A4).
 // mapelResults = [{ label: "IPA", result }, { label: "Informatika", result }] — adaptif,
 // kalau cuma 1 mapel (misal kelas VIII gak ada Informatika), tabel otomatis cuma 1 kolom nilai.
-function renderNilaiAkhirGabungan(mapelResults) {
-  if (mapelResults.length === 0) return "";
-  // Semua mapel pakai struktur komponen yang sama (Sumatif, Tugas Astrolab, UTS, UAS, Kuis, Portofolio)
-  const komponenLabels = mapelResults[0].result.komponen.map(k => ({ label: k.label, bobot: k.bobot }));
+// Label mapping: singkatan di App.jsx → nama lengkap di laporan
+const LAPORAN_LABEL = { "STS": "Sumatif Tengah Semester", "SAS": "Sumatif Akhir Semester" };
 
-  const rows = komponenLabels.map((k, i) => `
+function renderNilaiAkhirGabungan(mapelResults, jenisLaporan = "semester") {
+  if (mapelResults.length === 0) return "";
+  // Semua mapel pakai struktur komponen yang sama (Sumatif, Tugas Astrolab, STS, SAS, Kuis, Portofolio)
+  // Track origLabel agar bisa filter SAS di mode tengahSemester
+  let komponenLabels = mapelResults[0].result.komponen.map(k => ({
+    label: LAPORAN_LABEL[k.label] || k.label,
+    origLabel: k.label,
+    bobot: k.bobot
+  }));
+
+  // Tengah Semester: buang SAS, normalisasi bobot sisanya
+  if (jenisLaporan === "tengahSemester") {
+    komponenLabels = komponenLabels.filter(k => k.origLabel !== "SAS");
+    const totalBobot = komponenLabels.reduce((a, k) => a + k.bobot, 0);
+    komponenLabels = komponenLabels.map(k => ({ ...k, bobot: k.bobot / totalBobot }));
+  }
+
+  const rows = komponenLabels.map((k) => {
+    // Cari index komponen asli berdasar origLabel
+    const origIdx = mapelResults[0].result.komponen.findIndex(c => c.label === k.origLabel);
+    return `
     <tr>
       <td style="font-weight:600">${k.label}</td>
       <td style="text-align:center;color:#64748b">${Math.round(k.bobot * 100)}%</td>
       ${mapelResults.map(m => {
-        const val = m.result.komponen[i].val;
+        const val = m.result.komponen[origIdx]?.val;
         const color = typeof val === "number" ? getNilaiColor(val) : "#94a3b8";
         return `<td style="text-align:center;font-weight:700;color:${color}">${typeof val === "number" ? Math.round(val * 100) / 100 : "Belum diisi"}</td>`;
       }).join("")}
     </tr>
-  `).join("");
+  `}).join("");
 
-  const finalRow = `
-    <tr style="background:#f0fdfa">
+  const finalRow = jenisLaporan === "tengahSemester"
+    ? (() => {
+        // Hitung ulang nilai akhir tanpa SAS
+        return `<tr style="background:#f0fdfa">
+          <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
+          ${mapelResults.map(m => {
+            const komps = m.result.komponen.filter(c => c.label !== "SAS");
+            const totalBobot = komps.reduce((a, c) => a + c.bobot, 0);
+            const allFilled = komps.every(c => typeof c.val === "number");
+            const na = allFilled ? Math.round(komps.reduce((a, c) => a + (c.val * (c.bobot / totalBobot)), 0) * 100) / 100 : null;
+            return `<td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
+              ${na !== null ? na : "—"}
+              ${!allFilled ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">belum lengkap</div>' : ""}
+            </td>`;
+          }).join("")}
+        </tr>`;
+      })()
+    : `<tr style="background:#f0fdfa">
       <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
       ${mapelResults.map(m => `
         <td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
@@ -195,12 +229,13 @@ function renderNilaiAkhirGabungan(mapelResults) {
           ${!m.result.lengkap ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">belum lengkap</div>' : ""}
         </td>
       `).join("")}
-    </tr>
-  `;
+    </tr>`;
+
+  const sectionTitle = jenisLaporan === "tengahSemester" ? "Nilai Akhir Komposit (Tengah Semester)" : "Nilai Akhir Komposit";
 
   return `
     <div class="section">
-      <div class="section-title">Nilai Akhir Komposit</div>
+      <div class="section-title">${sectionTitle}</div>
       <table>
         <thead><tr>
           <th>Komponen</th>
@@ -213,7 +248,7 @@ function renderNilaiAkhirGabungan(mapelResults) {
   `;
 }
 
-function generateLaporanSiswa(s, store, jenjang, periode) {
+function generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan = "semester") {
   const stats = store.getStats(s.id);
   const lv = getLevel(stats.poin || 0);
   const badges = store.getBadges(s.id);
@@ -276,7 +311,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
   <div class="page">
     <div class="header">
       <div>
-        <div class="logo">Astrolab · Our Classroom<small>Laporan Hasil Belajar Siswa</small></div>
+        <div class="logo">Astrolab · Our Classroom<small>Laporan Hasil Belajar Siswa${jenisLaporan === "tengahSemester" ? " (Tengah Semester)" : ""}</small></div>
         <div style="margin-top:8px;font-size:13px;font-weight:700">${s.nama}</div>
         <div style="font-size:11px;color:#64748b">Kelas ${jenjang} · ID: ${s.id}</div>
       </div>
@@ -340,7 +375,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
     </div>
 
     <!-- Nilai Akhir Komposit — 1 tabel gabungan, kolom per mapel berdampingan (hemat kertas A4) -->
-    ${renderNilaiAkhirGabungan(mapelResults)}
+    ${renderNilaiAkhirGabungan(mapelResults, jenisLaporan)}
 
     <!-- Catatan Guru -->
     <div class="section">
@@ -379,7 +414,7 @@ function generateLaporanSiswa(s, store, jenjang, periode) {
   </div>`;
 }
 
-function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif()) {
+function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif(), jenisLaporan = "semester") {
   try {
     const siswa = store.getAllSiswa(jenjang);
     const tugas = store.getTugas().filter(t => t.jenjang === jenjang);
@@ -391,7 +426,7 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif
   if (mode === "siswa") {
     // Per siswa — 1 halaman per siswa
     bodyContent = siswa.map((s, i) =>
-      `${generateLaporanSiswa(s, store, jenjang, periode)}${i < siswa.length - 1 ? '<div class="page-break"></div>' : ''}`
+      `${generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan)}${i < siswa.length - 1 ? '<div class="page-break"></div>' : ''}`
     ).join("");
   } else {
     // Per kelas — rekap semua siswa
@@ -501,12 +536,12 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<title>Laporan ${mode === "siswa" ? "Per Siswa" : "Kelas"} ${jenjang} — Astrolab</title>
+<title>Laporan ${mode === "siswa" ? "Per Siswa" : "Kelas"} ${jenjang}${jenisLaporan === "tengahSemester" ? " (Tengah Semester)" : ""} — Astrolab</title>
 <style>${LAPORAN_CSS}</style>
 </head>
 <body>
   <div class="no-print" style="background:#0d6b7a;color:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100">
-    <span style="font-weight:700">Astrolab · Laporan ${mode === "siswa" ? "Per Siswa" : "Kelas"} ${jenjang} — ${periode}</span>
+    <span style="font-weight:700">Astrolab · Laporan ${mode === "siswa" ? "Per Siswa" : "Kelas"} ${jenjang}${jenisLaporan === "tengahSemester" ? " (Tengah Semester)" : ""} — ${periode}</span>
     <button onclick="window.print()" style="background:#fff;color:#0d6b7a;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">Cetak / Save PDF</button>
   </div>
   ${bodyContent}
@@ -530,11 +565,12 @@ export function LaporanModal({ store, onClose }) {
   const [jenjang, setJenjang] = useState("VII");
   const [mode, setMode] = useState("kelas");
   const [periode, setPeriode] = useState(getPeriodeAktif());
+  const [jenisLaporan, setJenisLaporan] = useState("semester");
 
   const periodeOptions = getPeriodeOptions();
 
   function handleExport() {
-    exportLaporan(store, jenjang, mode, periode);
+    exportLaporan(store, jenjang, mode, periode, jenisLaporan);
     onClose();
   }
 
@@ -553,6 +589,22 @@ export function LaporanModal({ store, onClose }) {
                   style={{ flex: 1, justifyContent: "center" }} onClick={() => setJenjang(j)}>
                   Kelas {j} ({store.getAllSiswa(j).length} siswa)
                 </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="fg">
+            <label className="lbl">Jenis Laporan</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { value: "semester", label: "Semester", desc: "Lengkap — semua komponen termasuk SAS" },
+                { value: "tengahSemester", label: "Tengah Semester", desc: "Hanya sampai STS — tanpa SAS" },
+              ].map(opt => (
+                <div key={opt.value} onClick={() => setJenisLaporan(opt.value)}
+                  style={{ padding: "10px 14px", border: `1.5px solid ${jenisLaporan === opt.value ? "var(--accent)" : "var(--line)"}`, borderRadius: "var(--r-sm)", cursor: "pointer", background: jenisLaporan === opt.value ? "var(--accent-tint)" : "var(--surface)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: jenisLaporan === opt.value ? "var(--accent-2)" : "var(--ink)" }}>{opt.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{opt.desc}</div>
+                </div>
               ))}
             </div>
           </div>

@@ -47,7 +47,7 @@ export function getPeriodeOptions(date = new Date()) {
     `${yStart}/${yStart + 1}`,
     `${yStart + 1}/${yStart + 2}`,
   ];
-  const jenis = ["Semester Ganjil", "Semester Genap", "Tengah Semester Ganjil", "Tengah Semester Genap"];
+  const jenis = ["Semester Ganjil", "Semester Genap"];
   // Default tahun aktif duluan, lalu jenis lain di tahun aktif, lalu tahun lain
   const tahunAktif = ta;
   const result = [];

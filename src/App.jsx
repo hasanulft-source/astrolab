@@ -632,10 +632,19 @@ function useStore() {
     return `${siswaId}_${mapel}_${jenjang}_${periode}`.replace(/[.#$/[\]]/g, "-");
   }
 
-  // Ambil record mentah (atau default kosong) untuk 1 siswa
+  // Ambil record mentah (atau default kosong) untuk 1 siswa.
+  // Fallback: kalau periode "Semester X" gak ada data, cek juga "Tengah Semester X" (migrasi dari versi lama).
   const getNilaiAkhirRecord = (siswaId, mapel, jenjang, periode) => {
     const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
-    return nilaiAkhirData[key] || { siswaId, mapel, jenjang, periode, sumatif: {}, kuis: {}, uts: null, uas: null, portofolio: null };
+    const rec = nilaiAkhirData[key];
+    if (rec) return rec;
+    // Fallback: cek "Tengah Semester" variant (data lama mungkin disimpan di sana)
+    if (periode.startsWith("Semester ")) {
+      const tsKey = nilaiAkhirKey(siswaId, mapel, jenjang, periode.replace("Semester ", "Tengah Semester "));
+      const tsRec = nilaiAkhirData[tsKey];
+      if (tsRec) return tsRec;
+    }
+    return { siswaId, mapel, jenjang, periode, sumatif: {}, kuis: {}, uts: null, uas: null, portofolio: null };
   };
 
   // ─── AKSES REQUEST (siswa minta akses tugas yang sudah lewat deadline) ───
@@ -844,7 +853,7 @@ function useStore() {
   };
 
   // ═══ NILAI BOOST (Bonus Nilai Manual) ═══
-  // Guru bisa nambah bonus nilai per komponen (Sumatif/Tugas Astrolab/UTS/UAS/Kuis/Portofolio)
+  // Guru bisa nambah bonus nilai per komponen (Sumatif/Tugas Astrolab/STS/SAS/Kuis/Portofolio)
   // Contoh use case: siswa nyelesain "Latihan Khusus" (tugas personal remedial) → guru kasih +5 di komponen tertentu.
   // Firebase struct: nilaiBoost/{siswaId_mapel_jenjang_periode}/{boostId} = { komponen, nilai, alasan, tugasRefId?, createdAt, updatedAt }
   // Cap total (base + Σboost) diterapkan saat compute nilai akhir, bukan saat store — biar historis boost tetap kesimpen walau ternyata over-cap.
@@ -1016,8 +1025,8 @@ function useStore() {
     const komponen = [
       { label: "Sumatif per BAB", key: "sumatif", val: sBoost.finalVal, base: sBoost.base, boost: sBoost.boost, bobot: 0.10 },
       { label: "Tugas Astrolab", key: "tugasAstrolab", val: tBoost.finalVal, base: tBoost.base, boost: tBoost.boost, bobot: 0.20 },
-      { label: "UTS", key: "uts", val: utsBoost.finalVal, base: utsBoost.base, boost: utsBoost.boost, bobot: 0.20 },
-      { label: "UAS", key: "uas", val: uasBoost.finalVal, base: uasBoost.base, boost: uasBoost.boost, bobot: 0.20 },
+      { label: "STS", key: "uts", val: utsBoost.finalVal, base: utsBoost.base, boost: utsBoost.boost, bobot: 0.20 },
+      { label: "SAS", key: "uas", val: uasBoost.finalVal, base: uasBoost.base, boost: uasBoost.boost, bobot: 0.20 },
       { label: "Kuis Harian", key: "kuis", val: kBoost.finalVal, base: kBoost.base, boost: kBoost.boost, bobot: 0.10 },
       { label: "Portofolio", key: "portofolio", val: pBoost.finalVal, base: pBoost.base, boost: pBoost.boost, bobot: 0.20 },
     ];
@@ -1036,14 +1045,14 @@ function useStore() {
 
   // Update 1 kolom dinamis (sumatif atau kuis) — dipanggil dari grid inline edit
   // ═══ REWARD POIN DARI NILAI MANUAL ═══
-  // Setiap input nilai Kuis/Sumatif/UTS/UAS/Portofolio kasih poin ke siswa senilai 10% dari nilai
+  // Setiap input nilai Kuis/Sumatif/STS/SAS/Portofolio kasih poin ke siswa senilai 10% dari nilai
   // (reward konsistensi — asumsi semua siswa mengikuti asesmen; yg absen wajib susulan).
   // Contoh: Kuis BAB 1 = 80 → +8 poin ke stats.poin siswa.
   //   Edit jadi 90 → poin lama (8) di-revoke, poin baru (9) di-kasih → net +1.
   //   Hapus nilai → poin (8) di-revoke → net -8. Floor di 0 (gak pernah minus).
   // Poin ini SEPARATE dari poin tugas Astrolab — cuma additive di stats.poin total.
   // Rate poin per komponen nilai manual:
-  //   Sumatif/UTS/UAS = 1.0 (100%) — reward effort ujian penuh (belajar semalaman, persiapan serius)
+  //   Sumatif/STS/SAS = 1.0 (100%) — reward effort ujian penuh (belajar semalaman, persiapan serius)
   //   Kuis/Portofolio = 0.1 (10%) — tetap kasih apresiasi tapi gak dominasi leaderboard
   const NILAI_POIN_RATE = { sumatif: 1.0, uts: 1.0, uas: 1.0, kuis: 0.1, portofolio: 0.1 };
 
@@ -1176,11 +1185,11 @@ function useStore() {
       });
       if (r.uts !== null) {
         updates[`nilaiAkhir/${key}/uts`] = r.uts;
-        totalDelta += computeDelta(rec.uts, r.uts, NILAI_POIN_RATE.uts); // UTS = 100%
+        totalDelta += computeDelta(rec.uts, r.uts, NILAI_POIN_RATE.uts); // STS = 100%
       }
       if (r.uas !== null) {
         updates[`nilaiAkhir/${key}/uas`] = r.uas;
-        totalDelta += computeDelta(rec.uas, r.uas, NILAI_POIN_RATE.uas); // UAS = 100%
+        totalDelta += computeDelta(rec.uas, r.uas, NILAI_POIN_RATE.uas); // SAS = 100%
       }
       if (r.portofolio !== null) {
         updates[`nilaiAkhir/${key}/portofolio`] = r.portofolio;
@@ -6653,8 +6662,8 @@ function RaporSiswa({ user, store, navigate }) {
     const komponen = [
       { label: "Sumatif per BAB", key: "sumatif", ...applyBoost(sumatifAvg, "sumatif"), bobot: 0.10, icon: "book" },
       { label: "Tugas Astrolab", key: "tugasAstrolab", ...applyBoost(tugasAvg, "tugasAstrolab"), bobot: 0.20, icon: "target" },
-      { label: "UTS", key: "uts", ...applyBoost(rec.uts, "uts"), bobot: 0.20, icon: "edit" },
-      { label: "UAS", key: "uas", ...applyBoost(rec.uas, "uas"), bobot: 0.20, icon: "edit" },
+      { label: "STS", key: "uts", ...applyBoost(rec.uts, "uts"), bobot: 0.20, icon: "edit" },
+      { label: "SAS", key: "uas", ...applyBoost(rec.uas, "uas"), bobot: 0.20, icon: "edit" },
       { label: "Kuis Harian", key: "kuis", ...applyBoost(kuisAvg, "kuis"), bobot: 0.10, icon: "zap" },
       { label: "Portofolio", key: "portofolio", ...applyBoost(rec.portofolio, "portofolio"), bobot: 0.20, icon: "star" },
     ];
@@ -7877,7 +7886,7 @@ function BottomNav({ user, route, navigate, store }) {
 // Guru bisa lihat identitas pelapor, isi laporan, update status, kasih catatan.
 // ─── NILAI AKHIR (Guru) ───
 // Grid inline editing untuk komposit nilai akhir siswa: Sumatif per BAB (dinamis),
-// Tugas Astrolab (auto-pull read-only, filtered strict by mapel), UTS, UAS,
+// Tugas Astrolab (auto-pull read-only, filtered strict by mapel), STS, SAS,
 // Kuis Harian (dinamis), Portofolio. Nilai Akhir dihitung otomatis (weighted average).
 function NilaiAkhirPage({ store }) {
   const [mapel, setMapel] = useState("IPA");
@@ -7992,7 +8001,7 @@ function NilaiAkhirPage({ store }) {
   return (
     <div className="page">
       <div className="dt">
-        <div><h1>Nilai Akhir</h1><p>Komposit 6 komponen · Sumatif 10% · Tugas Astrolab 20% · UTS 20% · UAS 20% · Kuis 10% · Portofolio 20%</p><p style={{ marginTop: 4, fontSize: 11, color: "var(--accent-2)", fontWeight: 600 }}><I n="zap" s={11} /> Sumatif, UTS, UAS: <b>+100% poin</b> (reward effort ujian) · Kuis, Portofolio: +10% poin</p></div>
+        <div><h1>Nilai Akhir</h1><p>Komposit 6 komponen · Sumatif 10% · Tugas Astrolab 20% · STS 20% · SAS 20% · Kuis 10% · Portofolio 20%</p><p style={{ marginTop: 4, fontSize: 11, color: "var(--accent-2)", fontWeight: 600 }}><I n="zap" s={11} /> Sumatif, STS, SAS: <b>+100% poin</b> (reward effort ujian) · Kuis, Portofolio: +10% poin</p></div>
       </div>
       <div className="topbar">
         <div style={{ width: 36 }} />
@@ -8078,8 +8087,8 @@ function NilaiAkhirPage({ store }) {
                   ))}
                   <th style={{ ...thStyle, minWidth: 80, background: "var(--accent-tint)" }}>Sumatif<br/>Avg</th>
                   <th style={{ ...thStyle, minWidth: 90, background: "var(--surface)" }}>Tugas<br/>Astrolab<div style={{ fontSize: 9, fontWeight: 400, color: "var(--ink-3)" }}>auto</div></th>
-                  <th style={{ ...thStyle, minWidth: 80 }}>UTS</th>
-                  <th style={{ ...thStyle, minWidth: 80 }}>UAS</th>
+                  <th style={{ ...thStyle, minWidth: 80 }}>STS</th>
+                  <th style={{ ...thStyle, minWidth: 80 }}>SAS</th>
                   {kuisKolom.map(k => (
                     <th key={k} style={{ ...thStyle, minWidth: 90 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
@@ -8178,7 +8187,7 @@ function DetailSiswaNilaiModal({ siswa, store, mapel, jenjang, periode, onClose,
   const [toast, setToast] = useState("");
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2500); }
 
-  const komponenLabels = { sumatif: "Sumatif per BAB", tugasAstrolab: "Tugas Astrolab", uts: "UTS", uas: "UAS", kuis: "Kuis Harian", portofolio: "Portofolio" };
+  const komponenLabels = { sumatif: "Sumatif per BAB", tugasAstrolab: "Tugas Astrolab", uts: "STS", uas: "SAS", kuis: "Kuis Harian", portofolio: "Portofolio" };
 
   async function handleDeleteBoost(boostId) {
     if (!confirm("Hapus bonus nilai ini? Nilai akhir akan diperbarui otomatis.")) return;
@@ -8304,12 +8313,12 @@ function DetailSiswaNilaiModal({ siswa, store, mapel, jenjang, periode, onClose,
             </div>
           )}
 
-          {/* UTS / UAS / Portofolio */}
+          {/* STS / SAS / Portofolio */}
           <div style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Nilai Manual</div>
             {[
-              { label: "UTS", field: "uts", val: rec.uts },
-              { label: "UAS", field: "uas", val: rec.uas },
+              { label: "STS", field: "uts", val: rec.uts },
+              { label: "SAS", field: "uas", val: rec.uas },
               { label: "Portofolio", field: "portofolio", val: rec.portofolio },
             ].map(item => (
               <div key={item.field} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line-soft)" }}>
@@ -8368,8 +8377,8 @@ function BoostModal({ mode, boost, siswa, mapel, jenjang, periode, store, onClos
   const komponenOpts = [
     { value: "sumatif", label: "Sumatif per BAB" },
     { value: "tugasAstrolab", label: "Tugas Astrolab" },
-    { value: "uts", label: "UTS" },
-    { value: "uas", label: "UAS" },
+    { value: "uts", label: "STS" },
+    { value: "uas", label: "SAS" },
     { value: "kuis", label: "Kuis Harian" },
     { value: "portofolio", label: "Portofolio" },
   ];
