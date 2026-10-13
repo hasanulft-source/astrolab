@@ -6,6 +6,16 @@ import { I } from '../components/icons';
 import { shuffle } from '../utils/helpers';
 import { Confirm, Card } from '../components/visual';
 
+// Key STABIL untuk progress latihan: hash teks pertanyaan.
+// Soal dari tugas lama sering TIDAK punya `id` (codebase pakai origIdx sebagai fallback),
+// jadi tracking by id gagal diam-diam. Hash teks selalu ada untuk soal sistem & upload.
+function latihanSoalKey(pertanyaan) {
+  const str = (pertanyaan || "").trim().toLowerCase().replace(/\s+/g, " ");
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+  return "q" + h.toString(36);
+}
+
 // Dedup soal latihan by teks pertanyaan (soal sama bisa datang dari tugas & upload guru).
 function dedupSoal(arr) {
   const seen = new Set();
@@ -324,7 +334,7 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
     // Anti-ulang: prioritaskan soal yang BELUM pernah dikerjakan siswa.
     // Kalau semua sudah pernah (progress penuh / mode review), fallback ke acak dari semua.
     const done = store.getLatihanSeen(mapel, bab);
-    const unseen = unique.filter(s => s.id && !done.has(s.id));
+    const unseen = unique.filter(s => !done.has(latihanSoalKey(s.pertanyaan)));
     const pick = unseen.length ? unseen : unique;
     return shuffle([...pick]).slice(0, MAX_SOAL);
   });
@@ -339,7 +349,7 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
   useEffect(() => {
     if (done && !marked) {
       setMarked(true);
-      store.markLatihanSeen(mapel, bab, soalList.map(s => s.id).filter(Boolean));
+      store.markLatihanSeen(mapel, bab, soalList.map(s => latihanSoalKey(s.pertanyaan)));
     }
   }, [done]);
 
@@ -525,7 +535,7 @@ export function LatihanMandiri({ user, store, navigate }) {
   return <div>
     <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Mandiri</div><div style={{ width: 36 }} /></div>
     {/* Tab bar */}
-    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
       <button style={tabStyle(tab === "materi")} onClick={() => setTab("materi")}><I n="book" s={13} style={{ marginRight: 5, verticalAlign: -2 }} />Materi</button>
       <button style={tabStyle(tab === "latihan")} onClick={() => setTab("latihan")}><I n="edit" s={13} style={{ marginRight: 5, verticalAlign: -2 }} />Latihan Mandiri</button>
     </div>
@@ -544,7 +554,7 @@ export function LatihanMandiri({ user, store, navigate }) {
                 {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => {
                   const isHd = m.createdAt && Date.now() - m.createdAt < 7 * 86400000;
                   return <button key={m.id} onClick={() => setViewMateri(m)}
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", transition: "border-color .15s" }}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", transition: "border-color .15s" }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent-2)"}
                     onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line-soft)"}>
                     <div style={{ width: 40, height: 40, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
@@ -577,13 +587,13 @@ export function LatihanMandiri({ user, store, navigate }) {
             const pool = dedupSoal(soalRaw);
             const seenSet = store.getLatihanSeen(mapel, bab);
             const total = pool.length;
-            const seen = pool.filter(s => s.id && seenSet.has(s.id)).length;
+            const seen = pool.filter(s => seenSet.has(latihanSoalKey(s.pertanyaan))).length;
             const remaining = total - seen;
             const rondeLagi = Math.ceil(remaining / 10);
             const pct = total ? Math.round((seen / total) * 100) : 0;
             const selesai = total > 0 && remaining === 0;
             return (
-              <div key={bab} style={{ background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", padding: "14px 16px", marginBottom: 8 }}>
+              <div key={bab} style={{ background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", padding: "14px 16px", marginBottom: 12, boxShadow: "var(--shadow-sm)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                   <div style={{ width: 40, height: 40, borderRadius: 8, background: "linear-gradient(135deg, var(--accent-tint), var(--accent-soft))", display: "grid", placeItems: "center", flexShrink: 0 }}>
                     <I n="edit" s={18} style={{ color: "var(--accent)" }} />
@@ -712,7 +722,7 @@ function MateriPdfManager({ store }) {
 
   return <div>
     {/* Jenjang tab bar */}
-    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
       <button style={jTabStyle(jenTab === "VII")} onClick={() => setJenTab("VII")}>Kelas VII <span style={badgeStyle(jenTab === "VII")}>{countVII}</span></button>
       <button style={jTabStyle(jenTab === "VIII")} onClick={() => setJenTab("VIII")}>Kelas VIII <span style={badgeStyle(jenTab === "VIII")}>{countVIII}</span></button>
     </div>
@@ -772,7 +782,7 @@ function MateriPdfManager({ store }) {
                 <div key={bab} style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab}</div>
                   {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", marginBottom: 6 }}>
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", marginBottom: 6 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
                         <I n="book" s={16} style={{ color: "var(--accent-2)" }} />
                       </div>
@@ -815,7 +825,7 @@ export function MateriManager({ store, navigate }) {
       <div className="topbar-title">Materi & Latihan</div>
       <div style={{ width: 32 }} />
     </div>
-    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
       <button style={modeTab(mgrTab === "materi")} onClick={() => setMgrTab("materi")}><I n="book" s={13} />Materi PDF</button>
       <button style={modeTab(mgrTab === "latihan")} onClick={() => setMgrTab("latihan")}><I n="edit" s={13} />Soal Latihan</button>
     </div>
@@ -849,7 +859,7 @@ function LatihanSoalManager({ store }) {
 
   return <div>
     {/* Jenjang tab bar */}
-    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
       {["VII", "VIII"].map(j => {
         const n = store.getLatihanSoal().filter(s => s.jenjang === j).length;
         const active = jenTab === j;
@@ -882,7 +892,7 @@ function LatihanSoalManager({ store }) {
               <div key={bab} style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab} <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>({soal.length})</span></div>
                 {soal.map(s => (
-                  <div key={s.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", marginBottom: 6 }}>
+                  <div key={s.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", marginBottom: 6, boxShadow: "var(--shadow-sm)" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>{s.pertanyaan}</div>
                       <div style={{ fontSize: 11, color: "var(--good)", marginTop: 3 }}>Jawaban: {String.fromCharCode(65 + (s.jawaban || 0))}. {(s.opsi || [])[s.jawaban || 0]}</div>
