@@ -6,6 +6,18 @@ import { I } from '../components/icons';
 import { shuffle } from '../utils/helpers';
 import { Confirm, Card } from '../components/visual';
 
+// Dedup soal latihan by teks pertanyaan (soal sama bisa datang dari tugas & upload guru).
+function dedupSoal(arr) {
+  const seen = new Set();
+  const out = [];
+  for (const s of arr) {
+    const k = (s.pertanyaan || "").trim().toLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k); out.push(s);
+  }
+  return out;
+}
+
 // Helper: convert PDF pages to compressed JPEG base64 array via pdf.js (loaded from CDN on demand)
 let _pdfjsLoaded = false;
 async function loadPdfJs() {
@@ -299,23 +311,37 @@ function MateriViewer({ materi, store, onBack }) {
   </div>;
 }
 
-function LatihanQuiz({ bab, soalPool, onBack }) {
+function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
   const MAX_SOAL = 10;
   const [soalList] = useState(() => {
-    // Deduplicate by pertanyaan text (same question from different tugas)
+    // Deduplicate by pertanyaan text (soal sama dari tugas/upload berbeda)
     const seen = new Set();
     const unique = [];
     for (const s of soalPool) {
       const key = s.pertanyaan.trim().toLowerCase();
       if (!seen.has(key)) { seen.add(key); unique.push(s); }
     }
-    return shuffle([...unique]).slice(0, MAX_SOAL);
+    // Anti-ulang: prioritaskan soal yang BELUM pernah dikerjakan siswa.
+    // Kalau semua sudah pernah (progress penuh / mode review), fallback ke acak dari semua.
+    const done = store.getLatihanSeen(mapel, bab);
+    const unseen = unique.filter(s => s.id && !done.has(s.id));
+    const pick = unseen.length ? unseen : unique;
+    return shuffle([...pick]).slice(0, MAX_SOAL);
   });
+  const [marked, setMarked] = useState(false);
   const [idx, setIdx] = useState(0);
   const [selected, setSelected] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [results, setResults] = useState([]); // array of booleans
   const [done, setDone] = useState(false);
+
+  // Begitu ronde selesai, tandai soal-soal ronde ini sebagai "sudah dilatih" (sekali saja).
+  useEffect(() => {
+    if (done && !marked) {
+      setMarked(true);
+      store.markLatihanSeen(mapel, bab, soalList.map(s => s.id).filter(Boolean));
+    }
+  }, [done]);
 
   const total = soalList.length;
 
@@ -457,6 +483,13 @@ export function LatihanMandiri({ user, store, navigate }) {
     latihanMap[key].push(...pgSoal.map(s => ({ ...s, pembahasan: s.pembahasan || "" })));
   });
 
+  // Merge soal latihan upload-an guru (node /latihanSoal), filter sesuai jenjang siswa.
+  store.getLatihanSoal().filter(s => s.jenjang === user.jenjang).forEach(s => {
+    const key = `${s.mapel || "Lainnya"}||${s.bab || "Umum"}`;
+    if (!latihanMap[key]) latihanMap[key] = [];
+    latihanMap[key].push({ ...s, pembahasan: s.pembahasan || "" });
+  });
+
   // Group for display: { mapel: { bab: [...soal] } }
   const latihanGrouped = {};
   Object.entries(latihanMap).forEach(([key, soal]) => {
@@ -467,7 +500,7 @@ export function LatihanMandiri({ user, store, navigate }) {
   const latihanMapelKeys = Object.keys(latihanGrouped).sort();
 
   // Early returns for sub-views (after all hooks)
-  if (quizBab) return <LatihanQuiz bab={quizBab.bab} soalPool={quizBab.soal} onBack={() => setQuizBab(null)} />;
+  if (quizBab) return <LatihanQuiz bab={quizBab.bab} mapel={quizBab.mapel} soalPool={quizBab.soal} store={store} onBack={() => setQuizBab(null)} />;
   if (viewMateri) return <MateriViewer materi={viewMateri} store={store} onBack={() => setViewMateri(null)} />;
 
   // Group materi by mapel → bab (for Materi tab)
@@ -540,28 +573,51 @@ export function LatihanMandiri({ user, store, navigate }) {
       {latihanMapelKeys.map(mapel => (
         <div key={mapel} style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mapel}</div>
-          {Object.entries(latihanGrouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soal]) => (
-            <button key={bab} onClick={() => setQuizBab({ bab, soal })}
-              style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", marginBottom: 8, transition: "border-color .15s" }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent)"}
-              onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line-soft)"}>
-              <div style={{ width: 40, height: 40, borderRadius: 8, background: "linear-gradient(135deg, var(--accent-tint), var(--accent-soft))", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <I n="edit" s={18} style={{ color: "var(--accent)" }} />
+          {Object.entries(latihanGrouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soalRaw]) => {
+            const pool = dedupSoal(soalRaw);
+            const seenSet = store.getLatihanSeen(mapel, bab);
+            const total = pool.length;
+            const seen = pool.filter(s => s.id && seenSet.has(s.id)).length;
+            const remaining = total - seen;
+            const rondeLagi = Math.ceil(remaining / 10);
+            const pct = total ? Math.round((seen / total) * 100) : 0;
+            const selesai = total > 0 && remaining === 0;
+            return (
+              <div key={bab} style={{ background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", padding: "14px 16px", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 8, background: "linear-gradient(135deg, var(--accent-tint), var(--accent-soft))", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                    <I n="edit" s={18} style={{ color: "var(--accent)" }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{bab}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{total} soal · sudah dilatih {seen}/{total}</div>
+                  </div>
+                </div>
+                <div style={{ height: 7, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: selesai ? "var(--good)" : "var(--accent)", transition: "width .4s" }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: selesai ? "var(--good)" : "var(--ink-2)" }}>
+                    {selesai ? "Semua soal sudah dilatih 🎉" : `Kerjakan ${rondeLagi} kali lagi untuk selesaikan semua`}
+                  </span>
+                  {selesai
+                    ? <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button className="btn btn-outline btn-sm" onClick={() => store.resetLatihanProgress(mapel, bab)}><I n="rotate" s={13} /> Ulang</button>
+                        <button className="btn btn-soft btn-sm" onClick={() => setQuizBab({ bab, mapel, soal: pool })}>Review</button>
+                      </div>
+                    : <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => setQuizBab({ bab, mapel, soal: pool })}>Mulai <I n="chevR" s={13} /></button>
+                  }
+                </div>
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{bab}</div>
-                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{soal.length} soal tersedia</div>
-              </div>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-tint)", padding: "4px 10px", borderRadius: 12, flexShrink: 0 }}>Mulai</span>
-            </button>
-          ))}
+            );
+          })}
         </div>
       ))}
     </div>}
   </div>;
 }
 
-export function MateriManager({ store, navigate }) {
+function MateriPdfManager({ store }) {
   const [jenTab, setJenTab] = useState("VII");
   const [showUpload, setShowUpload] = useState(false);
   const [form, setForm] = useState({ judul: "", mapel: "IPA", jenjang: "VII", bab: "" });
@@ -655,11 +711,6 @@ export function MateriManager({ store, navigate }) {
   });
 
   return <div>
-    <div className="topbar">
-      <button className="topbar-back" onClick={() => navigate("home-guru")}><I n="chevL" s={18} /></button>
-      <div className="topbar-title">Materi</div>
-      <button style={{ background: "var(--accent)", border: "none", cursor: "pointer", color: "#fff", borderRadius: 8, width: 32, height: 32, display: "grid", placeItems: "center" }} onClick={openUpload} title="Upload materi baru"><I n="plus" s={18} /></button>
-    </div>
     {/* Jenjang tab bar */}
     <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
       <button style={jTabStyle(jenTab === "VII")} onClick={() => setJenTab("VII")}>Kelas VII <span style={badgeStyle(jenTab === "VII")}>{countVII}</span></button>
@@ -744,6 +795,202 @@ export function MateriManager({ store, navigate }) {
           </button>
         </>
       )}
+    </div>
+  </div>;
+}
+
+// ─── WRAPPER: Materi PDF + Soal Latihan (2 tab) ───
+export function MateriManager({ store, navigate }) {
+  const [mgrTab, setMgrTab] = useState("materi");
+  const modeTab = (active) => ({
+    flex: 1, padding: "11px 0", fontSize: 13, fontWeight: active ? 700 : 500,
+    color: active ? "var(--accent)" : "var(--ink-3)",
+    borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
+    background: "none", border: "none", borderTop: "none", borderLeft: "none", borderRight: "none",
+    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+  });
+  return <div>
+    <div className="topbar">
+      <button className="topbar-back" onClick={() => navigate("home-guru")}><I n="chevL" s={18} /></button>
+      <div className="topbar-title">Materi & Latihan</div>
+      <div style={{ width: 32 }} />
+    </div>
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+      <button style={modeTab(mgrTab === "materi")} onClick={() => setMgrTab("materi")}><I n="book" s={13} />Materi PDF</button>
+      <button style={modeTab(mgrTab === "latihan")} onClick={() => setMgrTab("latihan")}><I n="edit" s={13} />Soal Latihan</button>
+    </div>
+    {mgrTab === "materi" ? <MateriPdfManager store={store} /> : <LatihanSoalManager store={store} />}
+  </div>;
+}
+
+// ─── GURU: Kelola Soal Latihan Mandiri (node /latihanSoal) ───
+function LatihanSoalManager({ store }) {
+  const [jenTab, setJenTab] = useState("VII");
+  const [showUpload, setShowUpload] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [toast, setToast] = useState("");
+  const showT = (m) => { setToast(m); setTimeout(() => setToast(""), 2500); };
+
+  const list = store.getLatihanSoal().filter(s => s.jenjang === jenTab);
+  const grouped = {};
+  list.forEach(s => {
+    const m = s.mapel || "Lainnya", b = s.bab || "Umum";
+    grouped[m] = grouped[m] || {};
+    grouped[m][b] = grouped[m][b] || [];
+    grouped[m][b].push(s);
+  });
+  const mapelKeys = Object.keys(grouped).sort();
+
+  async function doDelete() {
+    try { await store.deleteLatihanSoal(confirmDel.id); setConfirmDel(null); showT("Soal dihapus."); }
+    catch (e) { showT("Gagal hapus: " + (e?.message || "coba lagi")); }
+  }
+
+  return <div>
+    {/* Jenjang tab bar */}
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--card)" }}>
+      {["VII", "VIII"].map(j => {
+        const n = store.getLatihanSoal().filter(s => s.jenjang === j).length;
+        const active = jenTab === j;
+        return <button key={j} onClick={() => setJenTab(j)} style={{ flex: 1, padding: "10px 0", fontSize: 13, fontWeight: active ? 700 : 500, color: active ? "var(--accent)" : "var(--ink-3)", borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>Kelas {j} <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)", background: active ? "var(--accent)" : "var(--surface-alt)", color: active ? "#fff" : "var(--ink-3)", borderRadius: 10, padding: "1px 7px" }}>{n}</span></button>;
+      })}
+    </div>
+
+    <div style={{ padding: 16 }}>
+      {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, boxShadow: "var(--shadow)" }}>{toast}</div>}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <button className="btn btn-outline btn-sm" onClick={() => store.downloadTemplateSoal()} title="Download template Excel"><I n="download" s={13} /> Template</button>
+        <button className="btn btn-outline btn-sm" onClick={() => setShowUpload(true)}><I n="upload" s={13} /> Import Excel</button>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowManual(true)}><I n="plus" s={13} /> Tambah Manual</button>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 16, lineHeight: 1.55, padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8 }}>
+        Soal latihan = <b>Pilihan Ganda</b> (sheet "1. Pilihan Ganda" di template). Siswa melatihnya di menu <b>Latihan Mandiri</b>, digabung dengan soal dari tugas yang sudah lewat deadline.
+      </div>
+
+      {showUpload && <LatihanUploadModal store={store} defaultJenjang={jenTab} onClose={() => setShowUpload(false)} onSuccess={(msg) => { setShowUpload(false); showT(msg); }} />}
+      {showManual && <LatihanManualModal store={store} defaultJenjang={jenTab} onClose={() => setShowManual(false)} onSuccess={() => { setShowManual(false); showT("Soal ditambahkan."); }} />}
+      {confirmDel && <Confirm title="Hapus soal latihan?" desc={(confirmDel.pertanyaan || "").slice(0, 80)} onOk={doDelete} onCancel={() => setConfirmDel(null)} />}
+
+      {mapelKeys.length === 0
+        ? <Card><div className="empty empty-box"><I n="edit" s={32} /><h3>Belum ada soal latihan Kelas {jenTab}</h3><p>Import Excel atau tambah manual. Soal ini khusus untuk Latihan Mandiri siswa.</p></div></Card>
+        : mapelKeys.map(m => (
+          <div key={m} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-2)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 10 }}>{m}</div>
+            {Object.entries(grouped[m]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soal]) => (
+              <div key={bab} style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab} <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>({soal.length})</span></div>
+                {soal.map(s => (
+                  <div key={s.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", background: "var(--card)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", marginBottom: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>{s.pertanyaan}</div>
+                      <div style={{ fontSize: 11, color: "var(--good)", marginTop: 3 }}>Jawaban: {String.fromCharCode(65 + (s.jawaban || 0))}. {(s.opsi || [])[s.jawaban || 0]}</div>
+                    </div>
+                    <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }} onClick={() => setConfirmDel(s)}><I n="trash" s={12} /></button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ))
+      }
+    </div>
+  </div>;
+}
+
+function LatihanUploadModal({ store, defaultJenjang, onClose, onSuccess }) {
+  const [mapel, setMapel] = useState("IPA");
+  const [jenjang, setJenjang] = useState(defaultJenjang || "VII");
+  const [bab, setBab] = useState("");
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function go() {
+    if (!bab.trim()) { setErr("BAB wajib diisi."); return; }
+    if (!file) { setErr("Pilih file Excel dulu."); return; }
+    setBusy(true); setErr("");
+    try {
+      const { imported, skipped } = await store.importLatihanFromExcel(file, mapel, jenjang, bab.trim());
+      if (imported === 0) { setErr("Tidak ada soal PG valid di file. Isi di sheet '1. Pilihan Ganda'."); setBusy(false); return; }
+      onSuccess(`${imported} soal diimport${skipped ? ` (${skipped} non-PG dilewati)` : ""}.`);
+    } catch (e) {
+      setErr("Gagal import: " + (e?.message || "format tidak dikenali")); setBusy(false);
+    }
+  }
+
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+      <h3>Import Soal Latihan (Excel)</h3>
+      <p style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 14 }}>Soal diambil dari sheet <b>1. Pilihan Ganda</b>. Semua soal di file ini di-assign ke Mapel/Kelas/BAB berikut.</p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <div className="fg" style={{ flex: 1 }}><label className="lbl">Mapel</label><select className="inp" value={mapel} onChange={e => setMapel(e.target.value)}><option>IPA</option><option>Informatika</option></select></div>
+        <div className="fg" style={{ flex: 1 }}><label className="lbl">Kelas</label><select className="inp" value={jenjang} onChange={e => setJenjang(e.target.value)}><option value="VII">VII</option><option value="VIII">VIII</option></select></div>
+      </div>
+      <div className="fg" style={{ marginBottom: 12 }}><label className="lbl">BAB</label><input className="inp" value={bab} onChange={e => setBab(e.target.value)} placeholder="Contoh: Bab 3 — Energi" /></div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: "2px dashed var(--line)", borderRadius: 8, cursor: "pointer", background: file ? "var(--accent-tint)" : "var(--surface)" }}>
+        <I n="upload" s={16} style={{ color: "var(--accent-2)" }} />
+        <span style={{ fontSize: 13, color: file ? "var(--accent-2)" : "var(--ink-2)" }}>{file ? file.name : "Pilih file Excel (.xlsx)"}</span>
+        <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) setFile(e.target.files[0]); }} />
+      </label>
+      {err && <div style={{ marginTop: 12, fontSize: 12, color: "var(--bad)", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 6, padding: "8px 10px" }}>{err}</div>}
+      <div className="modal-actions" style={{ marginTop: 16 }}>
+        <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+        <button className="btn btn-primary btn-sm" onClick={go} disabled={busy || !file}>{busy ? "Mengimport..." : "Import"}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function LatihanManualModal({ store, defaultJenjang, onClose, onSuccess }) {
+  const [mapel, setMapel] = useState("IPA");
+  const [jenjang, setJenjang] = useState(defaultJenjang || "VII");
+  const [bab, setBab] = useState("");
+  const [pertanyaan, setPertanyaan] = useState("");
+  const [opsi, setOpsi] = useState(["", "", "", ""]);
+  const [jawaban, setJawaban] = useState(0);
+  const [pembahasan, setPembahasan] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function go() {
+    if (!bab.trim()) return setErr("BAB wajib diisi.");
+    if (!pertanyaan.trim()) return setErr("Pertanyaan wajib diisi.");
+    if (opsi.filter(o => o.trim()).length < 2) return setErr("Minimal 2 opsi diisi.");
+    if (!opsi[jawaban]?.trim()) return setErr("Opsi jawaban benar tidak boleh kosong.");
+    setBusy(true); setErr("");
+    try {
+      await store.addLatihanSoal({ mapel, jenjang, bab: bab.trim(), pertanyaan: pertanyaan.trim(), opsi, jawaban, pembahasan: pembahasan.trim() });
+      onSuccess();
+    } catch (e) { setErr("Gagal simpan: " + (e?.message || "coba lagi")); setBusy(false); }
+  }
+
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal" style={{ maxWidth: 480, maxHeight: "90vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+      <h3>Tambah Soal Latihan (PG)</h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div className="fg" style={{ flex: 1 }}><label className="lbl">Mapel</label><select className="inp" value={mapel} onChange={e => setMapel(e.target.value)}><option>IPA</option><option>Informatika</option></select></div>
+          <div className="fg" style={{ flex: 1 }}><label className="lbl">Kelas</label><select className="inp" value={jenjang} onChange={e => setJenjang(e.target.value)}><option value="VII">VII</option><option value="VIII">VIII</option></select></div>
+        </div>
+        <div className="fg"><label className="lbl">BAB</label><input className="inp" value={bab} onChange={e => setBab(e.target.value)} placeholder="Contoh: Bab 3 — Energi" /></div>
+        <div className="fg"><label className="lbl">Pertanyaan</label><textarea className="inp" rows={3} value={pertanyaan} onChange={e => setPertanyaan(e.target.value)} placeholder="Tulis pertanyaan..." /></div>
+        <div className="fg"><label className="lbl">Opsi (pilih yang benar)</label>
+          {opsi.map((o, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "center" }}>
+              <input type="radio" checked={jawaban === i} onChange={() => setJawaban(i)} />
+              <input className="inp" value={o} onChange={e => setOpsi(opsi.map((x, j) => j === i ? e.target.value : x))} placeholder={`Opsi ${String.fromCharCode(65 + i)}`} />
+            </div>
+          ))}
+        </div>
+        <div className="fg"><label className="lbl">Pembahasan (opsional)</label><textarea className="inp" rows={2} value={pembahasan} onChange={e => setPembahasan(e.target.value)} placeholder="Penjelasan jawaban (muncul ke siswa setelah menjawab)..." /></div>
+      </div>
+      {err && <div style={{ marginTop: 12, fontSize: 12, color: "var(--bad)", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 6, padding: "8px 10px" }}>{err}</div>}
+      <div className="modal-actions" style={{ marginTop: 16 }}>
+        <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+        <button className="btn btn-primary btn-sm" onClick={go} disabled={busy}>{busy ? "Menyimpan..." : "Tambah"}</button>
+      </div>
     </div>
   </div>;
 }

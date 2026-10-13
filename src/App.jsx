@@ -1579,7 +1579,74 @@ function useStore() {
     return toArchive.length;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings };
+  // ─── SOAL LATIHAN MANDIRI (bank soal khusus latihan, TERPISAH dari tugas & Bank Soal) ───
+  // Node: /latihanSoal/{id} = { mapel, jenjang, bab, type:"pg", pertanyaan, opsi[], jawaban, pembahasan, createdAt }
+  // Latihan = PG ONLY (konsisten dengan engine LatihanQuiz + grading instan).
+  const [latihanSoalList, setLatihanSoalList] = useState([]);
+  useEffect(() => {
+    const lsRef = ref(db, "latihanSoal");
+    const unsub = onValue(lsRef, snap => {
+      const data = snap.val() || {};
+      setLatihanSoalList(Object.entries(data).map(([id, v]) => ({ ...v, id })));
+    }, () => setLatihanSoalList([]));
+    return () => unsub();
+  }, []);
+  const getLatihanSoal = () => latihanSoalList;
+  const addLatihanSoal = async (s) => {
+    const newRef = push(ref(db, "latihanSoal"));
+    await set(newRef, { ...s, type: "pg", createdAt: Date.now() });
+  };
+  const addLatihanSoalBulk = async (list) => {
+    const updates = {};
+    list.forEach(s => { const r = push(ref(db, "latihanSoal")); updates[r.key] = { ...s, type: "pg", createdAt: Date.now() }; });
+    if (Object.keys(updates).length) await update(ref(db, "latihanSoal"), updates);
+    return Object.keys(updates).length;
+  };
+  const deleteLatihanSoal = async (id) => { await remove(ref(db, `latihanSoal/${id}`)); };
+  // Parse Excel pakai parser Bank Soal, ambil PG aja, assign mapel/jenjang/bab yang dipilih guru.
+  const importLatihanFromExcel = async (file, mapel, jenjang, bab) => {
+    const parsed = await importSoalFromExcel(file);
+    const pg = parsed.filter(s => s.type === "pg" && s.pertanyaan?.toString().trim() && Array.isArray(s.opsi) && s.opsi.length >= 2);
+    const list = pg.map(s => ({
+      mapel, jenjang, bab,
+      pertanyaan: s.pertanyaan.toString(),
+      opsi: s.opsi.map(String),
+      jawaban: typeof s.jawaban === "number" ? s.jawaban : 0,
+      pembahasan: s.pembahasan || "",
+    }));
+    const n = await addLatihanSoalBulk(list);
+    return { imported: n, skipped: parsed.length - pg.length };
+  };
+
+  // ─── PROGRESS LATIHAN (per siswa, anti-ulang) ───
+  // Node: /latihanProgress/{siswaId}/{babKey}/{soalId} = true  (babKey = "mapel||bab" tersanitasi)
+  const latihanBabKey = (mapel, bab) => `${mapel}||${bab}`.replace(/[.#$/[\]]/g, "-");
+  const [latihanProgress, setLatihanProgress] = useState({});
+  useEffect(() => {
+    if (!currentUser?.id) { setLatihanProgress({}); return; }
+    const lpRef = ref(db, `latihanProgress/${currentUser.id}`);
+    const unsub = onValue(lpRef, snap => setLatihanProgress(snap.val() || {}), () => setLatihanProgress({}));
+    return () => unsub();
+  }, [currentUser?.id]);
+  // Set berisi soalId yang SUDAH pernah dikerjakan siswa aktif untuk bab ini
+  const getLatihanSeen = (mapel, bab) => {
+    const node = latihanProgress[latihanBabKey(mapel, bab)] || {};
+    return new Set(Object.keys(node).filter(k => k !== "_updatedAt" && node[k]));
+  };
+  const markLatihanSeen = async (mapel, bab, soalIds = []) => {
+    if (!currentUser?.id || !soalIds.length) return;
+    const key = latihanBabKey(mapel, bab);
+    const updates = {};
+    soalIds.forEach(id => { if (id) updates[`latihanProgress/${currentUser.id}/${key}/${id}`] = true; });
+    updates[`latihanProgress/${currentUser.id}/${key}/_updatedAt`] = Date.now();
+    await update(ref(db), updates);
+  };
+  const resetLatihanProgress = async (mapel, bab) => {
+    if (!currentUser?.id) return;
+    await remove(ref(db, `latihanProgress/${currentUser.id}/${latihanBabKey(mapel, bab)}`));
+  };
+
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal };
 }
 
 // ─── LOGIN ───
