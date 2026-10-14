@@ -859,25 +859,29 @@ function LatihanSoalManager({ store }) {
   }
 
   return <div>
-    {/* Jenjang tab bar */}
-    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
-      {["VII", "VIII"].map(j => {
-        const n = poolCount(j);
-        const active = jenTab === j;
-        return <button key={j} onClick={() => setJenTab(j)} style={{ flex: 1, padding: "10px 0", fontSize: 13, fontWeight: active ? 700 : 500, color: active ? "var(--accent)" : "var(--ink-3)", borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>Kelas {j} <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)", background: active ? "var(--accent)" : "var(--surface-alt)", color: active ? "#fff" : "var(--ink-3)", borderRadius: 10, padding: "1px 7px" }}>{n}</span></button>;
-      })}
-    </div>
-
     <div style={{ padding: 16 }}>
       {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500, boxShadow: "var(--shadow)" }}>{toast}</div>}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <button className="btn btn-outline btn-sm" onClick={() => store.downloadTemplateSoal()} title="Download template Excel"><I n="download" s={13} /> Template</button>
-        <button className="btn btn-outline btn-sm" onClick={() => setShowUpload(true)}><I n="upload" s={13} /> Import Excel</button>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowManual(true)}><I n="plus" s={13} /> Tambah Manual</button>
+      {/* Toolbar: jenjang (pill, kiri) + aksi (kanan) — satu baris, ringkas */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div className="tabs">
+          {["VII", "VIII"].map(j => {
+            const active = jenTab === j;
+            return <button key={j} className={`tab ${active ? "active" : ""}`} onClick={() => setJenTab(j)} style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+              Kelas {j}
+              <span style={{ fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700, color: active ? "var(--accent-2)" : "var(--ink-4)" }}>{poolCount(j)}</span>
+            </button>;
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-soft btn-sm" onClick={() => store.downloadTemplateSoal()} title="Download template Excel"><I n="download" s={13} /> Template</button>
+          <button className="btn btn-soft btn-sm" onClick={() => setShowUpload(true)} title="Import dari Excel"><I n="upload" s={13} /> Import</button>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowManual(true)}><I n="plus" s={13} /> Tambah</button>
+        </div>
       </div>
-      <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 16, lineHeight: 1.55, padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8 }}>
-        Soal latihan = <b>Pilihan Ganda</b> (sheet "1. Pilihan Ganda" di template). Siswa melatihnya di menu <b>Latihan Mandiri</b>, digabung dengan soal dari tugas yang sudah lewat deadline.
+      {/* Hint tipis — tanpa box berat */}
+      <div style={{ fontSize: 11, color: "var(--ink-4)", marginBottom: 16, lineHeight: 1.5 }}>
+        Hanya Pilihan Ganda. Digabung dengan soal dari tugas yang sudah lewat deadline, muncul di <span style={{ color: "var(--ink-3)", fontWeight: 600 }}>Latihan Mandiri</span> siswa.
       </div>
 
       {showUpload && <LatihanUploadModal store={store} defaultJenjang={jenTab} onClose={() => setShowUpload(false)} onSuccess={(msg) => { setShowUpload(false); showT(msg); }} />}
