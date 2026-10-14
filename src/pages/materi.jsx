@@ -28,6 +28,34 @@ function dedupSoal(arr) {
   return out;
 }
 
+// Kolam soal Latihan Mandiri untuk 1 jenjang, SAMA PERSIS yang dilihat siswa:
+// gabungan soal SISTEM (PG dari tugas yang sudah lewat deadline) + soal UPLOAD guru (/latihanSoal),
+// dikelompokkan { mapel: { bab: soal[] } } dan sudah dedup. Tiap soal ditandai _sumber.
+function collectLatihanPool(store, jenjang) {
+  const map = {}; // "mapel||bab" -> soal[]
+  const now = Date.now();
+  store.getTugas().forEach(t => {
+    if (t.jenjang !== jenjang) return;
+    if (!t.materi?.trim() || !t.soal?.length || !t.deadline) return;
+    const dl = new Date(t.deadline).getTime();
+    if (isNaN(dl) || dl > now) return; // hanya tugas yang sudah lewat deadline
+    const pg = t.soal.filter(s => s.type === "pg" && s.pertanyaan?.trim() && s.opsi?.length >= 2 && s.jawaban !== undefined && s.jawaban !== null);
+    if (!pg.length) return;
+    const key = `${t.mapel || "Lainnya"}||${t.materi.trim()}`;
+    (map[key] = map[key] || []).push(...pg.map(s => ({ ...s, pembahasan: s.pembahasan || "", _sumber: "sistem" })));
+  });
+  store.getLatihanSoal().filter(s => s.jenjang === jenjang).forEach(s => {
+    const key = `${s.mapel || "Lainnya"}||${s.bab || "Umum"}`;
+    (map[key] = map[key] || []).push({ ...s, pembahasan: s.pembahasan || "", _sumber: "upload" });
+  });
+  const grouped = {};
+  Object.entries(map).forEach(([key, arr]) => {
+    const [mapel, bab] = key.split("||");
+    (grouped[mapel] = grouped[mapel] || {})[bab] = dedupSoal(arr);
+  });
+  return grouped;
+}
+
 // Helper: convert PDF pages to compressed JPEG base64 array via pdf.js (loaded from CDN on demand)
 let _pdfjsLoaded = false;
 async function loadPdfJs() {
@@ -474,39 +502,8 @@ export function LatihanMandiri({ user, store, navigate }) {
   const [quizBab, setQuizBab] = useState(null); // { bab, soal } or null
   const materiList = store.getMateriList().filter(m => m.jenjang === user.jenjang);
 
-  // ── Collect PG questions from completed tugas, grouped by mapel → bab ──
-  const allTugas = store.getTugas();
-  const now = Date.now();
-  const latihanMap = {}; // { "mapel||bab": [...pgSoal] }
-  allTugas.forEach(t => {
-    if (t.jenjang !== user.jenjang) return;
-    if (!t.materi?.trim()) return;
-    if (!t.soal?.length) return;
-    // Only include tugas past deadline (prevent answer leaking)
-    if (!t.deadline) return;
-    const dl = new Date(t.deadline).getTime();
-    if (isNaN(dl) || dl > now) return;
-    const pgSoal = t.soal.filter(s => s.type === "pg" && s.pertanyaan?.trim() && s.opsi?.length >= 2 && s.jawaban !== undefined && s.jawaban !== null);
-    if (!pgSoal.length) return;
-    const key = `${t.mapel || "Lainnya"}||${t.materi.trim()}`;
-    if (!latihanMap[key]) latihanMap[key] = [];
-    latihanMap[key].push(...pgSoal.map(s => ({ ...s, pembahasan: s.pembahasan || "" })));
-  });
-
-  // Merge soal latihan upload-an guru (node /latihanSoal), filter sesuai jenjang siswa.
-  store.getLatihanSoal().filter(s => s.jenjang === user.jenjang).forEach(s => {
-    const key = `${s.mapel || "Lainnya"}||${s.bab || "Umum"}`;
-    if (!latihanMap[key]) latihanMap[key] = [];
-    latihanMap[key].push({ ...s, pembahasan: s.pembahasan || "" });
-  });
-
-  // Group for display: { mapel: { bab: [...soal] } }
-  const latihanGrouped = {};
-  Object.entries(latihanMap).forEach(([key, soal]) => {
-    const [mapel, bab] = key.split("||");
-    if (!latihanGrouped[mapel]) latihanGrouped[mapel] = {};
-    latihanGrouped[mapel][bab] = soal;
-  });
+  // Kolam latihan (sistem + upload), identik dengan yang dipakai guru di LatihanSoalManager.
+  const latihanGrouped = collectLatihanPool(store, user.jenjang);
   const latihanMapelKeys = Object.keys(latihanGrouped).sort();
 
   // Early returns for sub-views (after all hooks)
@@ -842,26 +839,28 @@ function LatihanSoalManager({ store }) {
   const [toast, setToast] = useState("");
   const showT = (m) => { setToast(m); setTimeout(() => setToast(""), 2500); };
 
-  const list = store.getLatihanSoal().filter(s => s.jenjang === jenTab);
-  const grouped = {};
-  list.forEach(s => {
-    const m = s.mapel || "Lainnya", b = s.bab || "Umum";
-    grouped[m] = grouped[m] || {};
-    grouped[m][b] = grouped[m][b] || [];
-    grouped[m][b].push(s);
-  });
+  // Pool lengkap (sistem + upload) — SAMA PERSIS dengan yang dilihat siswa.
+  const grouped = collectLatihanPool(store, jenTab);
   const mapelKeys = Object.keys(grouped).sort();
+  const poolCount = (jenjang) => {
+    const g = collectLatihanPool(store, jenjang);
+    return Object.values(g).reduce((n, babs) => n + Object.values(babs).reduce((x, arr) => x + arr.length, 0), 0);
+  };
 
   async function doDelete() {
     try { await store.deleteLatihanSoal(confirmDel.id); setConfirmDel(null); showT("Soal dihapus."); }
     catch (e) { showT("Gagal hapus: " + (e?.message || "coba lagi")); }
+  }
+  async function downloadBab(mapel, bab, soal) {
+    try { await store.exportLatihanSoal(soal, { mapel, bab, jenjang: jenTab }); }
+    catch (e) { showT("Gagal download: " + (e?.message || "coba lagi")); }
   }
 
   return <div>
     {/* Jenjang tab bar */}
     <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
       {["VII", "VIII"].map(j => {
-        const n = store.getLatihanSoal().filter(s => s.jenjang === j).length;
+        const n = poolCount(j);
         const active = jenTab === j;
         return <button key={j} onClick={() => setJenTab(j)} style={{ flex: 1, padding: "10px 0", fontSize: 13, fontWeight: active ? 700 : 500, color: active ? "var(--accent)" : "var(--ink-3)", borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>Kelas {j} <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)", background: active ? "var(--accent)" : "var(--surface-alt)", color: active ? "#fff" : "var(--ink-3)", borderRadius: 10, padding: "1px 7px" }}>{n}</span></button>;
       })}
@@ -884,24 +883,38 @@ function LatihanSoalManager({ store }) {
       {confirmDel && <Confirm title="Hapus soal latihan?" desc={(confirmDel.pertanyaan || "").slice(0, 80)} onOk={doDelete} onCancel={() => setConfirmDel(null)} />}
 
       {mapelKeys.length === 0
-        ? <Card><div className="empty empty-box"><I n="edit" s={32} /><h3>Belum ada soal latihan Kelas {jenTab}</h3><p>Import Excel atau tambah manual. Soal ini khusus untuk Latihan Mandiri siswa.</p></div></Card>
+        ? <Card><div className="empty empty-box"><I n="edit" s={32} /><h3>Belum ada soal latihan Kelas {jenTab}</h3><p>Upload soal lewat tombol di atas, atau soal akan muncul otomatis dari tugas yang sudah lewat deadline.</p></div></Card>
         : mapelKeys.map(m => (
           <div key={m} style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-2)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 10 }}>{m}</div>
-            {Object.entries(grouped[m]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soal]) => (
-              <div key={bab} style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab} <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>({soal.length})</span></div>
-                {soal.map(s => (
-                  <div key={s.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", marginBottom: 6, boxShadow: "var(--shadow-sm)" }}>
+            {Object.entries(grouped[m]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soal]) => {
+              const nUpload = soal.filter(s => s._sumber === "upload").length;
+              const nSistem = soal.length - nUpload;
+              return (
+              <div key={bab} style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", flex: 1, minWidth: 0 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab} <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>({soal.length})</span></div>
+                  <span style={{ fontSize: 10, color: "var(--ink-3)", flexShrink: 0 }}>{nSistem} sistem · {nUpload} upload</span>
+                  <button className="btn btn-outline btn-sm" style={{ flexShrink: 0 }} onClick={() => downloadBab(m, bab, soal)} title="Download semua soal BAB ini ke Excel"><I n="download" s={12} /> Unduh</button>
+                </div>
+                {soal.map((s, si) => {
+                  const isUpload = s._sumber === "upload";
+                  return (
+                  <div key={s.id || si} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", marginBottom: 6, boxShadow: "var(--shadow-sm)" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>{s.pertanyaan}</div>
+                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em", padding: "1px 6px", borderRadius: 4, background: isUpload ? "var(--accent-tint)" : "var(--surface-alt)", color: isUpload ? "var(--accent-2)" : "var(--ink-3)" }}>{isUpload ? "Upload" : "Sistem"}</span>
+                      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4, marginTop: 4 }}>{s.pertanyaan}</div>
                       <div style={{ fontSize: 11, color: "var(--good)", marginTop: 3 }}>Jawaban: {String.fromCharCode(65 + (s.jawaban || 0))}. {(s.opsi || [])[s.jawaban || 0]}</div>
                     </div>
-                    <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }} onClick={() => setConfirmDel(s)}><I n="trash" s={12} /></button>
+                    {isUpload && s.id
+                      ? <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }} onClick={() => setConfirmDel(s)} title="Hapus soal upload"><I n="trash" s={12} /></button>
+                      : <span style={{ fontSize: 9, color: "var(--ink-4)", flexShrink: 0, alignSelf: "flex-start", textAlign: "right", width: 54, lineHeight: 1.3 }}>dari tugas</span>}
                   </div>
-                ))}
+                  );
+                })}
               </div>
-            ))}
+              );
+            })}
           </div>
         ))
       }

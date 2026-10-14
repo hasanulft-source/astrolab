@@ -721,3 +721,46 @@ export function backupFromStore(store) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// Export daftar soal latihan (per BAB) ke Excel — untuk review/evaluasi guru.
+export async function exportLatihanSoal(soalList, meta = {}) {
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Astrolab · Our Classroom";
+  const ws = wb.addWorksheet("Soal Latihan", { properties: { tabColor: { argb: "FF0D6B7A" } } });
+  const headerStyle = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF0D6B7A" } }, font: { name: "Arial", bold: true, color: { argb: "FFFFFFFF" }, size: 11 }, alignment: { horizontal: "center", vertical: "middle", wrapText: true } };
+
+  ws.columns = [
+    { width: 5 }, { width: 55 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 10 }, { width: 40 }, { width: 10 },
+  ];
+  ws.mergeCells("A1:I1");
+  ws.getCell("A1").value = `Soal Latihan Mandiri — ${meta.mapel || ""} · ${meta.bab || ""} · Kelas ${meta.jenjang || ""}`;
+  ws.getCell("A1").font = { name: "Arial", bold: true, size: 13, color: { argb: "FF0D6B7A" } };
+  ws.getCell("A1").alignment = { vertical: "middle" };
+  ws.getRow(1).height = 26;
+
+  const hdr = ws.getRow(2);
+  hdr.values = ["No", "Pertanyaan", "Pilihan A", "Pilihan B", "Pilihan C", "Pilihan D", "Jawaban", "Pembahasan", "Sumber"];
+  hdr.eachCell(c => Object.assign(c, headerStyle));
+  hdr.height = 24;
+
+  (soalList || []).forEach((s, i) => {
+    const o = s.opsi || [];
+    const jwb = typeof s.jawaban === "number" ? String.fromCharCode(65 + s.jawaban) : "";
+    const row = ws.addRow([i + 1, s.pertanyaan || "", o[0] || "", o[1] || "", o[2] || "", o[3] || "", jwb, s.pembahasan || "", s._sumber === "upload" ? "Upload" : "Sistem"]);
+    row.alignment = { vertical: "top", wrapText: true };
+    row.getCell(7).font = { name: "Arial", bold: true, color: { argb: "FF15803D" } };
+    row.getCell(7).alignment = { horizontal: "center", vertical: "middle" };
+  });
+  ws.views = [{ state: "frozen", ySplit: 2 }];
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const safe = (x) => (x || "").toString().replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Latihan_${safe(meta.jenjang)}_${safe(meta.mapel)}_${safe(meta.bab)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
