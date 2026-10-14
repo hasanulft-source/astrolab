@@ -837,7 +837,9 @@ function LatihanSoalManager({ store }) {
   const [showManual, setShowManual] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
   const [toast, setToast] = useState("");
+  const [expanded, setExpanded] = useState(() => new Set()); // babKey yang lagi dibuka
   const showT = (m) => { setToast(m); setTimeout(() => setToast(""), 2500); };
+  const toggle = (k) => setExpanded(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   // Pool lengkap (sistem + upload) — SAMA PERSIS dengan yang dilihat siswa.
   const grouped = collectLatihanPool(store, jenTab);
@@ -884,39 +886,62 @@ function LatihanSoalManager({ store }) {
 
       {mapelKeys.length === 0
         ? <Card><div className="empty empty-box"><I n="edit" s={32} /><h3>Belum ada soal latihan Kelas {jenTab}</h3><p>Upload soal lewat tombol di atas, atau soal akan muncul otomatis dari tugas yang sudah lewat deadline.</p></div></Card>
-        : mapelKeys.map(m => (
-          <div key={m} style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-2)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 10 }}>{m}</div>
-            {Object.entries(grouped[m]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soal]) => {
+        : mapelKeys.map(m => {
+          const babEntries = Object.entries(grouped[m]).sort((a, b) => a[0].localeCompare(b[0]));
+          return (
+          <div key={m} style={{ marginBottom: 22 }}>
+            {/* Header mapel */}
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
+              <span style={{ width: 26, height: 26, borderRadius: 8, background: "var(--accent)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n={m === "Informatika" ? "code" : "atom"} s={15} style={{ color: "#fff" }} /></span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)", letterSpacing: "-.01em" }}>{m}</span>
+              <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-4)" }}>{babEntries.length} bab</span>
+            </div>
+
+            {babEntries.map(([bab, soal], bi) => {
+              const key = `${m}||${bab}`;
+              const open = expanded.has(key);
               const nUpload = soal.filter(s => s._sumber === "upload").length;
               const nSistem = soal.length - nUpload;
               return (
-              <div key={bab} style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", flex: 1, minWidth: 0 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab} <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>({soal.length})</span></div>
-                  <span style={{ fontSize: 10, color: "var(--ink-3)", flexShrink: 0 }}>{nSistem} sistem · {nUpload} upload</span>
-                  <button className="btn btn-outline btn-sm" style={{ flexShrink: 0 }} onClick={() => downloadBab(m, bab, soal)} title="Download semua soal BAB ini ke Excel"><I n="download" s={12} /> Unduh</button>
-                </div>
-                {soal.map((s, si) => {
-                  const isUpload = s._sumber === "upload";
-                  return (
-                  <div key={s.id || si} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", marginBottom: 6, boxShadow: "var(--shadow-sm)" }}>
+                <div key={bab} style={{ background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", boxShadow: "var(--shadow-sm)", marginBottom: 10, overflow: "hidden" }}>
+                  {/* Header BAB — klik buat buka/tutup */}
+                  <div onClick={() => toggle(key)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", cursor: "pointer", background: open ? "var(--accent-tint)" : "transparent", transition: "background .15s" }}>
+                    <span style={{ width: 30, height: 30, borderRadius: 9, background: "linear-gradient(135deg, var(--accent), var(--accent-2))", color: "#fff", display: "grid", placeItems: "center", fontFamily: "var(--mono)", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{bi + 1}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em", padding: "1px 6px", borderRadius: 4, background: isUpload ? "var(--accent-tint)" : "var(--surface-alt)", color: isUpload ? "var(--accent-2)" : "var(--ink-3)" }}>{isUpload ? "Upload" : "Sistem"}</span>
-                      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4, marginTop: 4 }}>{s.pertanyaan}</div>
-                      <div style={{ fontSize: 11, color: "var(--good)", marginTop: 3 }}>Jawaban: {String.fromCharCode(65 + (s.jawaban || 0))}. {(s.opsi || [])[s.jawaban || 0]}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bab}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2, fontFamily: "var(--mono)" }}>{nSistem} sistem · {nUpload} upload</div>
                     </div>
-                    {isUpload && s.id
-                      ? <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }} onClick={() => setConfirmDel(s)} title="Hapus soal upload"><I n="trash" s={12} /></button>
-                      : <span style={{ fontSize: 9, color: "var(--ink-4)", flexShrink: 0, alignSelf: "flex-start", textAlign: "right", width: 54, lineHeight: 1.3 }}>dari tugas</span>}
+                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "var(--mono)", color: "var(--accent-2)", background: "var(--accent-soft)", borderRadius: 99, padding: "3px 11px", flexShrink: 0 }}>{soal.length}</span>
+                    <button onClick={(e) => { e.stopPropagation(); downloadBab(m, bab, soal); }} title="Unduh Excel BAB ini" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", cursor: "pointer", display: "grid", placeItems: "center", color: "var(--ink-2)", flexShrink: 0 }}><I n="download" s={14} /></button>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", color: open ? "var(--accent-2)" : "var(--ink-3)", flexShrink: 0 }}><I n={open ? "minimize" : "maximize"} s={15} /></span>
                   </div>
-                  );
-                })}
-              </div>
+
+                  {/* Isi soal — cuma dirender kalau dibuka; scroll di dalam, bukan di halaman */}
+                  {open && (
+                    <div style={{ borderTop: "1px solid var(--line-soft)", maxHeight: 440, overflowY: "auto" }}>
+                      {soal.map((s, si) => {
+                        const isUpload = s._sumber === "upload";
+                        return (
+                          <div key={s.id || si} style={{ display: "flex", gap: 10, padding: "11px 14px 11px 11px", borderBottom: "1px solid var(--line-soft)", borderLeft: `3px solid ${isUpload ? "var(--accent)" : "var(--line)"}` }}>
+                            <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-4)", flexShrink: 0, width: 22, textAlign: "right", paddingTop: 1 }}>{si + 1}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.45, color: "var(--ink)" }}>{s.pertanyaan}</div>
+                              <div style={{ fontSize: 11, color: "var(--good)", marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}><I n="check" s={11} /> {String.fromCharCode(65 + (s.jawaban || 0))}. {(s.opsi || [])[s.jawaban || 0]}</div>
+                            </div>
+                            {isUpload && s.id
+                              ? <button onClick={() => setConfirmDel(s)} title="Hapus soal upload" style={{ width: 28, height: 28, borderRadius: 7, border: "none", background: "var(--bad-bg)", color: "var(--bad)", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0, alignSelf: "flex-start" }}><I n="trash" s={12} /></button>
+                              : <span style={{ fontSize: 9, fontFamily: "var(--mono)", color: "var(--ink-4)", flexShrink: 0, alignSelf: "flex-start", paddingTop: 2 }}>tugas</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
-        ))
+          );
+        })
       }
     </div>
   </div>;
