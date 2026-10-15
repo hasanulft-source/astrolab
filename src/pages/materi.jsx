@@ -56,6 +56,48 @@ function collectLatihanPool(store, jenjang) {
   return grouped;
 }
 
+// Ekstrak ID video YouTube dari berbagai bentuk URL (watch, youtu.be, embed, shorts, live) atau ID polos.
+function parseYoutubeId(url) {
+  if (!url) return null;
+  const u = url.toString().trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(u)) return u;
+  const m = u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|[?&]v=)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+// Viewer materi tipe VIDEO — overlay full-screen dengan embed YouTube 16:9.
+function YoutubeMateriViewer({ materi, onBack }) {
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+  const id = materi.youtubeId;
+  const btn = { width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,.14)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "rgba(0,0,0,.65)" }}>
+        <button onClick={onBack} style={btn} title="Kembali"><I n="chevL" s={18} /></button>
+        <div style={{ color: "#fff", fontSize: 14, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{materi.judul}</div>
+        <button onClick={onBack} style={btn} title="Tutup"><I n="x" s={16} /></button>
+      </div>
+      <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 16 }}>
+        {id ? (
+          <div style={{ width: "100%", maxWidth: 1100, aspectRatio: "16 / 9" }}>
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1`}
+              title={materi.judul} style={{ width: "100%", height: "100%", border: 0, borderRadius: 12 }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        ) : (
+          <div style={{ color: "rgba(255,255,255,.7)", fontSize: 14 }}>Link video tidak valid.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Helper: convert PDF pages to compressed JPEG base64 array via pdf.js (loaded from CDN on demand)
 let _pdfjsLoaded = false;
 async function loadPdfJs() {
@@ -508,7 +550,9 @@ export function LatihanMandiri({ user, store, navigate }) {
 
   // Early returns for sub-views (after all hooks)
   if (quizBab) return <LatihanQuiz bab={quizBab.bab} mapel={quizBab.mapel} soalPool={quizBab.soal} store={store} onBack={() => setQuizBab(null)} />;
-  if (viewMateri) return <MateriViewer materi={viewMateri} store={store} onBack={() => setViewMateri(null)} />;
+  if (viewMateri) return viewMateri.tipe === "youtube"
+    ? <YoutubeMateriViewer materi={viewMateri} onBack={() => setViewMateri(null)} />
+    : <MateriViewer materi={viewMateri} store={store} onBack={() => setViewMateri(null)} />;
 
   // Group materi by mapel → bab (for Materi tab)
   const grouped = {};
@@ -549,17 +593,18 @@ export function LatihanMandiri({ user, store, navigate }) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => {
-                  const isHd = m.createdAt && Date.now() - m.createdAt < 7 * 86400000;
+                  const isVideo = m.tipe === "youtube";
+                  const isHd = !isVideo && m.createdAt && Date.now() - m.createdAt < 7 * 86400000;
                   return <button key={m.id} onClick={() => setViewMateri(m)}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", transition: "border-color .15s" }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent-2)"}
                     onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line-soft)"}>
-                    <div style={{ width: 40, height: 40, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                      <I n="book" s={18} style={{ color: "var(--accent-2)" }} />
+                    <div style={{ width: 40, height: 40, borderRadius: 8, background: isVideo ? "#fde8e8" : "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                      <I n={isVideo ? "play" : "book"} s={18} style={{ color: isVideo ? "#dc2626" : "var(--accent-2)" }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>{m.judul}{isHd && <span style={{ fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4 }}>HD</span>}</div>
-                      <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{m.pageCount} halaman</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{isVideo ? "Video YouTube" : `${m.pageCount} halaman`}</div>
                     </div>
                     <I n="chevR" s={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
                   </button>;
@@ -628,7 +673,9 @@ function MateriPdfManager({ store }) {
   const [jenTab, setJenTab] = useState("VII");
   const [showUpload, setShowUpload] = useState(false);
   const [form, setForm] = useState({ judul: "", mapel: "IPA", jenjang: "VII", bab: "" });
+  const [tipe, setTipe] = useState("pdf"); // "pdf" | "youtube"
   const [pdfFile, setPdfFile] = useState(null);
+  const [ytUrl, setYtUrl] = useState("");
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -644,12 +691,28 @@ function MateriPdfManager({ store }) {
   // Open upload with pre-selected jenjang from active tab
   function openUpload() {
     setForm(f => ({ ...f, jenjang: jenTab }));
+    setTipe("pdf"); setYtUrl(""); setPdfFile(null);
     setShowUpload(true);
   }
 
   async function handleUpload() {
     if (!form.judul.trim()) return alert("Judul wajib diisi");
     if (!form.bab.trim()) return alert("BAB wajib diisi");
+    // Materi VIDEO YouTube — tanpa konversi, langsung simpan.
+    if (tipe === "youtube") {
+      const vid = parseYoutubeId(ytUrl);
+      if (!vid) return alert("Link YouTube tidak valid.\nContoh: https://youtu.be/xxxxxxxxxxx");
+      try {
+        await store.addMateriYoutube({
+          judul: form.judul.trim(), mapel: form.mapel, jenjang: form.jenjang, bab: form.bab.trim(),
+          urutan: materiList.filter(m => m.mapel === form.mapel && m.jenjang === form.jenjang && m.bab === form.bab.trim()).length,
+        }, vid);
+        setShowUpload(false);
+        setForm({ judul: "", mapel: "IPA", jenjang: jenTab, bab: "" });
+        setYtUrl(""); setTipe("pdf");
+      } catch (e) { alert("Gagal simpan video: " + (e?.message || "coba lagi")); }
+      return;
+    }
     if (!pdfFile) return alert("Pilih file PDF");
     try {
       setConverting(true);
@@ -728,8 +791,12 @@ function MateriPdfManager({ store }) {
       {/* Upload modal */}
       {showUpload && <div className="modal-overlay" onClick={() => !converting && setShowUpload(false)}>
         <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-          <h3>Upload Materi PDF</h3>
+          <h3>Tambah Materi</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+            <div className="tabs" style={{ width: "100%" }}>
+              <button className={`tab ${tipe === "pdf" ? "active" : ""}`} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => setTipe("pdf")}><I n="fileText" s={13} /> PDF</button>
+              <button className={`tab ${tipe === "youtube" ? "active" : ""}`} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => setTipe("youtube")}><I n="play" s={13} /> Video YouTube</button>
+            </div>
             <input className="inp" placeholder="Judul materi" value={form.judul} onChange={e => set("judul", e.target.value)} />
             <div style={{ display: "flex", gap: 8 }}>
               <select className="inp" value={form.mapel} onChange={e => set("mapel", e.target.value)} style={{ flex: 1 }}>
@@ -742,19 +809,27 @@ function MateriPdfManager({ store }) {
               </select>
             </div>
             <input className="inp" placeholder="BAB (contoh: Bab 1 — Sistem Komputer)" value={form.bab} onChange={e => set("bab", e.target.value)} />
-            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: "2px dashed var(--line)", borderRadius: 8, cursor: "pointer", background: pdfFile ? "var(--accent-tint)" : "var(--surface)" }}>
-              <I n="upload" s={16} style={{ color: "var(--accent-2)" }} />
-              <span style={{ fontSize: 13, color: pdfFile ? "var(--accent-2)" : "var(--ink-2)" }}>
-                {pdfFile ? `${pdfFile.name} (${(pdfFile.size / 1024 / 1024).toFixed(1)} MB)` : "Pilih file PDF"}
-              </span>
-              <input type="file" accept=".pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) setPdfFile(e.target.files[0]); }} />
-            </label>
+            {tipe === "pdf" ? (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: "2px dashed var(--line)", borderRadius: 8, cursor: "pointer", background: pdfFile ? "var(--accent-tint)" : "var(--surface)" }}>
+                <I n="upload" s={16} style={{ color: "var(--accent-2)" }} />
+                <span style={{ fontSize: 13, color: pdfFile ? "var(--accent-2)" : "var(--ink-2)" }}>
+                  {pdfFile ? `${pdfFile.name} (${(pdfFile.size / 1024 / 1024).toFixed(1)} MB)` : "Pilih file PDF"}
+                </span>
+                <input type="file" accept=".pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) setPdfFile(e.target.files[0]); }} />
+              </label>
+            ) : (
+              <div>
+                <input className="inp" placeholder="Tempel link YouTube di sini" value={ytUrl} onChange={e => setYtUrl(e.target.value)} />
+                <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 5 }}>Contoh: https://youtu.be/xxxxxxxxxxx atau youtube.com/watch?v=xxxxxxxxxxx</div>
+                {parseYoutubeId(ytUrl) && <div style={{ marginTop: 10, borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)", aspectRatio: "16 / 9" }}><iframe src={`https://www.youtube-nocookie.com/embed/${parseYoutubeId(ytUrl)}?rel=0`} title="Preview" style={{ width: "100%", height: "100%", border: 0 }} allowFullScreen /></div>}
+              </div>
+            )}
             {converting && <div style={{ fontSize: 12, color: "var(--accent-2)", display: "flex", alignItems: "center", gap: 8 }}><div className="spinner" style={{ width: 16, height: 16 }} /> {progress}</div>}
           </div>
           <div className="modal-actions" style={{ marginTop: 16 }}>
             <button className="btn btn-outline btn-sm" onClick={() => setShowUpload(false)} disabled={converting}>Batal</button>
-            <button className="btn btn-primary btn-sm" onClick={handleUpload} disabled={converting || !pdfFile}>
-              {converting ? "Mengkonversi..." : "Upload & Simpan"}
+            <button className="btn btn-primary btn-sm" onClick={handleUpload} disabled={converting || (tipe === "pdf" ? !pdfFile : !ytUrl.trim())}>
+              {converting ? "Mengkonversi..." : tipe === "youtube" ? "Simpan Video" : "Upload & Simpan"}
             </button>
           </div>
         </div>
@@ -765,7 +840,7 @@ function MateriPdfManager({ store }) {
 
       {/* Materi list — grouped by mapel → bab within active jenjang tab */}
       {filtered.length === 0 ? (
-        <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi Kelas {jenTab}</h3><p>Upload PDF untuk materi latihan mandiri siswa.</p><button className="btn btn-primary" style={{ marginTop: 14 }} onClick={openUpload}><I n="upload" s={14} /> Upload PDF</button></div></Card>
+        <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi Kelas {jenTab}</h3><p>Upload PDF atau tambahkan link video YouTube untuk materi siswa.</p><button className="btn btn-primary" style={{ marginTop: 14 }} onClick={openUpload}><I n="plus" s={14} /> Tambah Materi</button></div></Card>
       ) : (
         <>
           {mapelKeys.map(mapel => (
@@ -778,18 +853,25 @@ function MateriPdfManager({ store }) {
               {Object.entries(grouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, items]) => (
                 <div key={bab} style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}><I n="layers" s={14} style={{ color: "var(--accent-2)", marginRight: 6 }} />{bab}</div>
-                  {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => (
+                  {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => {
+                    const isVideo = m.tipe === "youtube";
+                    return (
                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", marginBottom: 6 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                        <I n="book" s={16} style={{ color: "var(--accent-2)" }} />
+                      <div style={{ width: 36, height: 36, borderRadius: 8, background: isVideo ? "#fde8e8" : "var(--accent-tint)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                        <I n={isVideo ? "play" : "book"} s={16} style={{ color: isVideo ? "#dc2626" : "var(--accent-2)" }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{m.judul}</div>
-                        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>{m.pageCount} halaman · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{m.createdAt && Date.now() - m.createdAt < 7*86400000 ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4, letterSpacing: ".03em" }}>HD</span> : <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, color: "var(--ink-3)", background: "var(--surface-alt)", padding: "1px 5px", borderRadius: 4 }}>Arsip</span>}</div>
+                        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>
+                          {isVideo
+                            ? <>Video YouTube · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</>
+                            : <>{m.pageCount} halaman · {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}{m.createdAt && Date.now() - m.createdAt < 7*86400000 ? <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4, letterSpacing: ".03em" }}>HD</span> : <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, color: "var(--ink-3)", background: "var(--surface-alt)", padding: "1px 5px", borderRadius: 4 }}>Arsip</span>}</>}
+                        </div>
                       </div>
                       <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))}
             </div>
