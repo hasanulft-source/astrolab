@@ -321,6 +321,43 @@ function AksesMessageCard({ m, user, store, navigate }) {
   return null;
 }
 
+// ─── Kartu kehadiran Mission Mode (gaya mirip kartu akses, tanpa tombol & tanpa jumlah misi) ───
+function MissionAttendanceCard({ m }) {
+  const meta = m.meta || {};
+  return (
+    <div style={{
+      background: "var(--surface)", border: "1.5px solid #c7d2fe",
+      borderRadius: 14, padding: "12px 14px", maxWidth: 300, width: "100%"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "#eef2ff" }}>
+          <I n="mapPin" s={15} style={{ color: "#4f46e5" }} />
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "#4338ca" }}>
+          Konfirmasi Kehadiran
+        </div>
+      </div>
+      {(meta.nama || meta.kelas || meta.tgl || meta.jam) ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
+          {meta.nama && <Row label="Nama" val={meta.nama} />}
+          {meta.kelas && <Row label="Kelas" val={meta.kelas} />}
+          {meta.tgl && <Row label="Tanggal" val={meta.tgl} />}
+          {meta.jam && <Row label="Waktu" val={meta.jam} />}
+        </div>
+      ) : (
+        <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5, marginBottom: 6 }}>{m.text}</div>
+      )}
+      <div className="msg-time">{fmtTime(m.ts)}</div>
+    </div>
+  );
+}
+function Row({ label, val }) {
+  return <div style={{ display: "flex", gap: 8, fontSize: 12.5, lineHeight: 1.45 }}>
+    <span style={{ color: "var(--ink-3)", minWidth: 58, flexShrink: 0 }}>{label}</span>
+    <span style={{ color: "var(--ink)", fontWeight: 600 }}>{val}</span>
+  </div>;
+}
+
 function ChatThread({ user, contact, store, onBack, navigate }) {
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -452,6 +489,16 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
               <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", width: "100%" }}>
                 {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
                 <AksesMessageCard m={m} user={user} store={store} navigate={navigate} />
+              </div>
+            );
+          }
+
+          // Kartu kehadiran Mission Mode
+          if (m.type === "mission-attendance") {
+            return (
+              <div key={m.key || i} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", width: "100%" }}>
+                {showName && <div className="msg-name" style={{ marginLeft: 4 }}>{sender?.namaDisplay || getFirstName(sender?.nama || "")}</div>}
+                <MissionAttendanceCard m={m} />
               </div>
             );
           }
@@ -626,6 +673,7 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
     const previewText = last
       ? (last.type === "akses-request" ? "Permintaan akses tugas"
         : last.type === "akses-response" ? (last.meta?.status === "approved" ? "Akses diizinkan" : "Akses ditolak")
+        : last.type === "mission-attendance" ? "📍 Konfirmasi kehadiran"
         : last.type === "image" ? "📷 Foto"
         : last.text)
       : null;

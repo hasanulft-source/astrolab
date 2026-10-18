@@ -102,7 +102,7 @@ function YoutubeMateriViewer({ materi, onBack, store, user }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "rgba(0,0,0,.65)" }}>
         <button onClick={onBack} style={btn} title="Kembali"><I n="chevL" s={18} /></button>
         <div style={{ color: "#fff", fontSize: 14, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{materi.judul}</div>
-        <MateriDoneControl store={store} user={user} materiId={materi.id} dark />
+        <MateriDoneControl store={store} user={user} materiId={materi.id} dark watchSeconds={materi.watchSeconds} autoDone={materi.autoDone} />
         <button onClick={onBack} style={btn} title="Tutup"><I n="x" s={16} /></button>
       </div>
       <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 16 }}>
@@ -143,22 +143,62 @@ function materiKind(m) {
 
 // Kontrol penyelesaian materi (misi "nonton"). Hybrid: tombol "Selesai nonton" aktif
 // setelah dwell minimal (self-declare, jujur bukan verified); YouTube juga auto-selesai saat video ending.
-const MATERI_DONE_DWELL = 30; // detik
-function MateriDoneControl({ store, user, materiId, dark = false }) {
-  const [left, setLeft] = useState(MATERI_DONE_DWELL);
+const MATERI_DONE_DWELL = 30; // detik — default kalau guru tidak set durasi
+function MateriDoneControl({ store, user, materiId, dark = false, watchSeconds, autoDone = false }) {
+  const dwell = Math.max(1, Math.round(Number(watchSeconds) > 0 ? Number(watchSeconds) : MATERI_DONE_DWELL));
+  const [left, setLeft] = useState(dwell);
   const isSiswa = store && user && user.role === "siswa";
   const done = isSiswa ? store.isMateriDone(materiId) : false;
+  // reset timer kalau materi berganti / durasi berubah
+  useEffect(() => { setLeft(dwell); }, [materiId, dwell]);
   useEffect(() => {
     if (!isSiswa || done) return;
     const t = setInterval(() => setLeft(x => (x <= 1 ? 0 : x - 1)), 1000);
     return () => clearInterval(t);
-  }, [materiId, done]);
+  }, [materiId, done, isSiswa]);
+  // Auto-selesai: saat timer habis & guru mengaktifkan autoDone, tandai selesai tanpa klik.
+  useEffect(() => {
+    if (isSiswa && autoDone && !done && left <= 0) { try { store.markMateriDone(materiId); } catch {} }
+  }, [left, autoDone, done, isSiswa, materiId]);
   if (!isSiswa) return null;
   if (done) return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: dark ? "#86efac" : "var(--good)", padding: "6px 12px", borderRadius: 99, background: dark ? "rgba(134,239,172,.15)" : "var(--good-bg)", flexShrink: 0 }}><I n="check" s={13} /> Selesai</span>;
   const ready = left <= 0;
+  // Mode auto: siswa tidak perlu klik — cukup tampilkan hitung mundur, lalu otomatis "Selesai".
+  if (autoDone) return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, padding: "7px 13px", borderRadius: 99, flexShrink: 0, background: dark ? "rgba(255,255,255,.18)" : "var(--surface-alt)", color: dark ? "#fff" : "var(--ink-3)" }}><I n="clock" s={13} /> {ready ? "Menyimpan..." : `Nonton ${left}s lagi`}</span>;
   return <button onClick={() => ready && store.markMateriDone(materiId)} disabled={!ready} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, padding: "7px 13px", borderRadius: 99, border: "none", cursor: ready ? "pointer" : "default", flexShrink: 0, background: ready ? "var(--accent)" : (dark ? "rgba(255,255,255,.18)" : "var(--surface-alt)"), color: ready ? "#fff" : (dark ? "#fff" : "var(--ink-3)") }}>
     <I n="check" s={13} /> {ready ? "Selesai nonton" : `Tunggu ${left}s`}
   </button>;
+}
+
+// Modal guru: atur durasi "selesai nonton" + auto-selesai untuk video yang sudah diupload.
+function WatchSettingsModal({ materi, store, onClose }) {
+  const [sec, setSec] = useState(Number(materi.watchSeconds) > 0 ? Number(materi.watchSeconds) : 30);
+  const [auto, setAuto] = useState(!!materi.autoDone);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    try { await store.updateMateri(materi.id, { watchSeconds: Math.max(1, Math.round(Number(sec) || 30)), autoDone: !!auto }); onClose(); }
+    catch (e) { alert("Gagal menyimpan: " + (e?.message || "coba lagi")); setSaving(false); }
+  }
+  return <div className="modal-overlay" style={{ zIndex: 9000 }} onClick={onClose}>
+    <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+      <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>Syarat Selesai Nonton</div>
+      <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{materi.judul}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 13, color: "var(--ink-2)" }}>Durasi minimal</span>
+        <input className="inp" type="number" min={1} value={sec} onChange={e => setSec(e.target.value)} style={{ width: 84, textAlign: "center" }} />
+        <span style={{ fontSize: 13, color: "var(--ink-3)" }}>detik</span>
+      </div>
+      <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", marginBottom: 18 }}>
+        <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: "#4f46e5", flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.45 }}>Otomatis selesai saat durasi tercapai — siswa tidak perlu klik tombol.</span>
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn btn-soft btn-full" onClick={onClose}>Batal</button>
+        <button className="btn btn-primary btn-full" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</button>
+      </div>
+    </div>
+  </div>;
 }
 
 // Viewer materi tipe WEB — overlay full-screen, iframe mengisi penuh (untuk animasi HTML interaktif).
@@ -174,7 +214,7 @@ function WebMateriViewer({ materi, onBack, store, user }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "rgba(0,0,0,.65)", flexShrink: 0 }}>
         <button onClick={onBack} style={btn} title="Kembali"><I n="chevL" s={18} /></button>
         <div style={{ color: "#fff", fontSize: 14, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{materi.judul}</div>
-        <MateriDoneControl store={store} user={user} materiId={materi.id} dark />
+        <MateriDoneControl store={store} user={user} materiId={materi.id} dark watchSeconds={materi.watchSeconds} autoDone={materi.autoDone} />
         <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: "none" }} title="Buka di tab baru"><I n="maximize" s={15} /></a>
         <button onClick={onBack} style={btn} title="Tutup"><I n="x" s={16} /></button>
       </div>
@@ -461,7 +501,7 @@ function MateriViewer({ materi, store, onBack, user }) {
       <div className="topbar-title" style={{ fontSize: 13 }}>{materi.judul}</div>
       <button onClick={handleDownload} disabled={!!dlProgress} style={{ background: "none", border: "none", color: "var(--accent-2)", cursor: dlProgress ? "default" : "pointer", padding: 4, opacity: dlProgress ? .5 : 1 }} title="Download PDF"><I n="download" s={16} /></button>
       <button onClick={() => setFs(true)} style={{ background: "none", border: "none", color: "var(--ink-2)", cursor: "pointer", padding: 4 }}><I n="maximize" s={16} /></button>
-      <MateriDoneControl store={store} user={user} materiId={materi.id} />
+      <MateriDoneControl store={store} user={user} materiId={materi.id} watchSeconds={materi.watchSeconds} autoDone={materi.autoDone} />
       <div style={{ width: 30, textAlign: "right", fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{idx + 1}/{total}</div>
     </div>
     {dlProgress && <div style={{ padding: "6px 16px", fontSize: 12, color: "var(--accent-2)", background: "var(--accent-tint)", display: "flex", alignItems: "center", gap: 8 }}><div className="spinner" style={{ width: 14, height: 14 }} /> {dlProgress}</div>}
@@ -772,9 +812,12 @@ function MateriPdfManager({ store }) {
   const [pdfFile, setPdfFile] = useState(null);
   const [ytUrl, setYtUrl] = useState("");
   const [webUrl, setWebUrl] = useState("");
+  const [watchSec, setWatchSec] = useState(30);   // durasi minimal nonton (misi "nonton")
+  const [autoDone, setAutoDone] = useState(false); // selesai otomatis saat durasi tercapai
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [settingsMateri, setSettingsMateri] = useState(null); // youtube materi yg sedang diatur durasinya
   const materiList = store.getMateriList();
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -787,7 +830,7 @@ function MateriPdfManager({ store }) {
   // Open upload with pre-selected jenjang from active tab
   function openUpload() {
     setForm(f => ({ ...f, jenjang: jenTab }));
-    setTipe("pdf"); setYtUrl(""); setWebUrl(""); setPdfFile(null);
+    setTipe("pdf"); setYtUrl(""); setWebUrl(""); setPdfFile(null); setWatchSec(30); setAutoDone(false);
     setShowUpload(true);
   }
 
@@ -802,6 +845,7 @@ function MateriPdfManager({ store }) {
         await store.addMateriYoutube({
           judul: form.judul.trim(), mapel: form.mapel, jenjang: form.jenjang, bab: form.bab.trim(),
           urutan: materiList.filter(m => m.mapel === form.mapel && m.jenjang === form.jenjang && m.bab === form.bab.trim()).length,
+          watchSeconds: Math.max(1, Math.round(Number(watchSec) || 30)), autoDone: !!autoDone,
         }, vid);
         setShowUpload(false);
         setForm({ judul: "", mapel: "IPA", jenjang: jenTab, bab: "" });
@@ -934,6 +978,19 @@ function MateriPdfManager({ store }) {
                 <input className="inp" placeholder="Tempel link YouTube di sini" value={ytUrl} onChange={e => setYtUrl(e.target.value)} />
                 <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 5 }}>Contoh: https://youtu.be/xxxxxxxxxxx atau youtube.com/watch?v=xxxxxxxxxxx</div>
                 {parseYoutubeId(ytUrl) && <div style={{ marginTop: 10, borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)", aspectRatio: "16 / 9" }}><iframe src={`https://www.youtube-nocookie.com/embed/${parseYoutubeId(ytUrl)}?rel=0`} title="Preview" style={{ width: "100%", height: "100%", border: 0 }} allowFullScreen /></div>}
+                {/* Syarat "nonton selesai" — dipakai saat video jadi misi Mission Mode */}
+                <div style={{ marginTop: 12, padding: "11px 13px", background: "var(--surface-alt)", borderRadius: 10, border: "1px solid var(--line-soft)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><I n="clock" s={13} /> Syarat selesai nonton</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Durasi minimal</span>
+                    <input className="inp" type="number" min={1} value={watchSec} onChange={e => setWatchSec(e.target.value)} style={{ width: 80, textAlign: "center" }} />
+                    <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>detik</span>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer" }}>
+                    <input type="checkbox" checked={autoDone} onChange={e => setAutoDone(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: "#4f46e5", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.45 }}>Tandai <b>otomatis selesai</b> saat durasi tercapai — siswa tidak perlu klik tombol.</span>
+                  </label>
+                </div>
               </div>
             ) : (
               <div>
@@ -955,6 +1012,9 @@ function MateriPdfManager({ store }) {
 
       {/* Delete confirm */}
       {confirmDelete && <Confirm title="Hapus Materi" desc={`Hapus "${confirmDelete.judul}"? Siswa tidak bisa mengakses materi ini lagi.`} onOk={() => doDelete(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />}
+
+      {/* Atur durasi nonton video (existing) */}
+      {settingsMateri && <WatchSettingsModal materi={settingsMateri} store={store} onClose={() => setSettingsMateri(null)} />}
 
       {/* Materi list — grouped by mapel → bab within active jenjang tab */}
       {filtered.length === 0 ? (
@@ -988,6 +1048,7 @@ function MateriPdfManager({ store }) {
                             : <>{k.label} · {tgl}</>}
                         </div>
                       </div>
+                      {(m.tipe === "youtube") && <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px", color: "#4f46e5" }} onClick={() => setSettingsMateri(m)} title="Atur durasi nonton"><I n="clock" s={14} /></button>}
                       <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
                     </div>
                     );

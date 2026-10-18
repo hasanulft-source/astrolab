@@ -483,6 +483,7 @@ function useStore() {
     const newRef = push(ref(db, `messages/${tid}`));
     const msg = { fromId, toId, text: text.trim(), ts: Date.now() };
     if (opts.type) msg.type = opts.type;
+    if (opts.meta) msg.meta = opts.meta;
     if (opts.imageData) msg.imageData = opts.imageData;
     await set(newRef, msg);
     // Push notification to recipient (fire-and-forget)
@@ -1984,6 +1985,7 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
 
 // ─── DASHBOARD SISWA ───
 function DashboardSiswa({ user, store, navigate }) {
+  const [showMission, setShowMission] = useState(false);
   const stats = store.getStats(user.id);
   // Filter sama seperti DaftarTugas: tugas personal (assignedTo array) hanya untuk siswa yang di-assign.
   // Tanpa ini, "Latihan Khusus" milik siswa lain bocor ke Beranda semua orang — dan yang lebih parah,
@@ -2062,17 +2064,18 @@ function DashboardSiswa({ user, store, navigate }) {
         <span style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-tint)", padding: "4px 10px", borderRadius: 99, fontWeight: 600, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{store.getActivePeriode()}</span>
       </div>
 
-      {/* Banner Mission Mode — muncul kalau aktif untuk kelas siswa */}
+      {/* Banner Mission Mode — INDIGO + rocket, sengaja beda dari kartu status (teal) di bawah */}
       {store.isMissionActive(user.jenjang) && (
-        <button onClick={() => navigate("mission")} style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", marginBottom: 14, border: "none", borderRadius: "var(--r)", cursor: "pointer", background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)", color: "#fff", boxShadow: "var(--shadow)" }}>
-          <I n="target" s={22} />
+        <button onClick={() => setShowMission(true)} style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", marginBottom: 14, border: `1px solid ${MISSION_THEME.ring}`, borderRadius: "var(--r)", cursor: "pointer", background: MISSION_THEME.grad, color: "#fff", boxShadow: "0 6px 18px rgba(79,70,229,.28)" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="rocket" s={22} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".03em" }}>MISSION MODE AKTIF</div>
-            <div style={{ fontSize: 11, opacity: .9 }}>Ketuk untuk lihat misi hari ini</div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: ".03em" }}>MISSION MODE AKTIF</div>
+            <div style={{ fontSize: 11.5, opacity: .92 }}>Ketuk untuk buka misi hari ini</div>
           </div>
-          <I n="chevR" s={18} />
+          <span style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.2)", padding: "5px 11px", borderRadius: 99, flexShrink: 0 }}>Buka</span>
         </button>
       )}
+      {showMission && <MissionSiswaModal user={user} store={store} navigate={navigate} onClose={() => setShowMission(false)} />}
 
       {/* Status Card: Ranking + Poin + Level + Streak — satu card untuk semua */}
       <div className="ds-status">
@@ -4867,7 +4870,7 @@ function DashboardGuru({ store, navigate }) {
           <button className="btn btn-outline btn-sm" onClick={() => setShowLaporan(true)}><I n="chartBar" s={13} /> Laporan</button>
           <button className="btn btn-outline btn-sm" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={13} /> Export Nilai</button>
           <button className="btn btn-outline btn-sm" onClick={() => navigate("materi-manager")}><I n="fileText" s={13} /> Materi</button>
-          <button className="btn btn-outline btn-sm" onClick={() => navigate("mission-guru")} style={store.isMissionActive(jenjang) ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}><I n="target" s={13} /> Mission{store.isMissionActive(jenjang) ? " ●" : ""}</button>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate("mission-guru")} style={store.isMissionActive(jenjang) ? { borderColor: MISSION_THEME.ring, color: MISSION_THEME.solid, background: MISSION_THEME.tint } : undefined}><I n="rocket" s={13} /> Mission{store.isMissionActive(jenjang) ? " ●" : ""}</button>
           <button className="btn btn-primary" onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Tugas baru</button>
         </div>
       </div>
@@ -9215,6 +9218,17 @@ class ErrorBoundary extends Component {
 }
 
 // ═══════════════ MISSION MODE ═══════════════
+// Palet khusus Mission Mode — INDIGO, sengaja kontras dgn brand teal (mode biasa)
+// supaya siswa langsung sadar "ini mode berbeda".
+const MISSION_THEME = {
+  grad: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+  gradSoft: "linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)",
+  solid: "#4f46e5",
+  deep: "#4338ca",
+  tint: "#eef2ff",
+  ring: "#c7d2fe",
+  onTint: "#4338ca",
+};
 function missionMisiLabel(misi, store) {
   if (misi.tipe === "tugas") { const t = store.getTugas().find(x => x.id === misi.refId); return t ? t.judul : "(tugas terhapus)"; }
   const m = store.getMateriList().find(x => x.id === misi.refId); return m ? m.judul : "(materi terhapus)";
@@ -9312,8 +9326,8 @@ function MissionGuru({ store, navigate }) {
         <button className={`btn btn-sm ${active ? "btn-danger" : "btn-primary"}`} onClick={toggleActive}><I n={active ? "x" : "zap"} s={13} /> {active ? "Matikan" : "Aktifkan"}</button>
       </div>
 
-      <div style={{ padding: "12px 14px", borderRadius: "var(--r)", marginBottom: 14, background: active ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "var(--surface-alt)", color: active ? "#fff" : "var(--ink-3)", display: "flex", alignItems: "center", gap: 10 }}>
-        <I n="target" s={20} />
+      <div style={{ padding: "12px 14px", borderRadius: "var(--r)", marginBottom: 14, background: active ? MISSION_THEME.grad : "var(--surface-alt)", color: active ? "#fff" : "var(--ink-3)", display: "flex", alignItems: "center", gap: 10 }}>
+        <I n="rocket" s={20} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 800 }}>{active ? `AKTIF — Kelas ${jenjang}` : `Nonaktif — Kelas ${jenjang}`}</div>
           <div style={{ fontSize: 11, opacity: .85 }}>{active ? "Siswa kelas ini melihat Mission Mode saat login." : "Aktifkan untuk mulai sesi PJJ."}</div>
@@ -9367,7 +9381,7 @@ function MissionGuru({ store, navigate }) {
               {siswa.map(s => {
                 const selesai = wajibMisi.filter(m => store.isMisiSelesai(m, s.id)).length;
                 const hadir = !!att[s.id];
-                const lengkap = wajibMisi.length > 0 && selesai === wajibMisi.length;
+                const lengkap = hadir && selesai === wajibMisi.length;
                 return <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.nama}</div>
@@ -9463,22 +9477,118 @@ function MissionSiswa({ user, store, navigate }) {
   </div>;
 }
 
-// ── Popup saat login (sekali per sesi) ──
-let _missionPopupShownThisSession = false;
-function MissionPopup({ mission, onClose, onOpen }) {
-  const misi = mission.misi || [];
-  const wajib = misi.filter(m => m.wajib).length;
+// ── Panel siswa Mission Mode sebagai MODAL (dibuka dari banner dashboard) ──
+function MissionSiswaModal({ user, store, navigate, onClose }) {
+  const mission = store.getMission(user.jenjang);
+  const [sending, setSending] = useState(false);
+  const [hadirErr, setHadirErr] = useState("");
+  if (!mission || !mission.active) return null;
+
+  const misi = [...(mission.misi || [])].sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
+  const wajib = misi.filter(m => m.wajib);
+  const wajibSelesai = wajib.filter(m => store.isMisiSelesai(m, user.id)).length;
+  const sessionId = mission.sessionId;
+  const sudahHadir = store.hasAttended(user.jenjang, sessionId, user.id);
+
+  // Kehadiran = misi wajib pertama. Total = kehadiran + semua misi wajib lain.
+  const totalWajib = wajib.length + 1;
+  const doneWajib = (sudahHadir ? 1 : 0) + wajibSelesai;
+  const allDone = sudahHadir && wajibSelesai === wajib.length;
+  const pct = Math.round(doneWajib / totalWajib * 100);
+
+  function openMisi(m) {
+    onClose();
+    if (m.tipe === "tugas") navigate("tugas-detail", { tugasId: m.refId });
+    else navigate("latihan-mandiri");
+  }
+  async function handleHadir() {
+    if (sending || sudahHadir) return;
+    setSending(true); setHadirErr("");
+    try {
+      const res = await store.markAttendance(user.jenjang, sessionId, { nama: user.nama, kelas: user.kelas || `Kelas ${user.jenjang}` });
+      if (!res.already) {
+        const now = new Date();
+        const tgl = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+        const jam = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+        const guruId = store.fbGuru?.id || "fata";
+        const text = `📍 Konfirmasi kehadiran Mission Mode — ${user.nama} (${user.kelas || `Kelas ${user.jenjang}`}), ${tgl} ${jam}.`;
+        try { await withTimeout(store.sendMessage(user.id, guruId, text, { type: "mission-attendance", meta: { nama: user.nama, kelas: user.kelas || `Kelas ${user.jenjang}`, tgl, jam } })); }
+        catch { setHadirErr("Kehadiran tercatat, tapi notifikasi chat ke guru gagal terkirim."); }
+      }
+    } catch (e) {
+      setHadirErr("Gagal mengirim kehadiran: " + (e?.message || "coba lagi"));
+    } finally { setSending(false); }
+  }
+
+  const closeBtn = { width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 };
+
   return <div className="modal-overlay" style={{ zIndex: 9998 }} onClick={onClose}>
-    <div className="modal" style={{ maxWidth: 380, overflow: "hidden", padding: 0 }} onClick={e => e.stopPropagation()}>
-      <div style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-2))", color: "#fff", padding: "20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><I n="target" s={20} /><span style={{ fontSize: 14, fontWeight: 800, letterSpacing: ".04em" }}>MISSION MODE AKTIF</span></div>
-        <div style={{ fontSize: 12.5, opacity: .92, lineHeight: 1.5 }}>Selesaikan seluruh misi wajib hari ini untuk memenuhi persyaratan pembelajaran.</div>
+    <div className="modal" style={{ maxWidth: 400, width: "100%", overflow: "hidden", padding: 0, maxHeight: "88vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+      {/* Header indigo + rocket */}
+      <div style={{ background: MISSION_THEME.grad, color: "#fff", padding: "18px 20px", display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 11, background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="rocket" s={20} /></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: ".04em" }}>MISSION MODE</div>
+          <div style={{ fontSize: 11.5, opacity: .9 }}>{allDone ? "Semua misi selesai" : `${doneWajib}/${totalWajib} misi wajib selesai`}</div>
+        </div>
+        <button onClick={onClose} style={closeBtn} title="Tutup"><I n="x" s={16} /></button>
       </div>
-      <div style={{ padding: 18 }}>
-        {mission.judul && <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{mission.judul}</div>}
-        <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 16, fontFamily: "var(--mono)" }}>{misi.length} misi · {wajib} wajib</div>
-        <button className="btn btn-primary btn-full" onClick={onOpen}>Mulai Misi <I n="chevR" s={14} /></button>
-        <button className="btn btn-ghost btn-full btn-sm" style={{ marginTop: 8 }} onClick={onClose}>Nanti saja</button>
+
+      <div style={{ padding: 18, overflowY: "auto" }}>
+        {allDone ? (
+          /* ── Layar PUJIAN — tampil saat semua misi wajib selesai ── */
+          <div style={{ textAlign: "center", padding: "14px 6px 8px" }}>
+            <div style={{ width: 76, height: 76, borderRadius: "50%", margin: "0 auto 16px", background: MISSION_THEME.gradSoft, display: "grid", placeItems: "center", border: `2px solid ${MISSION_THEME.ring}` }}>
+              <I n="sparkle" s={38} style={{ color: MISSION_THEME.solid }} />
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", marginBottom: 6 }}>Keren, {user.namaDisplay || getFirstName(user.nama || "")}! 🎉</div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.6, maxWidth: 300, margin: "0 auto 18px" }}>Kamu sudah menyelesaikan <b>seluruh misi</b> Mission Mode hari ini. Mantap — terus jaga ritme belajarmu!</div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 16px", borderRadius: 99, background: MISSION_THEME.tint, color: MISSION_THEME.onTint, fontSize: 12.5, fontWeight: 700, marginBottom: 18 }}>
+              <I n="checkCircle" s={15} /> {totalWajib} dari {totalWajib} misi tuntas
+            </div>
+            <button className="btn btn-full" style={{ background: MISSION_THEME.grad, color: "#fff" }} onClick={onClose}>Selesai</button>
+          </div>
+        ) : (
+          <>
+            {mission.judul && <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{mission.judul}</div>}
+            {mission.instruksi && <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 14, whiteSpace: "pre-wrap" }}>{mission.instruksi}</div>}
+
+            {/* Progress */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>Perkembangan Misi</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: MISSION_THEME.solid, fontFamily: "var(--mono)" }}>{doneWajib} / {totalWajib}</span>
+              </div>
+              <div style={{ height: 8, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: MISSION_THEME.grad, borderRadius: 99, transition: "width .4s" }} /></div>
+            </div>
+
+            {/* Misi #1: KEHADIRAN — selalu di atas */}
+            <div style={{ padding: "13px 14px", borderRadius: "var(--r)", marginBottom: 8, background: sudahHadir ? "var(--good-bg)" : MISSION_THEME.tint, border: `1px solid ${sudahHadir ? "#86efac" : MISSION_THEME.ring}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: sudahHadir ? 0 : 11 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: sudahHadir ? "#dcfce7" : "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n={sudahHadir ? "checkCircle" : "mapPin"} s={17} style={{ color: sudahHadir ? "var(--good)" : MISSION_THEME.solid }} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>Konfirmasi Kehadiran</div>
+                  <div style={{ fontSize: 11, color: sudahHadir ? "var(--good)" : "var(--ink-3)" }}>{sudahHadir ? "Sudah dikonfirmasi ke guru" : "Misi pertama · Wajib"}</div>
+                </div>
+              </div>
+              {!sudahHadir && <button onClick={handleHadir} disabled={sending} style={{ width: "100%", padding: "12px 0", borderRadius: 11, border: "none", background: MISSION_THEME.grad, color: "#fff", fontWeight: 700, fontSize: 14, cursor: sending ? "default" : "pointer", opacity: sending ? .7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>{sending ? "Mengirim..." : <><I n="flag" s={15} /> Hadir Sekarang</>}</button>}
+            </div>
+            {hadirErr && <div style={{ fontSize: 11.5, color: "var(--bad)", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 8, padding: "7px 11px", marginBottom: 8 }}>{hadirErr}</div>}
+
+            {/* Misi lainnya */}
+            {misi.map(m => {
+              const selesai = store.isMisiSelesai(m, user.id);
+              return <button key={m.key} onClick={() => openMisi(m)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", background: "var(--surface)", border: `1px solid ${selesai ? "var(--good)" : "var(--line-soft)"}`, borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", boxShadow: "var(--shadow-sm)", marginBottom: 8 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: selesai ? "var(--good-bg)" : MISSION_THEME.tint, display: "grid", placeItems: "center", flexShrink: 0 }}><I n={selesai ? "check" : (m.tipe === "tugas" ? "fileText" : "book")} s={16} style={{ color: selesai ? "var(--good)" : MISSION_THEME.solid }} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{missionMisiLabel(m, store)}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{m.tipe === "tugas" ? "Tugas" : "Materi"} · {m.wajib ? "Wajib" : "Opsional"}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: selesai ? "var(--good)" : MISSION_THEME.solid, flexShrink: 0 }}>{selesai ? "Selesai" : "Buka →"}</span>
+              </button>;
+            })}
+          </>
+        )}
       </div>
     </div>
   </div>;
@@ -9493,13 +9603,6 @@ function AppInner() {
   const { notifs, dismissNotif } = useNotifications(user, store, route);
   const { unsubscribePush, showPushPrompt, requestPushPermission, dismissPushPrompt } = usePushNotifications(user);
   function navigate(r, p = {}) { setRoute(r); setParams(p); window.scrollTo(0, 0); }
-
-  // Mission Mode — popup sekali per sesi saat siswa login & mission aktif untuk kelasnya
-  const [showMissionPopup, setShowMissionPopup] = useState(false);
-  useEffect(() => {
-    if (!user || user.role !== "siswa" || _missionPopupShownThisSession) return;
-    if (store.isMissionActive(user.jenjang)) { setShowMissionPopup(true); _missionPopupShownThisSession = true; }
-  }, [user, store.isMissionActive(user?.jenjang)]);
 
   // Firebase Auth — session persist otomatis
   useEffect(() => {
@@ -9644,9 +9747,6 @@ function AppInner() {
       </div>}
     <NotifToastContainer notifs={notifs} onDismiss={dismissNotif} />
     {/* Push notification permission prompt — shows every login until allowed */}
-    {showMissionPopup && user && store.getMission(user.jenjang) && (
-      <MissionPopup mission={store.getMission(user.jenjang)} onClose={() => setShowMissionPopup(false)} onOpen={() => { setShowMissionPopup(false); navigate("mission"); }} />
-    )}
     {showPushPrompt && (
       <div className="modal-overlay" onClick={dismissPushPrompt} style={{ zIndex: 9999 }}>
         <div className="modal" style={{ maxWidth: 360, textAlign: "center" }} onClick={e => e.stopPropagation()}>
