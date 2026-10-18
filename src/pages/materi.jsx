@@ -861,6 +861,7 @@ function MateriPdfManager({ store }) {
         await store.addMateriWeb({
           judul: form.judul.trim(), mapel: form.mapel, jenjang: form.jenjang, bab: form.bab.trim(),
           urutan: materiList.filter(m => m.mapel === form.mapel && m.jenjang === form.jenjang && m.bab === form.bab.trim()).length,
+          watchSeconds: Math.max(1, Math.round(Number(watchSec) || 30)), autoDone: !!autoDone,
         }, url);
         setShowUpload(false);
         setForm({ judul: "", mapel: "IPA", jenjang: jenTab, bab: "" });
@@ -997,6 +998,19 @@ function MateriPdfManager({ store }) {
                 <input className="inp" placeholder="Tempel link (mis. https://astrolab-a1g.pages.dev/)" value={webUrl} onChange={e => setWebUrl(e.target.value)} />
                 <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 5 }}>Embed halaman web apa pun (animasi HTML, simulasi, dll). Ditampilkan full-screen ke siswa.</div>
                 {normalizeEmbedUrl(webUrl) && <div style={{ marginTop: 10, borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)", height: 200 }}><iframe src={normalizeEmbedUrl(webUrl)} title="Preview" style={{ width: "100%", height: "100%", border: 0, background: "#fff" }} /></div>}
+                {/* Syarat selesai — WAJIB diandalkan untuk web: iframe lintas-domain tidak bisa dilacak otomatis */}
+                <div style={{ marginTop: 12, padding: "11px 13px", background: "var(--surface-alt)", borderRadius: 10, border: "1px solid var(--line-soft)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><I n="clock" s={13} /> Syarat selesai</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Durasi minimal</span>
+                    <input className="inp" type="number" min={1} value={watchSec} onChange={e => setWatchSec(e.target.value)} style={{ width: 80, textAlign: "center" }} />
+                    <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>detik</span>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer" }}>
+                    <input type="checkbox" checked={autoDone} onChange={e => setAutoDone(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: "#0d9488", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.45 }}>Tandai <b>otomatis selesai</b> saat durasi tercapai — siswa tidak perlu klik tombol. (Disarankan untuk web, karena tidak bisa dilacak otomatis.)</span>
+                  </label>
+                </div>
               </div>
             )}
             {converting && <div style={{ fontSize: 12, color: "var(--accent-2)", display: "flex", alignItems: "center", gap: 8 }}><div className="spinner" style={{ width: 16, height: 16 }} /> {progress}</div>}
@@ -1048,7 +1062,7 @@ function MateriPdfManager({ store }) {
                             : <>{k.label} · {tgl}</>}
                         </div>
                       </div>
-                      {(m.tipe === "youtube") && <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px", color: "#0d9488" }} onClick={() => setSettingsMateri(m)} title="Atur durasi nonton"><I n="clock" s={14} /></button>}
+                      {(m.tipe === "youtube" || m.tipe === "web") && <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px", color: "#0d9488" }} onClick={() => setSettingsMateri(m)} title="Atur durasi selesai"><I n="clock" s={14} /></button>}
                       <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
                     </div>
                     );
