@@ -1658,7 +1658,75 @@ function useStore() {
     await remove(ref(db, `latihanProgress/${currentUser.id}/${latihanBabKey(mapel, bab)}`));
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal };
+  // ─── MISSION MODE ───
+  // Config per jenjang: /missionMode/{jenjang} = { active, judul, instruksi, misi:[{key,tipe,refId,wajib,urutan}], sessionId, updatedAt }
+  // sessionId dibuat sekali saat PERTAMA diaktifkan, tetap sama selama aktif (jadi kunci dedup kehadiran).
+  const [missionData, setMissionData] = useState({});
+  useEffect(() => {
+    const mRef = ref(db, "missionMode");
+    const unsub = onValue(mRef, snap => setMissionData(snap.val() || {}), () => setMissionData({}));
+    return () => unsub();
+  }, []);
+  const getMission = (jenjang) => missionData[jenjang] || null;
+  const isMissionActive = (jenjang) => !!(missionData[jenjang] && missionData[jenjang].active);
+  const saveMissionConfig = async (jenjang, patch) => {
+    const existing = missionData[jenjang] || {};
+    let sessionId = existing.sessionId || null;
+    const willActive = patch.active !== undefined ? patch.active : existing.active;
+    if (willActive && (!existing.active || !sessionId)) sessionId = Date.now().toString();
+    await update(ref(db, `missionMode/${jenjang}`), { ...patch, sessionId, updatedAt: Date.now() });
+  };
+
+  // Penanda materi selesai ditonton (misi nonton) — milik currentUser (siswa).
+  const [missionMateriDone, setMissionMateriDone] = useState({});
+  useEffect(() => {
+    if (!currentUser?.id) { setMissionMateriDone({}); return; }
+    const dRef = ref(db, `missionMateriDone/${currentUser.id}`);
+    const unsub = onValue(dRef, snap => setMissionMateriDone(snap.val() || {}), () => setMissionMateriDone({}));
+    return () => unsub();
+  }, [currentUser?.id]);
+  const isMateriDone = (materiId) => !!missionMateriDone[materiId];
+  const markMateriDone = async (materiId) => {
+    if (!currentUser?.id || !materiId) return;
+    await set(ref(db, `missionMateriDone/${currentUser.id}/${materiId}`), true);
+  };
+  // Versi guru: baca SEMUA penanda materi-done (cuma di-listen kalau guru, hemat kuota).
+  const [missionMateriDoneAll, setMissionMateriDoneAll] = useState({});
+  useEffect(() => {
+    if (currentUser?.role !== "guru") { setMissionMateriDoneAll({}); return; }
+    const dRef = ref(db, "missionMateriDone");
+    const unsub = onValue(dRef, snap => setMissionMateriDoneAll(snap.val() || {}), () => setMissionMateriDoneAll({}));
+    return () => unsub();
+  }, [currentUser?.role]);
+  const isMateriDoneFor = (siswaId, materiId) => !!(missionMateriDoneAll[siswaId] && missionMateriDoneAll[siswaId][materiId]);
+
+  // Kehadiran: /missionAttendance/{jenjang}/{sessionId}/{siswaId} = { nama, selesaiWajib, totalWajib, lengkap, waktu }
+  const [missionAttendance, setMissionAttendance] = useState({});
+  useEffect(() => {
+    const aRef = ref(db, "missionAttendance");
+    const unsub = onValue(aRef, snap => setMissionAttendance(snap.val() || {}), () => setMissionAttendance({}));
+    return () => unsub();
+  }, []);
+  const getAttendance = (jenjang, sessionId) => (missionAttendance[jenjang] && missionAttendance[jenjang][sessionId]) || {};
+  const hasAttended = (jenjang, sessionId, siswaId) => !!getAttendance(jenjang, sessionId)[siswaId];
+  // Idempoten: key = siswaId. Klik berulang / refresh tidak membuat catatan baru.
+  const markAttendance = async (jenjang, sessionId, record) => {
+    if (!currentUser?.id || !sessionId) return { already: false, error: "sesi tidak valid" };
+    if (hasAttended(jenjang, sessionId, currentUser.id)) return { already: true };
+    await set(ref(db, `missionAttendance/${jenjang}/${sessionId}/${currentUser.id}`), {
+      ...record, siswaId: currentUser.id, waktu: Date.now()
+    });
+    return { already: false };
+  };
+  // Status 1 misi (reuse data penyelesaian yang sudah ada — tidak menyimpan status turunan).
+  const isMisiSelesai = (misi, siswaId) => {
+    if (!misi) return false;
+    if (misi.tipe === "tugas") return hasSub(siswaId, misi.refId);
+    if (misi.tipe === "materi") return siswaId === currentUser?.id ? isMateriDone(misi.refId) : isMateriDoneFor(siswaId, misi.refId);
+    return false;
+  };
+
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai };
 }
 
 // ─── LOGIN ───
@@ -1993,6 +2061,18 @@ function DashboardSiswa({ user, store, navigate }) {
         </div>
         <span style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-tint)", padding: "4px 10px", borderRadius: 99, fontWeight: 600, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{store.getActivePeriode()}</span>
       </div>
+
+      {/* Banner Mission Mode — muncul kalau aktif untuk kelas siswa */}
+      {store.isMissionActive(user.jenjang) && (
+        <button onClick={() => navigate("mission")} style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", marginBottom: 14, border: "none", borderRadius: "var(--r)", cursor: "pointer", background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)", color: "#fff", boxShadow: "var(--shadow)" }}>
+          <I n="target" s={22} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".03em" }}>MISSION MODE AKTIF</div>
+            <div style={{ fontSize: 11, opacity: .9 }}>Ketuk untuk lihat misi hari ini</div>
+          </div>
+          <I n="chevR" s={18} />
+        </button>
+      )}
 
       {/* Status Card: Ranking + Poin + Level + Streak — satu card untuk semua */}
       <div className="ds-status">
@@ -4787,6 +4867,7 @@ function DashboardGuru({ store, navigate }) {
           <button className="btn btn-outline btn-sm" onClick={() => setShowLaporan(true)}><I n="chartBar" s={13} /> Laporan</button>
           <button className="btn btn-outline btn-sm" onClick={() => exportNilai(store, jenjang)}><I n="chartBar" s={13} /> Export Nilai</button>
           <button className="btn btn-outline btn-sm" onClick={() => navigate("materi-manager")}><I n="fileText" s={13} /> Materi</button>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate("mission-guru")} style={store.isMissionActive(jenjang) ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}><I n="target" s={13} /> Mission{store.isMissionActive(jenjang) ? " ●" : ""}</button>
           <button className="btn btn-primary" onClick={() => navigate("buat-tugas")}><I n="plus" s={14} /> Tugas baru</button>
         </div>
       </div>
@@ -9133,6 +9214,276 @@ class ErrorBoundary extends Component {
   }
 }
 
+// ═══════════════ MISSION MODE ═══════════════
+function missionMisiLabel(misi, store) {
+  if (misi.tipe === "tugas") { const t = store.getTugas().find(x => x.id === misi.refId); return t ? t.judul : "(tugas terhapus)"; }
+  const m = store.getMateriList().find(x => x.id === misi.refId); return m ? m.judul : "(materi terhapus)";
+}
+
+// ── Modal pilih aktivitas jadi misi (guru) ──
+function MissionPickModal({ store, jenjang, onClose, onPick }) {
+  const [tipe, setTipe] = useState("tugas");
+  const tugasList = store.getTugas().filter(t => t.jenjang === jenjang && t.status !== "scheduled");
+  const materiList = store.getMateriList().filter(m => m.jenjang === jenjang);
+  const list = tipe === "tugas" ? tugasList : materiList;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 460, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+        <h3>Pilih Misi</h3>
+        <div className="tabs" style={{ marginTop: 10, marginBottom: 12 }}>
+          <button className={`tab ${tipe === "tugas" ? "active" : ""}`} onClick={() => setTipe("tugas")}>Tugas / Kuis</button>
+          <button className={`tab ${tipe === "materi" ? "active" : ""}`} onClick={() => setTipe("materi")}>Materi</button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          {list.length === 0 ? <div className="empty" style={{ padding: 20 }}>Belum ada {tipe === "tugas" ? "tugas" : "materi"} untuk Kelas {jenjang}.</div>
+            : list.map(x => (
+              <button key={x.id} onClick={() => onPick({ tipe, refId: x.id })} style={{ textAlign: "left", padding: "10px 12px", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", background: "var(--surface)", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                <I n={tipe === "tugas" ? "fileText" : "book"} s={16} style={{ color: "var(--accent-2)", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.judul}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{tipe === "tugas" ? `${x.mapel || ""} · ${(x.soal || []).length} soal` : (x.tipe === "youtube" ? "Video YouTube" : x.tipe === "web" ? "Tautan Web" : "PDF")}</div>
+                </div>
+                <I n="plus" s={14} style={{ color: "var(--accent)" }} />
+              </button>
+            ))}
+        </div>
+        <div className="modal-actions" style={{ marginTop: 12 }}><button className="btn btn-outline btn-sm" onClick={onClose}>Tutup</button></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Layar guru: atur & pantau Mission Mode ──
+function MissionGuru({ store, navigate }) {
+  const [jenjang, setJenjang] = useState("VII");
+  const existing = store.getMission(jenjang) || {};
+  const [draft, setDraft] = useState({ judul: "", instruksi: "", misi: [] });
+  const [showPick, setShowPick] = useState(false);
+  const [toast, setToast] = useState("");
+  const [tab, setTab] = useState("atur");
+  const showT = m => { setToast(m); setTimeout(() => setToast(""), 2500); };
+  const active = !!existing.active;
+
+  useEffect(() => {
+    const e = store.getMission(jenjang) || {};
+    setDraft({ judul: e.judul || "", instruksi: e.instruksi || "", misi: e.misi || [] });
+  }, [jenjang, store.getMission(jenjang)?.updatedAt]);
+
+  async function toggleActive() {
+    try {
+      await store.saveMissionConfig(jenjang, { active: !active, judul: draft.judul, instruksi: draft.instruksi, misi: draft.misi });
+      showT(!active ? `Mission Mode AKTIF — Kelas ${jenjang}` : "Mission Mode dimatikan");
+    } catch (e) { showT("Gagal: " + (e?.message || "")); }
+  }
+  async function saveDraft() {
+    try { await store.saveMissionConfig(jenjang, { judul: draft.judul, instruksi: draft.instruksi, misi: draft.misi }); showT("Tersimpan."); }
+    catch (e) { showT("Gagal simpan: " + (e?.message || "")); }
+  }
+  function addMisi({ tipe, refId }) {
+    if (draft.misi.some(m => m.tipe === tipe && m.refId === refId)) { setShowPick(false); showT("Sudah ada di daftar misi."); return; }
+    setDraft(d => ({ ...d, misi: [...d.misi, { key: `${tipe}_${refId}`, tipe, refId, wajib: true, urutan: d.misi.length }] }));
+    setShowPick(false);
+  }
+  function removeMisi(key) { setDraft(d => ({ ...d, misi: d.misi.filter(m => m.key !== key) })); }
+  function toggleWajib(key) { setDraft(d => ({ ...d, misi: d.misi.map(m => m.key === key ? { ...m, wajib: !m.wajib } : m) })); }
+  function move(key, dir) {
+    setDraft(d => {
+      const arr = [...d.misi]; const i = arr.findIndex(m => m.key === key); const j = i + dir;
+      if (i < 0 || j < 0 || j >= arr.length) return d;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      return { ...d, misi: arr.map((m, idx) => ({ ...m, urutan: idx })) };
+    });
+  }
+
+  return <div>
+    <div className="topbar">
+      <button className="topbar-back" onClick={() => navigate("home-guru")}><I n="chevL" s={18} /></button>
+      <div className="topbar-title">Mission Mode</div>
+      <div style={{ width: 32 }} />
+    </div>
+    {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: "var(--ink)", color: "#fff", padding: "10px 20px", borderRadius: 99, fontSize: 13, fontWeight: 600, zIndex: 500 }}>{toast}</div>}
+    {showPick && <MissionPickModal store={store} jenjang={jenjang} onClose={() => setShowPick(false)} onPick={addMisi} />}
+
+    <div className="page">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div className="tabs">
+          {["VII", "VIII"].map(j => <button key={j} className={`tab ${jenjang === j ? "active" : ""}`} onClick={() => setJenjang(j)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>Kelas {j} {store.isMissionActive(j) && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--good)" }} />}</button>)}
+        </div>
+        <button className={`btn btn-sm ${active ? "btn-danger" : "btn-primary"}`} onClick={toggleActive}><I n={active ? "x" : "zap"} s={13} /> {active ? "Matikan" : "Aktifkan"}</button>
+      </div>
+
+      <div style={{ padding: "12px 14px", borderRadius: "var(--r)", marginBottom: 14, background: active ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "var(--surface-alt)", color: active ? "#fff" : "var(--ink-3)", display: "flex", alignItems: "center", gap: 10 }}>
+        <I n="target" s={20} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{active ? `AKTIF — Kelas ${jenjang}` : `Nonaktif — Kelas ${jenjang}`}</div>
+          <div style={{ fontSize: 11, opacity: .85 }}>{active ? "Siswa kelas ini melihat Mission Mode saat login." : "Aktifkan untuk mulai sesi PJJ."}</div>
+        </div>
+      </div>
+
+      <div className="tabs" style={{ marginBottom: 14 }}>
+        <button className={`tab ${tab === "atur" ? "active" : ""}`} onClick={() => setTab("atur")}>Atur Misi</button>
+        <button className={`tab ${tab === "pantau" ? "active" : ""}`} onClick={() => setTab("pantau")}>Pantau Siswa</button>
+      </div>
+
+      {tab === "atur" && <>
+        <div className="fg" style={{ marginBottom: 12 }}><label className="lbl">Judul Kegiatan</label><input className="inp" value={draft.judul} onChange={e => setDraft(d => ({ ...d, judul: e.target.value }))} placeholder="Contoh: PJJ Senin — Massa Jenis" /></div>
+        <div className="fg" style={{ marginBottom: 12 }}><label className="lbl">Petunjuk / Instruksi</label><textarea className="inp" rows={2} value={draft.instruksi} onChange={e => setDraft(d => ({ ...d, instruksi: e.target.value }))} placeholder="Instruksi pembelajaran hari ini..." /></div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <span className="lbl">Daftar Misi ({draft.misi.length})</span>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowPick(true)}><I n="plus" s={13} /> Tambah Misi</button>
+        </div>
+        {draft.misi.length === 0 ? <Card><div className="empty" style={{ padding: 20 }}>Belum ada misi. Tambah tugas atau materi yang sudah ada.</div></Card>
+          : <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+            {draft.misi.map((m, i) => (
+              <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)", boxShadow: "var(--shadow-sm)" }}>
+                <span style={{ width: 26, height: 26, borderRadius: 7, background: "var(--surface-alt)", display: "grid", placeItems: "center", fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "var(--ink-3)", flexShrink: 0 }}>{i + 1}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{missionMisiLabel(m, store)}</div>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".04em" }}>{m.tipe === "tugas" ? "Tugas" : "Materi"}</div>
+                </div>
+                <button onClick={() => toggleWajib(m.key)} className={`chip ${m.wajib ? "chip-accent" : ""}`} style={{ cursor: "pointer", fontSize: 10 }}>{m.wajib ? "Wajib" : "Opsional"}</button>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <button onClick={() => move(m.key, -1)} disabled={i === 0} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-3)", padding: 0, opacity: i === 0 ? .3 : 1 }}><I n="chevU" s={14} /></button>
+                  <button onClick={() => move(m.key, 1)} disabled={i === draft.misi.length - 1} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-3)", padding: 0, opacity: i === draft.misi.length - 1 ? .3 : 1 }}><I n="chevD" s={14} /></button>
+                </div>
+                <button onClick={() => removeMisi(m.key)} style={{ border: "none", background: "var(--bad-bg)", color: "var(--bad)", width: 28, height: 28, borderRadius: 7, cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="trash" s={12} /></button>
+              </div>
+            ))}
+          </div>}
+        <button className="btn btn-primary btn-full" onClick={saveDraft}><I n="check" s={14} /> Simpan Pengaturan</button>
+      </>}
+
+      {tab === "pantau" && (() => {
+        const mission = store.getMission(jenjang) || {};
+        const sessionId = mission.sessionId;
+        const wajibMisi = (mission.misi || []).filter(m => m.wajib);
+        const siswa = store.getAllSiswa(jenjang);
+        const att = sessionId ? store.getAttendance(jenjang, sessionId) : {};
+        return <div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10 }}>{siswa.length} siswa · {wajibMisi.length} misi wajib · {Object.keys(att).length} sudah hadir</div>
+          {siswa.length === 0 ? <Card><div className="empty" style={{ padding: 20 }}>Belum ada siswa.</div></Card>
+            : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {siswa.map(s => {
+                const selesai = wajibMisi.filter(m => store.isMisiSelesai(m, s.id)).length;
+                const hadir = !!att[s.id];
+                const lengkap = wajibMisi.length > 0 && selesai === wajibMisi.length;
+                return <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r-sm)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.nama}</div>
+                    <div style={{ fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{selesai}/{wajibMisi.length} wajib</div>
+                  </div>
+                  {hadir ? <span className="chip chip-good" style={{ fontSize: 10 }}>Hadir</span> : <span className="chip" style={{ fontSize: 10, color: "var(--ink-4)" }}>Belum hadir</span>}
+                  {lengkap ? <span className="chip chip-accent" style={{ fontSize: 10 }}>Lengkap</span> : <span className="chip chip-warn" style={{ fontSize: 10 }}>Proses</span>}
+                </div>;
+              })}
+            </div>}
+        </div>;
+      })()}
+    </div>
+  </div>;
+}
+
+// ── Panel siswa: Mission Mode ──
+function MissionSiswa({ user, store, navigate }) {
+  const mission = store.getMission(user.jenjang);
+  const [sending, setSending] = useState(false);
+  const [hadirErr, setHadirErr] = useState("");
+  if (!mission || !mission.active) {
+    return <div className="page"><Card><div className="empty empty-box"><I n="target" s={32} /><h3>Mission Mode tidak aktif</h3><p>Belum ada misi untuk kelasmu saat ini.</p><button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => navigate("home")}>Kembali ke Beranda</button></div></Card></div>;
+  }
+  const misi = [...(mission.misi || [])].sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
+  const wajib = misi.filter(m => m.wajib);
+  const wajibSelesai = wajib.filter(m => store.isMisiSelesai(m, user.id)).length;
+  const sessionId = mission.sessionId;
+  const sudahHadir = store.hasAttended(user.jenjang, sessionId, user.id);
+
+  function openMisi(m) {
+    if (m.tipe === "tugas") navigate("tugas-detail", { tugasId: m.refId });
+    else navigate("latihan-mandiri");
+  }
+  async function handleHadir() {
+    if (sending || sudahHadir) return;
+    setSending(true); setHadirErr("");
+    const lengkap = wajib.length > 0 && wajibSelesai === wajib.length;
+    try {
+      const res = await store.markAttendance(user.jenjang, sessionId, { nama: user.nama, kelas: user.kelas || `Kelas ${user.jenjang}`, selesaiWajib: wajibSelesai, totalWajib: wajib.length, lengkap });
+      if (!res.already) {
+        const now = new Date();
+        const tgl = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+        const jam = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+        const guruId = store.fbGuru?.id || "fata";
+        const text = `📍 KONFIRMASI KEHADIRAN — MISSION MODE\n\nNama: ${user.nama}\nKelas: ${user.kelas || `Kelas ${user.jenjang}`}\nTanggal: ${tgl}\nMisi wajib selesai: ${wajibSelesai}/${wajib.length}\nStatus misi: ${lengkap ? "selesai" : "belum selesai"}\nWaktu konfirmasi: ${jam}`;
+        try { await withTimeout(store.sendMessage(user.id, guruId, text)); }
+        catch { setHadirErr("Kehadiran tercatat, tapi notifikasi chat ke guru gagal terkirim."); }
+      }
+    } catch (e) {
+      setHadirErr("Gagal mengirim kehadiran: " + (e?.message || "coba lagi"));
+    } finally { setSending(false); }
+  }
+
+  return <div>
+    <div className="topbar"><button className="topbar-back" onClick={() => navigate("home")}><I n="chevL" s={18} /></button><div className="topbar-title">Mission Mode</div><div style={{ width: 36 }} /></div>
+    <div className="page">
+      <div style={{ background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)", borderRadius: "var(--r)", padding: "16px 18px", color: "#fff", marginBottom: 14, boxShadow: "var(--shadow)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><I n="target" s={18} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".04em" }}>MISSION MODE AKTIF</span></div>
+        <div style={{ fontSize: 12, opacity: .9, lineHeight: 1.5 }}>Astrolab sedang berada dalam Mission Mode. Selesaikan seluruh misi wajib berikut untuk memenuhi persyaratan pembelajaran hari ini.</div>
+      </div>
+      {mission.judul && <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{mission.judul}</div>}
+      {mission.instruksi && <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 14, whiteSpace: "pre-wrap" }}>{mission.instruksi}</div>}
+
+      <div style={{ background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", padding: "14px 16px", marginBottom: 14, boxShadow: "var(--shadow-sm)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>Perkembangan Misi</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: "var(--accent-2)", fontFamily: "var(--mono)" }}>{wajibSelesai} / {wajib.length} selesai</span>
+        </div>
+        <div style={{ height: 8, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}><div style={{ height: "100%", width: `${wajib.length ? Math.round(wajibSelesai / wajib.length * 100) : 0}%`, background: "var(--accent)", borderRadius: 99, transition: "width .4s" }} /></div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        {misi.map(m => {
+          const selesai = store.isMisiSelesai(m, user.id);
+          return <button key={m.key} onClick={() => openMisi(m)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--surface)", border: `1px solid ${selesai ? "var(--good)" : "var(--line-soft)"}`, borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", boxShadow: "var(--shadow-sm)" }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: selesai ? "var(--good-bg)" : "var(--surface-alt)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n={selesai ? "check" : (m.tipe === "tugas" ? "fileText" : "book")} s={16} style={{ color: selesai ? "var(--good)" : "var(--ink-3)" }} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{missionMisiLabel(m, store)}</div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{m.tipe === "tugas" ? "Tugas" : "Materi"} · {m.wajib ? "Wajib" : "Opsional"}</div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: selesai ? "var(--good)" : "var(--accent)", flexShrink: 0 }}>{selesai ? "Selesai" : "Buka →"}</span>
+          </button>;
+        })}
+      </div>
+
+      {hadirErr && <div style={{ fontSize: 12, color: "var(--bad)", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>{hadirErr}</div>}
+      {sudahHadir
+        ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px", borderRadius: "var(--r)", background: "var(--good-bg)", border: "1.5px solid #86efac", color: "var(--good)", fontWeight: 700, fontSize: 14 }}><I n="checkCircle" s={18} /> Kehadiran sudah dikonfirmasi</div>
+        : <button className="btn btn-primary btn-full btn-lg" onClick={handleHadir} disabled={sending}>{sending ? "Mengirim..." : <><I n="flag" s={16} /> Konfirmasi Hadir</>}</button>}
+      {!sudahHadir && wajib.length > 0 && wajibSelesai < wajib.length && <div style={{ fontSize: 11, color: "var(--ink-4)", textAlign: "center", marginTop: 8 }}>Bisa konfirmasi hadir walau misi wajib belum selesai — statusnya tetap tercatat.</div>}
+    </div>
+  </div>;
+}
+
+// ── Popup saat login (sekali per sesi) ──
+let _missionPopupShownThisSession = false;
+function MissionPopup({ mission, onClose, onOpen }) {
+  const misi = mission.misi || [];
+  const wajib = misi.filter(m => m.wajib).length;
+  return <div className="modal-overlay" style={{ zIndex: 9998 }} onClick={onClose}>
+    <div className="modal" style={{ maxWidth: 380, overflow: "hidden", padding: 0 }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-2))", color: "#fff", padding: "20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><I n="target" s={20} /><span style={{ fontSize: 14, fontWeight: 800, letterSpacing: ".04em" }}>MISSION MODE AKTIF</span></div>
+        <div style={{ fontSize: 12.5, opacity: .92, lineHeight: 1.5 }}>Selesaikan seluruh misi wajib hari ini untuk memenuhi persyaratan pembelajaran.</div>
+      </div>
+      <div style={{ padding: 18 }}>
+        {mission.judul && <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{mission.judul}</div>}
+        <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 16, fontFamily: "var(--mono)" }}>{misi.length} misi · {wajib} wajib</div>
+        <button className="btn btn-primary btn-full" onClick={onOpen}>Mulai Misi <I n="chevR" s={14} /></button>
+        <button className="btn btn-ghost btn-full btn-sm" style={{ marginTop: 8 }} onClick={onClose}>Nanti saja</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function AppInner() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -9142,6 +9493,13 @@ function AppInner() {
   const { notifs, dismissNotif } = useNotifications(user, store, route);
   const { unsubscribePush, showPushPrompt, requestPushPermission, dismissPushPrompt } = usePushNotifications(user);
   function navigate(r, p = {}) { setRoute(r); setParams(p); window.scrollTo(0, 0); }
+
+  // Mission Mode — popup sekali per sesi saat siswa login & mission aktif untuk kelasnya
+  const [showMissionPopup, setShowMissionPopup] = useState(false);
+  useEffect(() => {
+    if (!user || user.role !== "siswa" || _missionPopupShownThisSession) return;
+    if (store.isMissionActive(user.jenjang)) { setShowMissionPopup(true); _missionPopupShownThisSession = true; }
+  }, [user, store.isMissionActive(user?.jenjang)]);
 
   // Firebase Auth — session persist otomatis
   useEffect(() => {
@@ -9244,6 +9602,7 @@ function AppInner() {
       else if (route === "nilai-akhir") screen = <NilaiAkhirPage store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
       else if (route === "materi-manager") screen = <MateriManager store={store} navigate={navigate} />;
+      else if (route === "mission-guru") screen = <MissionGuru store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
     } else {
       if (route === "home") screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
@@ -9255,6 +9614,7 @@ function AppInner() {
       else if (route === "profil") screen = <ProfilSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "rapor") screen = <RaporSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
+      else if (route === "mission") screen = <MissionSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
       else screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
     }
@@ -9284,6 +9644,9 @@ function AppInner() {
       </div>}
     <NotifToastContainer notifs={notifs} onDismiss={dismissNotif} />
     {/* Push notification permission prompt — shows every login until allowed */}
+    {showMissionPopup && user && store.getMission(user.jenjang) && (
+      <MissionPopup mission={store.getMission(user.jenjang)} onClose={() => setShowMissionPopup(false)} onOpen={() => { setShowMissionPopup(false); navigate("mission"); }} />
+    )}
     {showPushPrompt && (
       <div className="modal-overlay" onClick={dismissPushPrompt} style={{ zIndex: 9999 }}>
         <div className="modal" style={{ maxWidth: 360, textAlign: "center" }} onClick={e => e.stopPropagation()}>

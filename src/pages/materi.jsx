@@ -66,25 +66,51 @@ function parseYoutubeId(url) {
 }
 
 // Viewer materi tipe VIDEO — overlay full-screen dengan embed YouTube 16:9.
-function YoutubeMateriViewer({ materi, onBack }) {
+function YoutubeMateriViewer({ materi, onBack, store, user }) {
+  const id = materi.youtubeId;
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
-  const id = materi.youtubeId;
+  // Auto-selesai saat video benar-benar sampai ENDED (YouTube IFrame API). Best-effort;
+  // kalau API gagal dimuat, tombol "Selesai nonton" (dwell) tetap jadi fallback.
+  useEffect(() => {
+    if (!id || !store || user?.role !== "siswa") return;
+    let player = null, cancelled = false;
+    const createPlayer = () => {
+      if (cancelled || !window.YT || !window.YT.Player) return;
+      try {
+        player = new window.YT.Player(`ytplayer-${id}`, {
+          events: { onStateChange: (e) => { if (e.data === 0) { try { store.markMateriDone(materi.id); } catch {} } } },
+        });
+      } catch {}
+    };
+    if (window.YT && window.YT.Player) createPlayer();
+    else {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (typeof prev === "function") { try { prev(); } catch {} } createPlayer(); };
+      if (![...document.getElementsByTagName("script")].some(s => (s.src || "").includes("youtube.com/iframe_api"))) {
+        const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(sc);
+      }
+    }
+    return () => { cancelled = true; try { player && player.destroy && player.destroy(); } catch {} };
+  }, [id]);
   const btn = { width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,.14)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 };
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#000", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "rgba(0,0,0,.65)" }}>
         <button onClick={onBack} style={btn} title="Kembali"><I n="chevL" s={18} /></button>
         <div style={{ color: "#fff", fontSize: 14, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{materi.judul}</div>
+        <MateriDoneControl store={store} user={user} materiId={materi.id} dark />
         <button onClick={onBack} style={btn} title="Tutup"><I n="x" s={16} /></button>
       </div>
       <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 16 }}>
         {id ? (
           <div style={{ width: "100%", maxWidth: 1100, aspectRatio: "16 / 9" }}>
             <iframe
-              src={`https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1`}
+              id={`ytplayer-${id}`}
+              src={`https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`}
               title={materi.judul} style={{ width: "100%", height: "100%", border: 0, borderRadius: 12 }}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
@@ -115,8 +141,28 @@ function materiKind(m) {
   return { icon: "book", color: "var(--accent-2)", bg: "var(--accent-tint)", label: null };
 }
 
+// Kontrol penyelesaian materi (misi "nonton"). Hybrid: tombol "Selesai nonton" aktif
+// setelah dwell minimal (self-declare, jujur bukan verified); YouTube juga auto-selesai saat video ending.
+const MATERI_DONE_DWELL = 30; // detik
+function MateriDoneControl({ store, user, materiId, dark = false }) {
+  const [left, setLeft] = useState(MATERI_DONE_DWELL);
+  const isSiswa = store && user && user.role === "siswa";
+  const done = isSiswa ? store.isMateriDone(materiId) : false;
+  useEffect(() => {
+    if (!isSiswa || done) return;
+    const t = setInterval(() => setLeft(x => (x <= 1 ? 0 : x - 1)), 1000);
+    return () => clearInterval(t);
+  }, [materiId, done]);
+  if (!isSiswa) return null;
+  if (done) return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: dark ? "#86efac" : "var(--good)", padding: "6px 12px", borderRadius: 99, background: dark ? "rgba(134,239,172,.15)" : "var(--good-bg)", flexShrink: 0 }}><I n="check" s={13} /> Selesai</span>;
+  const ready = left <= 0;
+  return <button onClick={() => ready && store.markMateriDone(materiId)} disabled={!ready} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, padding: "7px 13px", borderRadius: 99, border: "none", cursor: ready ? "pointer" : "default", flexShrink: 0, background: ready ? "var(--accent)" : (dark ? "rgba(255,255,255,.18)" : "var(--surface-alt)"), color: ready ? "#fff" : (dark ? "#fff" : "var(--ink-3)") }}>
+    <I n="check" s={13} /> {ready ? "Selesai nonton" : `Tunggu ${left}s`}
+  </button>;
+}
+
 // Viewer materi tipe WEB — overlay full-screen, iframe mengisi penuh (untuk animasi HTML interaktif).
-function WebMateriViewer({ materi, onBack }) {
+function WebMateriViewer({ materi, onBack, store, user }) {
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
@@ -128,6 +174,7 @@ function WebMateriViewer({ materi, onBack }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "rgba(0,0,0,.65)", flexShrink: 0 }}>
         <button onClick={onBack} style={btn} title="Kembali"><I n="chevL" s={18} /></button>
         <div style={{ color: "#fff", fontSize: 14, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{materi.judul}</div>
+        <MateriDoneControl store={store} user={user} materiId={materi.id} dark />
         <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: "none" }} title="Buka di tab baru"><I n="maximize" s={15} /></a>
         <button onClick={onBack} style={btn} title="Tutup"><I n="x" s={16} /></button>
       </div>
@@ -227,7 +274,7 @@ async function loadJsPdf() {
   });
 }
 
-function MateriViewer({ materi, store, onBack }) {
+function MateriViewer({ materi, store, onBack, user }) {
   // ALL hooks MUST be before any early return (React Rules of Hooks)
   const [pages, setPages] = useState(null);
   const [idx, setIdx] = useState(0);
@@ -414,6 +461,7 @@ function MateriViewer({ materi, store, onBack }) {
       <div className="topbar-title" style={{ fontSize: 13 }}>{materi.judul}</div>
       <button onClick={handleDownload} disabled={!!dlProgress} style={{ background: "none", border: "none", color: "var(--accent-2)", cursor: dlProgress ? "default" : "pointer", padding: 4, opacity: dlProgress ? .5 : 1 }} title="Download PDF"><I n="download" s={16} /></button>
       <button onClick={() => setFs(true)} style={{ background: "none", border: "none", color: "var(--ink-2)", cursor: "pointer", padding: 4 }}><I n="maximize" s={16} /></button>
+      <MateriDoneControl store={store} user={user} materiId={materi.id} />
       <div style={{ width: 30, textAlign: "right", fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{idx + 1}/{total}</div>
     </div>
     {dlProgress && <div style={{ padding: "6px 16px", fontSize: 12, color: "var(--accent-2)", background: "var(--accent-tint)", display: "flex", alignItems: "center", gap: 8 }}><div className="spinner" style={{ width: 14, height: 14 }} /> {dlProgress}</div>}
@@ -595,9 +643,9 @@ export function LatihanMandiri({ user, store, navigate }) {
   // Early returns for sub-views (after all hooks)
   if (quizBab) return <LatihanQuiz bab={quizBab.bab} mapel={quizBab.mapel} soalPool={quizBab.soal} store={store} onBack={() => setQuizBab(null)} />;
   if (viewMateri) {
-    if (viewMateri.tipe === "youtube") return <YoutubeMateriViewer materi={viewMateri} onBack={() => setViewMateri(null)} />;
-    if (viewMateri.tipe === "web") return <WebMateriViewer materi={viewMateri} onBack={() => setViewMateri(null)} />;
-    return <MateriViewer materi={viewMateri} store={store} onBack={() => setViewMateri(null)} />;
+    if (viewMateri.tipe === "youtube") return <YoutubeMateriViewer materi={viewMateri} store={store} user={user} onBack={() => setViewMateri(null)} />;
+    if (viewMateri.tipe === "web") return <WebMateriViewer materi={viewMateri} store={store} user={user} onBack={() => setViewMateri(null)} />;
+    return <MateriViewer materi={viewMateri} store={store} user={user} onBack={() => setViewMateri(null)} />;
   }
 
   // Group materi by mapel → bab (for Materi tab)
