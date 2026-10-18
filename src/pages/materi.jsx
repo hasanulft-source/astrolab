@@ -190,7 +190,7 @@ function WatchSettingsModal({ materi, store, onClose }) {
         <span style={{ fontSize: 13, color: "var(--ink-3)" }}>detik</span>
       </div>
       <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", marginBottom: 18 }}>
-        <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: "#4f46e5", flexShrink: 0 }} />
+        <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: "#0d9488", flexShrink: 0 }} />
         <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.45 }}>Otomatis selesai saat durasi tercapai — siswa tidak perlu klik tombol.</span>
       </label>
       <div style={{ display: "flex", gap: 8 }}>
@@ -987,7 +987,7 @@ function MateriPdfManager({ store }) {
                     <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>detik</span>
                   </div>
                   <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer" }}>
-                    <input type="checkbox" checked={autoDone} onChange={e => setAutoDone(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: "#4f46e5", flexShrink: 0 }} />
+                    <input type="checkbox" checked={autoDone} onChange={e => setAutoDone(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: "#0d9488", flexShrink: 0 }} />
                     <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.45 }}>Tandai <b>otomatis selesai</b> saat durasi tercapai — siswa tidak perlu klik tombol.</span>
                   </label>
                 </div>
@@ -1048,7 +1048,7 @@ function MateriPdfManager({ store }) {
                             : <>{k.label} · {tgl}</>}
                         </div>
                       </div>
-                      {(m.tipe === "youtube") && <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px", color: "#4f46e5" }} onClick={() => setSettingsMateri(m)} title="Atur durasi nonton"><I n="clock" s={14} /></button>}
+                      {(m.tipe === "youtube") && <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px", color: "#0d9488" }} onClick={() => setSettingsMateri(m)} title="Atur durasi nonton"><I n="clock" s={14} /></button>}
                       <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
                     </div>
                     );

@@ -326,14 +326,14 @@ function MissionAttendanceCard({ m }) {
   const meta = m.meta || {};
   return (
     <div style={{
-      background: "var(--surface)", border: "1.5px solid #c7d2fe",
+      background: "var(--surface)", border: "1.5px solid #99f6e4",
       borderRadius: 14, padding: "12px 14px", maxWidth: 300, width: "100%"
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "#eef2ff" }}>
-          <I n="mapPin" s={15} style={{ color: "#4f46e5" }} />
+        <div style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "#ccfbf1" }}>
+          <I n="mapPin" s={15} style={{ color: "#0d9488" }} />
         </div>
-        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "#4338ca" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "#0f766e" }}>
           Konfirmasi Kehadiran
         </div>
       </div>

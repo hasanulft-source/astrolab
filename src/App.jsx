@@ -2066,7 +2066,7 @@ function DashboardSiswa({ user, store, navigate }) {
 
       {/* Banner Mission Mode — INDIGO + rocket, sengaja beda dari kartu status (teal) di bawah */}
       {store.isMissionActive(user.jenjang) && (
-        <button onClick={() => setShowMission(true)} style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", marginBottom: 14, border: `1px solid ${MISSION_THEME.ring}`, borderRadius: "var(--r)", cursor: "pointer", background: MISSION_THEME.grad, color: "#fff", boxShadow: "0 6px 18px rgba(79,70,229,.28)" }}>
+        <button onClick={() => setShowMission(true)} style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", marginBottom: 14, border: `1px solid ${MISSION_THEME.ring}`, borderRadius: "var(--r)", cursor: "pointer", background: MISSION_THEME.grad, color: "#fff", boxShadow: "0 6px 18px rgba(8,145,178,.3)" }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="rocket" s={22} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: ".03em" }}>MISSION MODE AKTIF</div>
@@ -9221,13 +9221,13 @@ class ErrorBoundary extends Component {
 // Palet khusus Mission Mode — INDIGO, sengaja kontras dgn brand teal (mode biasa)
 // supaya siswa langsung sadar "ini mode berbeda".
 const MISSION_THEME = {
-  grad: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-  gradSoft: "linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)",
-  solid: "#4f46e5",
-  deep: "#4338ca",
-  tint: "#eef2ff",
-  ring: "#c7d2fe",
-  onTint: "#4338ca",
+  grad: "linear-gradient(135deg, #0d9488 0%, #0891b2 55%, #06b6d4 100%)",
+  gradSoft: "linear-gradient(135deg, #f0fdfa 0%, #ecfeff 100%)",
+  solid: "#0d9488",
+  deep: "#0f766e",
+  tint: "#ccfbf1",
+  ring: "#5eead4",
+  onTint: "#0f766e",
 };
 function missionMisiLabel(misi, store) {
   if (misi.tipe === "tugas") { const t = store.getTugas().find(x => x.id === misi.refId); return t ? t.judul : "(tugas terhapus)"; }
