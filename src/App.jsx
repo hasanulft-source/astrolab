@@ -2006,6 +2006,12 @@ function DashboardSiswa({ user, store, navigate }) {
     return tb - ta;
   };
   const tugas = allTugas.filter(t => fmtDl(t.deadline).tone !== "bad").sort(byNewest); // belum lewat deadline
+  // Tugas terjadwal — akan datang dengan countdown
+  const akanDatangDash = store.getTugas().filter(t => {
+    if (t.jenjang !== user.jenjang || t.status !== "scheduled" || !t.scheduledAt) return false;
+    if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(user.id)) return false;
+    return true;
+  }).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
   // Tugas yang benar-benar "hangus": lewat deadline, belum dikerjakan, DAN gak punya window susulan
   // personal yang masih aktif. Siswa yang masih punya jatah susulan (mis. hasil reset dari guru)
   // belum boleh divonis — konsisten dengan perlakuan di getTugasAstrolabAvg.
@@ -2029,6 +2035,32 @@ function DashboardSiswa({ user, store, navigate }) {
     hasCheckedStreak.current = true;
     store.resetStreakIfMissed(user.id, missedIds.split(","));
   }, [missedIds, store.loading]);
+
+  // Compact countdown card for dashboard
+  function DashCountdownCard({ t }) {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(iv); }, []);
+    const target = new Date(t.scheduledAt).getTime();
+    const diff = Math.max(0, target - now);
+    const jam = Math.floor(diff / 3600000);
+    const menit = Math.floor((diff % 3600000) / 60000);
+    const detik = Math.floor((diff % 60000) / 1000);
+    const countdown = jam > 0 ? `${jam}j ${menit}m` : menit > 0 ? `${menit}m ${detik}d` : `${detik}d`;
+    return (
+      <Card style={{ padding: "14px 16px", opacity: 0.8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: "var(--r-sm)", background: "var(--bg-2)", display: "grid", placeItems: "center", color: "var(--ink-3)", flexShrink: 0 }}>
+            <I n="clock" s={18} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-2)", lineHeight: 1.35 }}>{t.judul}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel} · {t.soal?.length || 0} soal</div>
+          </div>
+          <span className="chip" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{countdown}</span>
+        </div>
+      </Card>
+    );
+  }
 
   // Dynamic greeting by waktu
   const hour = new Date().getHours();
@@ -2137,6 +2169,14 @@ function DashboardSiswa({ user, store, navigate }) {
           </div>
         </div>
       </div>
+
+      {/* Akan Datang — tugas terjadwal dengan countdown (compact for dashboard) */}
+      {akanDatangDash.length > 0 && <>
+        <div className="sh"><h2>Akan Datang</h2></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+          {akanDatangDash.slice(0, 2).map(t => <DashCountdownCard key={t.id} t={t} />)}
+        </div>
+      </>}
 
       {/* Tugas Aktif */}
       <div className="sh"><h2>Tugas aktif</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("tugas")}>Semua <I n="chevR" s={12} /></button></div>
