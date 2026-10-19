@@ -1727,7 +1727,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -9019,17 +9019,13 @@ function usePushNotifications(user) {
 }
 
 // ─── NOTIFICATIONS HOOK ───
+// v2: Pakai data dari useStore (sudah di-listen), TANPA buka onValue listener tambahan.
+// Ini menghapus 4 duplicate listener (tugas, submissions, messages, badges) yang boros bandwidth.
 function useNotifications(user, store, route) {
   const [notifs, setNotifs] = useState([]);
-  // Anti-spam: simpan timestamp first load, hanya notify event setelah ini
   const [bootTime] = useState(() => Date.now());
-  // Track event yang sudah ditampilkan agar tidak duplikat
   const [seenIds] = useState(() => new Set());
-
-  // Refs supaya onValue callback selalu baca nilai terbaru (fix stale closure)
-  const storeRef = useRef(store);
   const routeRef = useRef(route);
-  useEffect(() => { storeRef.current = store; });
   useEffect(() => { routeRef.current = route; });
 
   function pushNotif(notif) {
@@ -9037,110 +9033,92 @@ function useNotifications(user, store, route) {
     setNotifs(n => [...n, { ...notif, id }]);
     setTimeout(() => setNotifs(n => n.filter(x => x.id !== id)), 5000);
   }
-
   function dismissNotif(id) {
     setNotifs(n => n.filter(x => x.id !== id));
   }
 
-  // Listen tugas baru (untuk siswa) — skip kalau lagi di halaman tugas
+  // Tugas baru (siswa) — react to store._tugas changes
+  const tugasList = store._tugas;
   useEffect(() => {
     if (!user || user.role !== "siswa") return;
-    const tugasRef = ref(db, "tugas");
-    const unsub = onValue(tugasRef, snap => {
-      const data = snap.val() || {};
-      Object.entries(data).forEach(([id, t]) => {
-        if (!t.createdAt) return;
-        const createdMs = new Date(t.createdAt).getTime();
-        if (createdMs < bootTime) return;
-        if (t.jenjang !== user.jenjang) return;
-        if (t.status !== "aktif") return;
-        const eventKey = `tugas_${id}`;
-        if (seenIds.has(eventKey)) return;
-        // Skip notif kalau lagi di halaman tugas — JANGAN tandai seen, biar muncul begitu pindah
-        const r = routeRef.current;
-        if (r === "tugas" || r === "tugas-detail" || r === "kerjakan") return;
-        seenIds.add(eventKey);
-        pushNotif({ type: "tugas", title: "Tugas baru!", message: `${t.judul} · ${t.mapel}` });
-      });
+    tugasList.forEach(t => {
+      if (!t.createdAt) return;
+      const createdMs = new Date(t.createdAt).getTime();
+      if (createdMs < bootTime) return;
+      if (t.jenjang !== user.jenjang) return;
+      if (t.status !== "aktif") return;
+      const eventKey = `tugas_${t.id}`;
+      if (seenIds.has(eventKey)) return;
+      const r = routeRef.current;
+      if (r === "tugas" || r === "tugas-detail" || r === "kerjakan") return;
+      seenIds.add(eventKey);
+      pushNotif({ type: "tugas", title: "Tugas baru!", message: `${t.judul} · ${t.mapel}` });
     });
-    return () => unsub();
-  }, [user?.uid, user?.role]);
+  }, [tugasList, user?.uid, user?.role]);
 
-  // Listen submission baru (untuk guru) — skip hanya kalau lagi analisis detail tugas
+  // Submission baru (guru) — react to store._subs changes
+  const subsList = store._subs;
   useEffect(() => {
     if (!user || user.role !== "guru") return;
-    const subsRef = ref(db, "submissions");
-    const unsub = onValue(subsRef, snap => {
-      const data = snap.val() || {};
-      Object.entries(data).forEach(([id, s]) => {
-        if (!s.submittedAt) return;
-        const subMs = new Date(s.submittedAt).getTime();
-        if (subMs < bootTime) return;
-        const eventKey = `sub_${id}`;
-        if (seenIds.has(eventKey)) return;
-        // Hanya suppress di halaman analisis detail tugas (bukan home dashboard)
-        if (routeRef.current === "analisis-tugas") return;
-        seenIds.add(eventKey);
-        // Pakai storeRef untuk data terbaru, dengan fallback kalau belum load
-        const st = storeRef.current;
-        const siswa = st.getAllSiswa().find(x => x.id === s.siswaId);
-        const tugas = st.getTugas().find(x => x.id === s.tugasId);
-        const siswaName = siswa?.nama || s.siswaId;
-        const tugasName = tugas?.judul || "Tugas";
-        const nilaiStr = s.nilai != null ? ` · ${s.nilai}/100` : "";
-        pushNotif({ type: "submission", title: "Submission baru", message: `${siswaName} kumpul ${tugasName}${nilaiStr}` });
-      });
+    subsList.forEach(s => {
+      if (!s.submittedAt) return;
+      const subMs = new Date(s.submittedAt).getTime();
+      if (subMs < bootTime) return;
+      const eventKey = `sub_${s.id}`;
+      if (seenIds.has(eventKey)) return;
+      if (routeRef.current === "analisis-tugas") return;
+      seenIds.add(eventKey);
+      const siswa = store.getAllSiswa().find(x => x.id === s.siswaId);
+      const tugas = store.getTugas().find(x => x.id === s.tugasId);
+      const siswaName = siswa?.nama || s.siswaId;
+      const tugasName = tugas?.judul || "Tugas";
+      const nilaiStr = s.nilai != null ? ` · ${s.nilai}/100` : "";
+      pushNotif({ type: "submission", title: "Submission baru", message: `${siswaName} kumpul ${tugasName}${nilaiStr}` });
     });
-    return () => unsub();
-  }, [user?.uid, user?.role]);
+  }, [subsList, user?.uid, user?.role]);
 
-  // Listen pesan baru — skip kalau lagi di halaman chat
+  // Pesan baru — react to store._messages changes
+  const rawMessages = store._messages;
   useEffect(() => {
     if (!user || !user.id) return;
-    const msgsRef = ref(db, "messages");
-    const unsub = onValue(msgsRef, snap => {
-      const data = snap.val() || {};
-      Object.entries(data).forEach(([tid, thread]) => {
-        if (!tid.includes(user.id)) return;
-        Object.entries(thread).forEach(([msgId, msg]) => {
-          if (msg.ts < bootTime) return;
-          if (msg.fromId === user.id) return;
-          if (msg.toId !== user.id) return;
-          const eventKey = `msg_${tid}_${msgId}`;
-          if (seenIds.has(eventKey)) return;
-          if (routeRef.current === "chat") return;
-          seenIds.add(eventKey);
-          const st = storeRef.current;
-          const siswaList = st.getAllSiswa();
-          const guru = st.fbGuru;
-          const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
-          const senderName = sender?.namaDisplay || sender?.nama || msg.fromId;
-          const text = msg.text || "";
-          pushNotif({ type: "pesan", title: `Pesan dari ${senderName}`, message: text.length > 60 ? text.slice(0, 60) + "..." : text });
-        });
+    Object.entries(rawMessages).forEach(([tid, thread]) => {
+      if (!tid.includes(user.id)) return;
+      Object.entries(thread).forEach(([msgId, msg]) => {
+        if (msg.ts < bootTime) return;
+        if (msg.fromId === user.id) return;
+        if (msg.toId !== user.id) return;
+        const eventKey = `msg_${tid}_${msgId}`;
+        if (seenIds.has(eventKey)) return;
+        if (routeRef.current === "chat") return;
+        seenIds.add(eventKey);
+        const siswaList = store.getAllSiswa();
+        const guru = store.fbGuru;
+        const sender = siswaList.find(x => x.id === msg.fromId) || (guru?.id === msg.fromId ? guru : null);
+        const senderName = sender?.namaDisplay || sender?.nama || msg.fromId;
+        const text = msg.text || "";
+        pushNotif({ type: "pesan", title: `Pesan dari ${senderName}`, message: text.length > 60 ? text.slice(0, 60) + "..." : text });
       });
     });
-    return () => unsub();
-  }, [user?.uid, user?.id]);
+  }, [rawMessages, user?.uid, user?.id]);
 
-  // Listen badge baru (untuk siswa)
+  // Badge baru (siswa) — react to store._badgesData changes
+  const badgesData = store._badgesData;
+  const prevBadgesRef = useRef(null);
   useEffect(() => {
     if (!user || user.role !== "siswa" || !user.id) return;
-    const badgesRef = ref(db, `badges/${user.id}`);
-    let initialLoad = true;
-    const unsub = onValue(badgesRef, snap => {
-      if (initialLoad) { initialLoad = false; return; }
-      const data = snap.val() || {};
-      Object.keys(data).forEach(bid => {
-        const eventKey = `badge_${bid}`;
-        if (seenIds.has(eventKey)) return;
-        seenIds.add(eventKey);
-        const b = ALL_BADGES?.find(x => x.id === bid) || { name: bid };
-        pushNotif({ type: "badge", title: "Badge baru!", message: `${b.name}` });
-      });
+    const myBadges = Object.keys(badgesData[user.id] || {});
+    if (prevBadgesRef.current === null) { prevBadgesRef.current = new Set(myBadges); return; }
+    const prevSet = prevBadgesRef.current;
+    myBadges.forEach(bid => {
+      if (prevSet.has(bid)) return;
+      const eventKey = `badge_${bid}`;
+      if (seenIds.has(eventKey)) return;
+      seenIds.add(eventKey);
+      const b = ALL_BADGES?.find(x => x.id === bid) || { name: bid };
+      pushNotif({ type: "badge", title: "Badge baru!", message: `${b.name}` });
     });
-    return () => unsub();
-  }, [user?.uid, user?.role, user?.id]);
+    prevBadgesRef.current = new Set(myBadges);
+  }, [badgesData, user?.uid, user?.role, user?.id]);
 
   return { notifs, dismissNotif };
 }
