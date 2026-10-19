@@ -3,7 +3,7 @@
 // UI: Original (Plus Jakarta Sans + teal #0d6b7a)
 // Engine: Firebase Realtime Database + Firebase Authentication
 
-import { useState, useEffect, useRef, Component } from "react";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
@@ -288,16 +288,17 @@ function useStore() {
     await set(newRef, { ...rest, judul: `${t.judul} (Salinan)`, createdAt: new Date().toISOString(), status: "aktif", scheduledAt: null });
   };
 
-  // BANK SOAL
+  // BANK SOAL — guru only, siswa gak pernah akses (hemat bandwidth)
   const [bankSoal, setBankSoal] = useState([]);
   useEffect(() => {
+    if (currentUser && currentUser.role !== "guru") return;
     const bsRef = ref(db, "banksoal");
     const unsub = onValue(bsRef, snap => {
       const data = snap.val() || {};
       setBankSoal(Object.entries(data).map(([id, s]) => ({ ...s, id })));
     }, () => setBankSoal([]));
     return () => unsub();
-  }, []);
+  }, [currentUser?.role]);
   const getBankSoal = () => bankSoal;
   const addBankSoal = async (s) => {
     const newRef = push(ref(db, "banksoal"));
@@ -620,14 +621,16 @@ function useStore() {
   // "Tugas Astrolab" (20%) TIDAK disimpan di record ini — selalu di-derive real-time dari
   // submissions siswa yang tugas.mapel match, supaya selalu sinkron tanpa perlu manual update.
   // PENTING: filter mapel STRICT — nilai IPA dan Informatika tidak boleh tercampur.
+  // nilaiAkhir — guru only listener (siswa fetch langsung di RaporSiswa via get())
   const [nilaiAkhirData, setNilaiAkhirData] = useState({});
   useEffect(() => {
+    if (currentUser && currentUser.role !== "guru") return;
     const naRef = ref(db, "nilaiAkhir");
     const u8 = onValue(naRef, snap => {
       setNilaiAkhirData(snap.val() || {});
     });
     return () => u8();
-  }, []);
+  }, [currentUser?.role]);
 
   function nilaiAkhirKey(siswaId, mapel, jenjang, periode) {
     return `${siswaId}_${mapel}_${jenjang}_${periode}`.replace(/[.#$/[\]]/g, "-");
@@ -858,12 +861,14 @@ function useStore() {
   // Contoh use case: siswa nyelesain "Latihan Khusus" (tugas personal remedial) → guru kasih +5 di komponen tertentu.
   // Firebase struct: nilaiBoost/{siswaId_mapel_jenjang_periode}/{boostId} = { komponen, nilai, alasan, tugasRefId?, createdAt, updatedAt }
   // Cap total (base + Σboost) diterapkan saat compute nilai akhir, bukan saat store — biar historis boost tetap kesimpen walau ternyata over-cap.
+  // nilaiBoost — guru only listener (siswa fetch langsung di RaporSiswa via get())
   const [nilaiBoostData, setNilaiBoostData] = useState({});
   useEffect(() => {
+    if (currentUser && currentUser.role !== "guru") return;
     const nbRef = ref(db, "nilaiBoost");
     const u10 = onValue(nbRef, snap => setNilaiBoostData(snap.val() || {}));
     return () => u10();
-  }, []);
+  }, [currentUser?.role]);
 
   // ═══ PUBLISH GATE NILAI ═══
   // Guru harus "terbitkan" nilai per mapel+jenjang+periode sebelum siswa bisa lihat.
@@ -1214,15 +1219,12 @@ function useStore() {
     return rows.length;
   };
 
+  // PHOTOS — one-time fetch, re-fetch after save (hemat bandwidth, jarang berubah)
   const [photos, setPhotos] = useState({});
-
-  useEffect(() => {
-    const photosRef = ref(db, "photos");
-    const u6 = onValue(photosRef, snap => {
-      setPhotos(snap.val() || {});
-    });
-    return () => u6();
+  const fetchPhotos = useCallback(() => {
+    get(ref(db, "photos")).then(snap => setPhotos(snap.val() || {})).catch(() => {});
   }, []);
+  useEffect(() => { fetchPhotos(); }, [fetchPhotos]);
 
   // FOTO PROFIL — simpan base64 terkompresi ke Firebase
   const getPhoto = (userId) => {
@@ -1238,6 +1240,7 @@ function useStore() {
   const savePhoto = async (userId, base64OrNull) => {
     if (!base64OrNull) {
       await remove(ref(db, `photos/${userId}`));
+      fetchPhotos(); // refresh local cache after delete
       return;
     }
     // Kompres ke max 120x120px sebelum simpan
@@ -1257,6 +1260,7 @@ function useStore() {
       img.src = base64OrNull;
     });
     await set(ref(db, `photos/${userId}`), compressed);
+    fetchPhotos(); // refresh local cache after save
   };
 
   // ACCOUNTS (Firebase) — siswa baru di /accounts/{id}
@@ -1595,27 +1599,29 @@ function useStore() {
   // ─── SOAL LATIHAN MANDIRI (bank soal khusus latihan, TERPISAH dari tugas & Bank Soal) ───
   // Node: /latihanSoal/{id} = { mapel, jenjang, bab, type:"pg", pertanyaan, opsi[], jawaban, pembahasan, createdAt }
   // Latihan = PG ONLY (konsisten dengan engine LatihanQuiz + grading instan).
+  // LATIHAN SOAL — one-time fetch, re-fetch after CUD ops (hemat bandwidth, guru jarang edit)
   const [latihanSoalList, setLatihanSoalList] = useState([]);
-  useEffect(() => {
-    const lsRef = ref(db, "latihanSoal");
-    const unsub = onValue(lsRef, snap => {
+  const fetchLatihanSoal = useCallback(() => {
+    get(ref(db, "latihanSoal")).then(snap => {
       const data = snap.val() || {};
       setLatihanSoalList(Object.entries(data).map(([id, v]) => ({ ...v, id })));
-    }, () => setLatihanSoalList([]));
-    return () => unsub();
+    }).catch(() => setLatihanSoalList([]));
   }, []);
+  useEffect(() => { fetchLatihanSoal(); }, [fetchLatihanSoal]);
   const getLatihanSoal = () => latihanSoalList;
   const addLatihanSoal = async (s) => {
     const newRef = push(ref(db, "latihanSoal"));
     await set(newRef, { ...s, type: "pg", createdAt: Date.now() });
+    fetchLatihanSoal();
   };
   const addLatihanSoalBulk = async (list) => {
     const updates = {};
     list.forEach(s => { const r = push(ref(db, "latihanSoal")); updates[r.key] = { ...s, type: "pg", createdAt: Date.now() }; });
     if (Object.keys(updates).length) await update(ref(db, "latihanSoal"), updates);
+    fetchLatihanSoal();
     return Object.keys(updates).length;
   };
-  const deleteLatihanSoal = async (id) => { await remove(ref(db, `latihanSoal/${id}`)); };
+  const deleteLatihanSoal = async (id) => { await remove(ref(db, `latihanSoal/${id}`)); fetchLatihanSoal(); };
   // Parse Excel pakai parser Bank Soal, ambil PG aja, assign mapel/jenjang/bab yang dipilih guru.
   const importLatihanFromExcel = async (file, mapel, jenjang, bab) => {
     const parsed = await importSoalFromExcel(file);
