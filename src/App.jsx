@@ -2036,7 +2036,21 @@ function DashboardSiswa({ user, store, navigate }) {
     store.resetStreakIfMissed(user.id, missedIds.split(","));
   }, [missedIds, store.loading]);
 
-  // Compact countdown card for dashboard
+  // Countdown chip merah untuk tugas aktif — "Xj Xm lagi"
+  function DashDeadlineChip({ deadline }) {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(iv); }, []);
+    const target = new Date(deadline).getTime();
+    const diff = Math.max(0, target - now);
+    if (diff <= 0) return <span className="chip chip-bad">Lewat</span>;
+    const hari = Math.floor(diff / 86400000);
+    const jam = Math.floor((diff % 86400000) / 3600000);
+    const menit = Math.floor((diff % 3600000) / 60000);
+    const label = hari > 0 ? `${hari}h ${jam}j lagi` : jam > 0 ? `${jam}j ${menit}m lagi` : `${menit}m lagi`;
+    return <span className="chip chip-bad" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{label}</span>;
+  }
+
+  // Card "Akan Datang" — countdown warna warning, "dalam Xj Xm"
   function DashCountdownCard({ t }) {
     const [now, setNow] = useState(Date.now());
     useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(iv); }, []);
@@ -2045,18 +2059,18 @@ function DashboardSiswa({ user, store, navigate }) {
     const jam = Math.floor(diff / 3600000);
     const menit = Math.floor((diff % 3600000) / 60000);
     const detik = Math.floor((diff % 60000) / 1000);
-    const countdown = jam > 0 ? `${jam}j ${menit}m` : menit > 0 ? `${menit}m ${detik}d` : `${detik}d`;
+    const countdown = jam > 0 ? `dalam ${jam}j ${menit}m` : menit > 0 ? `dalam ${menit}m ${detik}d` : `dalam ${detik}d`;
     return (
-      <Card style={{ padding: "14px 16px", opacity: 0.8 }}>
+      <Card style={{ padding: "14px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: "var(--r-sm)", background: "var(--bg-2)", display: "grid", placeItems: "center", color: "var(--ink-3)", flexShrink: 0 }}>
+          <div style={{ width: 38, height: 38, borderRadius: "var(--r-sm)", background: "var(--warn-bg)", display: "grid", placeItems: "center", color: "var(--warn)", flexShrink: 0 }}>
             <I n="clock" s={18} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-2)", lineHeight: 1.35 }}>{t.judul}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", lineHeight: 1.35 }}>{t.judul}</div>
             <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel} · {t.soal?.length || 0} soal</div>
           </div>
-          <span className="chip" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{countdown}</span>
+          <span className="chip chip-warn" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{countdown}</span>
         </div>
       </Card>
     );
@@ -2170,15 +2184,7 @@ function DashboardSiswa({ user, store, navigate }) {
         </div>
       </div>
 
-      {/* Akan Datang — tugas terjadwal dengan countdown (compact for dashboard) */}
-      {akanDatangDash.length > 0 && <>
-        <div className="sh"><h2>Akan Datang</h2></div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-          {akanDatangDash.slice(0, 2).map(t => <DashCountdownCard key={t.id} t={t} />)}
-        </div>
-      </>}
-
-      {/* Tugas Aktif */}
+      {/* Tugas Aktif — dengan countdown merah */}
       <div className="sh"><h2>Tugas aktif</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("tugas")}>Semua <I n="chevR" s={12} /></button></div>
       {tugas.length === 0 ? <div className="empty">Belum ada tugas aktif dari guru.</div> :
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
@@ -2197,13 +2203,21 @@ function DashboardSiswa({ user, store, navigate }) {
                       <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: done ? "var(--ink-3)" : "var(--ink)" }}>{t.judul}</div>
                       <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel}{!done && t.soal?.length ? ` · ${t.soal.length} soal` : ""}{!done && poinMax ? ` · +${poinMax} pt` : ""}</div>
                     </div>
-                    {done ? <span className="chip chip-good">Selesai</span> : <span className={`chip ${dl.tone ? "chip-" + dl.tone : "chip-accent"}`}>{dl.label}</span>}
+                    {done ? <span className="chip chip-good">Selesai</span> : !done && t.deadline ? <DashDeadlineChip deadline={t.deadline} /> : null}
                   </div>
                 </Card>
               </button>
             );
           })}
         </div>}
+
+      {/* Akan Datang — tugas terjadwal, countdown warna warning */}
+      {akanDatangDash.length > 0 && <>
+        <div className="sh"><h2>Akan Datang</h2></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+          {akanDatangDash.slice(0, 2).map(t => <DashCountdownCard key={t.id} t={t} />)}
+        </div>
+      </>}
 
       {/* Top 3 Leaderboard */}
       <div className="sh"><h2>Top 3 Kelas {user.jenjang}</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("leaderboard")}>Semua <I n="chevR" s={12} /></button></div>
@@ -2530,18 +2544,18 @@ function DaftarTugas({ user, store, navigate }) {
     const jam = Math.floor(diff / 3600000);
     const menit = Math.floor((diff % 3600000) / 60000);
     const detik = Math.floor((diff % 60000) / 1000);
-    const countdown = jam > 0 ? `${jam}j ${menit}m ${detik}d` : menit > 0 ? `${menit}m ${detik}d` : `${detik}d`;
+    const countdown = jam > 0 ? `dalam ${jam}j ${menit}m ${detik}d` : menit > 0 ? `dalam ${menit}m ${detik}d` : `dalam ${detik}d`;
     return (
-      <Card style={{ borderLeft: "3px solid var(--ink-3)", opacity: 0.75 }}>
+      <Card style={{ borderLeft: "3px solid var(--warn)" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ width: 42, height: 42, borderRadius: "var(--r-sm)", flexShrink: 0, display: "grid", placeItems: "center",
-            background: "var(--bg-2)", color: "var(--ink-3)" }}>
+            background: "var(--warn-bg)", color: "var(--warn)" }}>
             <I n="clock" s={18} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-2)" }}>{t.judul}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{t.judul}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              <span className="chip" style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{countdown}</span>
+              <span className="chip chip-warn" style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{countdown}</span>
               <span className="chip">{new Date(t.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
               <span className="chip">{t.soal?.length || 0} soal</span>
             </div>
