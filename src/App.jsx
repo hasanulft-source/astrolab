@@ -1988,6 +1988,30 @@ function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
   );
 }
 
+// Parse deadline → end-of-day lokal (date-only "2026-10-19" → 23:59:59 WIB, bukan UTC midnight)
+function deadlineEnd(dl) {
+  if (!dl) return 0;
+  if (typeof dl === "string" && !dl.includes("T")) {
+    const [y, m, day] = dl.split("-").map(Number);
+    return new Date(y, m - 1, day, 23, 59, 59, 999).getTime();
+  }
+  return new Date(dl).getTime();
+}
+
+// Countdown chip merah untuk tugas aktif — "Xj Xm lagi" (shared: Dashboard, DaftarTugas, DetailTugas)
+function DeadlineChip({ deadline }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(iv); }, []);
+  const target = deadlineEnd(deadline);
+  const diff = target - now;
+  if (diff <= 0) return <span className="chip chip-bad">Lewat</span>;
+  const hari = Math.floor(diff / 86400000);
+  const jam = Math.floor((diff % 86400000) / 3600000);
+  const menit = Math.floor((diff % 3600000) / 60000);
+  const label = hari > 0 ? `${hari}h ${jam}j lagi` : jam > 0 ? `${jam}j ${menit}m lagi` : `${menit}m lagi`;
+  return <span className="chip chip-bad" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{label}</span>;
+}
+
 // ─── DASHBOARD SISWA ───
 function DashboardSiswa({ user, store, navigate }) {
   const [showMission, setShowMission] = useState(false);
@@ -2035,32 +2059,6 @@ function DashboardSiswa({ user, store, navigate }) {
     hasCheckedStreak.current = true;
     store.resetStreakIfMissed(user.id, missedIds.split(","));
   }, [missedIds, store.loading]);
-
-  // Parse deadline → end-of-day lokal (date-only "2026-10-19" → 23:59:59 WIB, bukan UTC midnight)
-  function deadlineEnd(dl) {
-    if (!dl) return 0;
-    const d = new Date(dl);
-    // Kalo date-only string (tanpa T/waktu), JS parse sebagai UTC midnight — fix ke end-of-day lokal
-    if (typeof dl === "string" && !dl.includes("T")) {
-      const [y, m, day] = dl.split("-").map(Number);
-      return new Date(y, m - 1, day, 23, 59, 59, 999).getTime();
-    }
-    return d.getTime();
-  }
-
-  // Countdown chip merah untuk tugas aktif — "Xj Xm lagi"
-  function DeadlineChip({ deadline }) {
-    const [now, setNow] = useState(Date.now());
-    useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(iv); }, []);
-    const target = deadlineEnd(deadline);
-    const diff = target - now;
-    if (diff <= 0) return <span className="chip chip-bad">Lewat</span>;
-    const hari = Math.floor(diff / 86400000);
-    const jam = Math.floor((diff % 86400000) / 3600000);
-    const menit = Math.floor((diff % 3600000) / 60000);
-    const label = hari > 0 ? `${hari}h ${jam}j lagi` : jam > 0 ? `${jam}j ${menit}m lagi` : `${menit}m lagi`;
-    return <span className="chip chip-bad" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{label}</span>;
-  }
 
   // Card "Akan Datang" — countdown warna warning, "dalam Xj Xm"
   function DashCountdownCard({ t }) {
