@@ -11,8 +11,18 @@ export function shuffle(arr) {
 }
 
 export function fmtDl(dl) {
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const d = new Date(dl); d.setHours(0, 0, 0, 0);
+  if (!dl) return { label: "Tanpa deadline", tone: "" };
+  // Parse deadline sebagai lokal (bukan UTC) — "2026-10-19" = 19 Okt lokal
+  let d;
+  if (typeof dl === "string" && !dl.includes("T")) {
+    const [y, m, day] = dl.split("-").map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(dl);
+  }
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
   const diff = Math.round((d - now) / 86400000);
   if (diff < 0) return { label: "Lewat deadline", tone: "bad" };
   if (diff === 0) return { label: "Hari ini!", tone: "warn" };
