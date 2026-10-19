@@ -288,17 +288,16 @@ function useStore() {
     await set(newRef, { ...rest, judul: `${t.judul} (Salinan)`, createdAt: new Date().toISOString(), status: "aktif", scheduledAt: null });
   };
 
-  // BANK SOAL — guru only, siswa gak pernah akses (hemat bandwidth)
+  // BANK SOAL
   const [bankSoal, setBankSoal] = useState([]);
   useEffect(() => {
-    if (currentUser && currentUser.role !== "guru") return;
     const bsRef = ref(db, "banksoal");
     const unsub = onValue(bsRef, snap => {
       const data = snap.val() || {};
       setBankSoal(Object.entries(data).map(([id, s]) => ({ ...s, id })));
     }, () => setBankSoal([]));
     return () => unsub();
-  }, [currentUser?.role]);
+  }, []);
   const getBankSoal = () => bankSoal;
   const addBankSoal = async (s) => {
     const newRef = push(ref(db, "banksoal"));
