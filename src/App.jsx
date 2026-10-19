@@ -1369,11 +1369,11 @@ function useStore() {
       .map((s, i) => ({ ...s, rank: i + 1 }));
   };
 
-  // AUTO-PUBLISH SCHEDULER — cek setiap menit
+  // AUTO-PUBLISH SCHEDULER — cek setiap menit (pakai Date object, bukan string comparison)
   useEffect(() => {
     const checkScheduled = async () => {
-      const now = new Date().toISOString();
-      tugas.filter(t => t.status === "scheduled" && t.scheduledAt && t.scheduledAt <= now)
+      const now = Date.now();
+      tugas.filter(t => t.status === "scheduled" && t.scheduledAt && new Date(t.scheduledAt).getTime() <= now)
         .forEach(t => {
           update(ref(db, `tugas/${t.id}`), { status: "aktif" });
         });
@@ -2434,11 +2434,14 @@ function DaftarTugas({ user, store, navigate }) {
   const [showAllDone, setShowAllDone] = useState(false);
 
   // Filter: (1) mapel & jenjang match, (2) kalau tugas personal (assignedTo array), siswa harus di-assign
-  const semua = store.getTugas().filter(t => {
+  // (3) exclude scheduled tasks dari daftar utama — tampilkan terpisah di "Akan Datang"
+  const semuaRaw = store.getTugas().filter(t => {
     if (t.jenjang !== user.jenjang || t.mapel !== mapel) return false;
     if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(user.id)) return false;
     return true;
   });
+  const semua = semuaRaw.filter(t => t.status !== "scheduled");
+  const akanDatang = semuaRaw.filter(t => t.status === "scheduled" && t.scheduledAt).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
   // Sort by newest first (createdAt desc)
   const byNewest = (a, b) => {
     const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -2477,6 +2480,36 @@ function DaftarTugas({ user, store, navigate }) {
   const nilaiRata = nilaiList.length > 0 ? Math.round(nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length) : 0;
   const circumference = 2 * Math.PI * 22; // r=22
   const progressOffset = totalTugas > 0 ? circumference - (totalSelesai / totalTugas) * circumference : circumference;
+
+  // Countdown card — tugas terjadwal yang belum aktif
+  function CountdownCard({ t }) {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(iv); }, []);
+    const target = new Date(t.scheduledAt).getTime();
+    const diff = Math.max(0, target - now);
+    const jam = Math.floor(diff / 3600000);
+    const menit = Math.floor((diff % 3600000) / 60000);
+    const detik = Math.floor((diff % 60000) / 1000);
+    const countdown = jam > 0 ? `${jam}j ${menit}m ${detik}d` : menit > 0 ? `${menit}m ${detik}d` : `${detik}d`;
+    return (
+      <Card style={{ borderLeft: "3px solid var(--ink-3)", opacity: 0.75 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: "var(--r-sm)", flexShrink: 0, display: "grid", placeItems: "center",
+            background: "var(--bg-2)", color: "var(--ink-3)" }}>
+            <I n="clock" s={18} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-2)" }}>{t.judul}</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              <span className="chip" style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{countdown}</span>
+              <span className="chip">{new Date(t.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+              <span className="chip">{t.soal?.length || 0} soal</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   // Active task card — for belum dikerjakan & susulan
   function ActiveCard({ t }) {
@@ -2547,6 +2580,19 @@ function DaftarTugas({ user, store, navigate }) {
               <div className="dt-prog-info">
                 <div className="dt-prog-title">{totalSelesai} dari {totalTugas} tugas selesai</div>
                 {nilaiRata > 0 && <div className="dt-prog-sub">Nilai rata-rata: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{nilaiRata}</span></div>}
+              </div>
+            </div>
+          )}
+
+          {/* Akan Datang — tugas terjadwal dengan countdown */}
+          {akanDatang.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="dt-sh">
+                <span className="dt-sh-title">Akan Datang</span>
+                <span className="dt-sh-count">{akanDatang.length} tugas</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {akanDatang.map(t => <CountdownCard key={t.id} t={t} />)}
               </div>
             </div>
           )}
