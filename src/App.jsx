@@ -2036,12 +2036,24 @@ function DashboardSiswa({ user, store, navigate }) {
     store.resetStreakIfMissed(user.id, missedIds.split(","));
   }, [missedIds, store.loading]);
 
+  // Parse deadline → end-of-day lokal (date-only "2026-10-19" → 23:59:59 WIB, bukan UTC midnight)
+  function deadlineEnd(dl) {
+    if (!dl) return 0;
+    const d = new Date(dl);
+    // Kalo date-only string (tanpa T/waktu), JS parse sebagai UTC midnight — fix ke end-of-day lokal
+    if (typeof dl === "string" && !dl.includes("T")) {
+      const [y, m, day] = dl.split("-").map(Number);
+      return new Date(y, m - 1, day, 23, 59, 59, 999).getTime();
+    }
+    return d.getTime();
+  }
+
   // Countdown chip merah untuk tugas aktif — "Xj Xm lagi"
-  function DashDeadlineChip({ deadline }) {
+  function DeadlineChip({ deadline }) {
     const [now, setNow] = useState(Date.now());
     useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(iv); }, []);
-    const target = new Date(deadline).getTime();
-    const diff = Math.max(0, target - now);
+    const target = deadlineEnd(deadline);
+    const diff = target - now;
     if (diff <= 0) return <span className="chip chip-bad">Lewat</span>;
     const hari = Math.floor(diff / 86400000);
     const jam = Math.floor((diff % 86400000) / 3600000);
@@ -2203,7 +2215,7 @@ function DashboardSiswa({ user, store, navigate }) {
                       <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: done ? "var(--ink-3)" : "var(--ink)" }}>{t.judul}</div>
                       <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel}{!done && t.soal?.length ? ` · ${t.soal.length} soal` : ""}{!done && poinMax ? ` · +${poinMax} pt` : ""}</div>
                     </div>
-                    {done ? <span className="chip chip-good">Selesai</span> : !done && t.deadline ? <DashDeadlineChip deadline={t.deadline} /> : null}
+                    {done ? <span className="chip chip-good">Selesai</span> : !done && t.deadline ? <DeadlineChip deadline={t.deadline} /> : null}
                   </div>
                 </Card>
               </button>
@@ -2590,7 +2602,7 @@ function DaftarTugas({ user, store, navigate }) {
                 <span className="chip">{t.soal?.length || 0} soal</span>
               </div>
             </div>
-            <I n="chevR" s={16} style={{ color: "var(--ink-3)", marginTop: 12, flexShrink: 0 }} />
+            {t.deadline && dl.tone !== "bad" ? <DeadlineChip deadline={t.deadline} /> : <I n="chevR" s={16} style={{ color: "var(--ink-3)", marginTop: 12, flexShrink: 0 }} />}
           </div>
         </Card>
       </button>
@@ -2838,10 +2850,11 @@ function DetailTugas({ user, store, tugasId, navigate }) {
         <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>{t.mapel}</div>
         <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", marginBottom: 12 }}>{t.judul}</div>
         {t.deskripsi && <p style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.65, marginBottom: 14 }}>{t.deskripsi}</p>}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
           <span className="chip"><I n="target" s={10} />+{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt maks</span>
           <span className="chip">{t.soal?.length || 0} soal</span>
+          {!done && !lewat && t.deadline && <DeadlineChip deadline={t.deadline} />}
           {lewat && !done && !susulanAktif && <span className="chip chip-bad">Ditutup</span>}
           {lewat && !done && susulanAktif && <span className="chip" style={{ background: "var(--accent-tint)", color: "var(--accent-2)" }}>Susulan Aktif</span>}
         </div>
