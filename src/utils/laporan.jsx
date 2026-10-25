@@ -6,7 +6,7 @@ import { getLevel } from '../components/gamification';
 import { getPeriodeAktif, getPeriodeOptions } from './helpers';
 import { I } from '../components/icons';
 
-function tierIconSvg(tierId, color = "#1e3a5f", size = 12) {
+function tierIconSvg(tierId, color = "#0d6b7a", size = 12) {
   // Unique gradient ID per tier (size in case multiple sizes used)
   const gid = `gtier-${tierId}-${size}-${Math.floor(Math.random() * 9999)}`;
   const paths = {
@@ -60,14 +60,14 @@ function tierIconSvg(tierId, color = "#1e3a5f", size = 12) {
 
 // badgeIconSvg removed — badge section dihapus dari laporan
 
-function generateBarSVG(nilai, max = 100, color = "#2563eb") {
+function generateBarSVG(nilai, max = 100, color = "#0d9488") {
   const w = Math.round((nilai / max) * 120);
   return `<svg width="120" height="10" style="vertical-align:middle"><rect width="120" height="10" rx="5" fill="#e2e8f0"/><rect width="${w}" height="10" rx="5" fill="${color}"/></svg>`;
 }
 
 function getNilaiColor(n) {
-  if (n >= 85) return "#1d4ed8";
-  if (n >= 70) return "#4f46e5";
+  if (n >= 85) return "#0d6b7a";
+  if (n >= 70) return "#0d9488";
   if (n >= 55) return "#d97706";
   return "#dc2626";
 }
@@ -85,20 +85,19 @@ const LAPORAN_CSS = `
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Plus Jakarta Sans',system-ui,sans-serif; color:#1a2332; font-size:12px; background:#fff; }
   .page { padding:32px 36px; max-width:800px; margin:0 auto; page-break-inside:avoid; break-inside:avoid; }
-  .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:16px; border-bottom:3px solid #1e3a5f; margin-bottom:24px; }
-  .logo { font-size:18px; font-weight:800; color:#1e3a5f; letter-spacing:-.02em; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:16px; border-bottom:3px solid #0d6b7a; margin-bottom:24px; }
+  .logo { font-size:18px; font-weight:800; color:#0d6b7a; letter-spacing:-.02em; }
   .logo small { display:block; font-size:11px; font-weight:400; color:#7a8fa3; margin-top:2px; }
   .meta { text-align:right; font-size:11px; color:#7a8fa3; line-height:1.7; }
   .section { margin-bottom:20px; page-break-inside:avoid; break-inside:avoid; }
-  .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#2563eb; margin-bottom:10px; padding-bottom:4px; border-bottom:1px solid #e2e8f0; }
+  .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#0d9488; margin-bottom:10px; padding-bottom:4px; border-bottom:1px solid #e2e8f0; }
   table { width:100%; border-collapse:collapse; }
   tr { page-break-inside:avoid; break-inside:avoid; }
-  th { background:#eff6ff; color:#1e3a5f; padding:9px 10px; text-align:left; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; border-bottom:2px solid #2563eb; }
+  th { background:#f0fdfa; color:#0d6b7a; padding:9px 10px; text-align:left; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; border-bottom:2px solid #0d9488; }
   td { padding:9px 10px; border-bottom:1px solid #f1f5f9; font-size:11px; vertical-align:middle; }
   tr:last-child td { border-bottom:none; }
   .badge-pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:10px; font-weight:600; margin:1px; }
-  .chip-blue { background:#dbeafe; color:#1e40af; }
-  .chip-indigo { background:#e0e7ff; color:#3730a3; }
+  .chip-teal { background:#ccfbf1; color:#0f766e; }
   .chip-yellow { background:#fef9c3; color:#713f12; }
   .chip-red { background:#fee2e2; color:#991b1b; }
   .chip-gray { background:#f1f5f9; color:#475569; }
@@ -153,7 +152,7 @@ function renderNilaiAkhirGabungan(mapelResults, jenisLaporan = "semester") {
   const finalRow = jenisLaporan === "tengahSemester"
     ? (() => {
         // Hitung nilai akhir dari komponen yang TERISI saja (tanpa SAS), re-normalize bobot
-        return `<tr style="background:#eff6ff">
+        return `<tr style="background:#f0fdfa">
           <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
           ${mapelResults.map(m => {
             const komps = m.result.komponen.filter(c => c.label !== "SAS");
@@ -164,17 +163,17 @@ function renderNilaiAkhirGabungan(mapelResults, jenisLaporan = "semester") {
             }
             const filledBobot = filled.reduce((a, c) => a + c.bobot, 0);
             const na = Math.round(filled.reduce((a, c) => a + (c.val * (c.bobot / filledBobot)), 0) * 100) / 100;
-            return `<td style="text-align:center;font-weight:800;font-size:14px;color:#1e3a5f">
+            return `<td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
               ${na}
               ${!allFilled ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">*proyeksi</div>' : ""}
             </td>`;
           }).join("")}
         </tr>`;
       })()
-    : `<tr style="background:#eff6ff">
+    : `<tr style="background:#f0fdfa">
       <td style="font-weight:800" colspan="2">NILAI AKHIR</td>
       ${mapelResults.map(m => `
-        <td style="text-align:center;font-weight:800;font-size:14px;color:#1e3a5f">
+        <td style="text-align:center;font-weight:800;font-size:14px;color:#0d6b7a">
           ${m.result.nilaiAkhir !== null ? m.result.nilaiAkhir : "—"}
           ${!m.result.lengkap ? '<div style="font-size:9px;font-weight:400;color:#94a3b8">belum lengkap</div>' : ""}
         </td>
@@ -243,7 +242,7 @@ function generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan = "semest
       </td>
       <td style="text-align:center;color:#64748b;font-family:monospace;font-size:11px">${range}</td>
       <td style="text-align:center">
-        <span class="badge-pill ${rata >= 85 ? 'chip-blue' : rata >= 70 ? 'chip-indigo' : rata >= 55 ? 'chip-yellow' : rata !== null ? 'chip-red' : 'chip-gray'}">${label}</span>
+        <span class="badge-pill ${rata >= 85 ? 'chip-teal' : rata >= 70 ? 'chip-teal' : rata >= 55 ? 'chip-yellow' : rata !== null ? 'chip-red' : 'chip-gray'}">${label}</span>
       </td>
       <td>${generateBarSVG(rata || 0, 100, color)}</td>
     </tr>`;
@@ -270,9 +269,9 @@ function generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan = "semest
       <table>
         <tr>
           <td style="width:25%;font-weight:600">Total Poin XP</td>
-          <td style="font-weight:800;color:#2563eb;font-size:16px">${stats.poin || 0}</td>
+          <td style="font-weight:800;color:#0d9488;font-size:16px">${stats.poin || 0}</td>
           <td style="width:25%;font-weight:600">Level</td>
-          <td><span class="badge-pill chip-indigo">${tierIconSvg(lv.tierId, lv.color, 16)} ${lv.name}</span></td>
+          <td><span class="badge-pill chip-teal">${tierIconSvg(lv.tierId, lv.color, 16)} ${lv.name}</span></td>
         </tr>
         <tr>
           <td style="font-weight:600">Tugas Selesai</td>
@@ -373,12 +372,12 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif
         <td style="text-align:center;font-weight:700;color:#64748b">${rank}</td>
         <td style="font-weight:600">${s.nama}</td>
         <td style="text-align:center;font-family:monospace">${s.id}</td>
-        <td style="text-align:center;font-weight:700;color:#2563eb">${stats.poin || 0}</td>
+        <td style="text-align:center;font-weight:700;color:#0d9488">${stats.poin || 0}</td>
         <td style="text-align:center">${stats.tugasSelesai || 0}/${tugas.length}</td>
         <td style="text-align:center;font-weight:700;color:${getNilaiColor(nilaiRata)}">${nilaiRata || "—"}</td>
-        <td style="text-align:center"><span class="badge-pill chip-indigo" style="font-size:10px">${tierIconSvg(lv.tierId, lv.color, 14)} ${lv.name}</span></td>
+        <td style="text-align:center"><span class="badge-pill chip-teal" style="font-size:10px">${tierIconSvg(lv.tierId, lv.color, 14)} ${lv.name}</span></td>
         <td style="text-align:center">
-          <span class="badge-pill ${nilaiRata >= 85 ? 'chip-blue' : nilaiRata >= 70 ? 'chip-indigo' : nilaiRata >= 55 ? 'chip-yellow' : nilaiRata > 0 ? 'chip-red' : 'chip-gray'}" style="font-size:10px">
+          <span class="badge-pill ${nilaiRata >= 85 ? 'chip-teal' : nilaiRata >= 70 ? 'chip-teal' : nilaiRata >= 55 ? 'chip-yellow' : nilaiRata > 0 ? 'chip-red' : 'chip-gray'}" style="font-size:10px">
             ${getNilaiLabel(nilaiRata)}
           </span>
         </td>
@@ -411,13 +410,13 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif
             <td style="width:25%;font-weight:600">Rata-rata Nilai</td>
             <td style="font-weight:800;color:${getNilaiColor(avgNilai)};font-size:16px">${avgNilai} <span style="font-size:11px;font-weight:400">${getNilaiLabel(avgNilai)}</span></td>
             <td style="width:25%;font-weight:600">Rata-rata Poin XP</td>
-            <td style="font-weight:800;color:#2563eb;font-size:16px">${avgPoin}</td>
+            <td style="font-weight:800;color:#0d9488;font-size:16px">${avgPoin}</td>
           </tr>
           <tr>
             <td style="font-weight:600">Siswa Aktif</td>
             <td>${siswa.filter(s => (store.getStats(s.id).tugasSelesai || 0) > 0).length} dari ${siswa.length} siswa</td>
             <td style="font-weight:600">Tingkat Ketuntasan</td>
-            <td style="font-weight:700;color:#1d4ed8">${siswa.length ? Math.round(siswa.filter(s => (store.getStats(s.id).nilaiRata || 0) >= 70).length / siswa.length * 100) : 0}%</td>
+            <td style="font-weight:700;color:#0d6b7a">${siswa.length ? Math.round(siswa.filter(s => (store.getStats(s.id).nilaiRata || 0) >= 70).length / siswa.length * 100) : 0}%</td>
           </tr>
         </table>
       </div>
@@ -471,9 +470,9 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif
 <style>${LAPORAN_CSS}</style>
 </head>
 <body>
-  <div class="no-print" style="background:#1e3a5f;color:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100">
+  <div class="no-print" style="background:#0d6b7a;color:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100">
     <span style="font-weight:700">Astrolab · Laporan ${mode === "siswa" ? "Per Siswa" : "Kelas"} ${jenjang}${jenisLaporan === "tengahSemester" ? " (Tengah Semester)" : ""} — ${periode}</span>
-    <button onclick="window.print()" style="background:#fff;color:#1e3a5f;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">Cetak / Save PDF</button>
+    <button onclick="window.print()" style="background:#fff;color:#0d6b7a;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">Cetak / Save PDF</button>
   </div>
   ${bodyContent}
 </body>
