@@ -82,22 +82,26 @@
 .wl.is-open:not(.is-narrow) .wl-lbl{font-size:0; gap:0}
 .wl.is-open:not(.is-narrow) .wl-lbl b{font-size:11px}
 
-/* ---------- login pane (desktop: right half) ---------- */
-.wl-login{position:relative; flex:0 0 0px; height:100%; overflow:hidden; background:linear-gradient(160deg, var(--accent-2, #0a525c) 0%, #062a35 100%);
-  transition:flex-basis .7s cubic-bezier(.22, .8, .2, 1)}
-.wl.is-open .wl-login{flex-basis:min(480px, 42vw)}
-.wl-login-in{position:relative; width:min(480px, 42vw); height:100%; overflow-y:auto}
-.wl-login .login-wrap{min-height:100%; background:transparent}
-.wl-back{all:unset; cursor:pointer; position:absolute; z-index:5; top:max(16px, env(safe-area-inset-top, 0px)); left:16px; font-size:13px; font-weight:600; color:rgba(255,255,255,.85);
-  padding:8px 12px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16)}
-.wl-back:hover{background:rgba(255,255,255,.16); color:#fff}
+/* ---------- login card (desktop: floats over the film, right side) ---------- */
+/* width 400 + right gutter 32 + gap 32 = 464, matching CARD_RESERVE in welcomeScene.js */
+.wl-login{position:absolute; z-index:6; top:0; bottom:0; right:max(32px, env(safe-area-inset-right, 0px)); width:400px;
+  display:flex; align-items:center; padding-block:max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+  pointer-events:none; opacity:0; transform:translateX(28px) scale(.98);
+  transition:opacity .45s ease, transform .6s cubic-bezier(.22, .8, .2, 1)}
+.wl.is-open .wl-login{opacity:1; transform:none}
+.wl.is-open .wl-login-in{pointer-events:auto}
+.wl-login-in{position:relative; width:100%; max-height:100%; overflow-y:auto; border-radius:28px;
+  box-shadow:0 2px 6px rgba(6,42,53,.08), 0 28px 64px rgba(6,42,53,.22)}
+.wl-login .login-wrap{min-height:0; padding:0; background:transparent; display:block}
+.wl-login .login-shell{min-height:0; max-width:none; border-radius:28px; box-shadow:none}
+.wl-back{all:unset; cursor:pointer; position:absolute; z-index:5; top:14px; right:14px; font-size:13px; font-weight:600; color:rgba(255,255,255,.9);
+  padding:7px 13px; border-radius:999px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2)}
+.wl-back:hover{background:rgba(255,255,255,.18); color:#fff}
 .wl-back:focus-visible{outline:2px solid #fff; outline-offset:2px}
-
-/* plain-mode button to replay the film (phones that already logged in) */
-.wl-replay{all:unset; cursor:pointer; position:fixed; z-index:50; right:max(14px, env(safe-area-inset-right, 0px)); bottom:max(14px, env(safe-area-inset-bottom, 0px));
-  display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:999px; font:600 12.5px var(--font, system-ui); color:#09637E;
-  background:rgba(255,255,255,.94); border:1px solid #D3E3E7; box-shadow:0 6px 18px rgba(14,42,51,.12)}
-.wl-replay:focus-visible{outline:2px solid #088395; outline-offset:2px}
+/* keep the top bar and the chapter bar clear of the card */
+.wl-top, .wl-steps{transition:right .6s cubic-bezier(.22, .8, .2, 1), padding-right .6s cubic-bezier(.22, .8, .2, 1)}
+.wl.is-open:not(.is-narrow) .wl-top{right:464px}
+.wl.is-open:not(.is-narrow) .wl-steps{padding-right:464px}
 
 /* ---------- phones / portrait: login rises as a bottom sheet ---------- */
 .wl.is-narrow .wl-panel{top:auto; transform:none; width:auto; bottom:calc(64px + env(safe-area-inset-bottom, 0px));
@@ -112,15 +116,14 @@
 .wl.is-narrow .wl-lbl{font-size:0; gap:0; margin-bottom:6px}
 .wl.is-narrow .wl-lbl b{font-size:11px}
 .wl.is-narrow .wl-steps ol{gap:6px}
-.wl.is-narrow .wl-login{position:absolute; z-index:10; left:0; right:0; bottom:0; height:auto; max-height:94%; flex:none;
-  border-radius:22px 22px 0 0; transform:translateY(104%); transition:transform .5s cubic-bezier(.22, .8, .2, 1); box-shadow:0 -12px 40px rgba(6,42,53,.25)}
+.wl.is-narrow .wl-login{top:auto; left:0; right:0; bottom:0; width:auto; display:block; padding:0; max-height:94%;
+  opacity:1; transform:translateY(104%); transition:transform .5s cubic-bezier(.22, .8, .2, 1)}
 .wl.is-narrow.is-open .wl-login{transform:none}
-.wl.is-narrow .wl-login-in{width:auto; height:auto; max-height:94dvh}
-.wl.is-narrow .login-wrap, .wl.is-narrow .login-shell{min-height:0}
-.wl.is-narrow .wl-back{left:auto; right:14px; top:12px}
+.wl.is-narrow .wl-login-in{max-height:94dvh; border-radius:22px 22px 0 0; box-shadow:0 -12px 40px rgba(6,42,53,.25); background:#fff}
+.wl.is-narrow .login-shell{border-radius:22px 22px 0 0}
 @media (max-height: 740px){ .wl.is-narrow .wl-ui{display:none} }
 @media (max-width: 380px){ .wl-stats dd{font-size:11px} }
 
 @media (prefers-reduced-motion: reduce){
-  .wl-login, .wl.is-narrow .wl-login, .wl-copy, .wl-veil{transition:none}
+  .wl-login, .wl.is-narrow .wl-login, .wl-copy, .wl-veil, .wl-top, .wl-steps{transition:none}
 }

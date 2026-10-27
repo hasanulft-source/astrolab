@@ -1,8 +1,8 @@
 // Astrolab — Welcome (pre-login profile film + login panel)
 // Wraps the existing <LoginScreen>. The three.js scene is loaded on demand from
 // components/welcomeScene.js, so it never weighs on the main bundle.
-// Falls back to the plain login when WebGL is missing, Save-Data is on, the scene
-// fails to load, or (on phones) the device has logged in before.
+// Falls back to the plain login when WebGL is missing, Save-Data is on, or the scene fails to load.
+// Desktop devices that logged in before open with the login card already showing.
 import { useEffect, useRef, useState } from "react";
 import "../styles/welcome.css";
 
@@ -126,7 +126,7 @@ function Panels({ setRef, onLogin }) {
 }
 
 export function Welcome({ children }) {
-  const [mode, setMode] = useState(() => (!canUse3D() || (isNarrow() && readSeen())) ? "plain" : "film");
+  const [mode] = useState(() => canUse3D() ? "film" : "plain");
   const [narrow, setNarrow] = useState(isNarrow);
   const [open, setOpen] = useState(() => !isNarrow() && readSeen());
   const [failed, setFailed] = useState(false);
@@ -165,8 +165,7 @@ export function Welcome({ children }) {
   function setLayoutFor(c) {
     if (!c) return;
     const { open: o, narrow: n } = stateRef.current;
-    c.setLayout(n ? "portrait" : o ? "center" : "copy");
-    c.setSuspended(n && o); // the sheet covers the film on phones, so stop rendering
+    c.setLayout(n ? "portrait" : o ? "login" : "copy");
   }
   useEffect(() => { setLayoutFor(ctrlRef.current); }, [open, narrow]);
   useEffect(() => { if (ctrlRef.current) ctrlRef.current.setPlaying(playing); }, [playing]);
@@ -196,13 +195,7 @@ export function Welcome({ children }) {
   const openLogin = () => { writeSeen(); setOpen(true); };
 
   if (mode === "plain" || failed) {
-    const replay = mode === "plain" && !failed && canUse3D();
-    return (
-      <>
-        {children}
-        {replay && <button className="wl-replay" onClick={() => { setOpen(false); setMode("film"); }}><Play /> Putar profil Astrolab</button>}
-      </>
-    );
+    return children;
   }
 
   return (
@@ -235,7 +228,7 @@ export function Welcome({ children }) {
 
       <aside className="wl-login" ref={loginRef} aria-label="Masuk" aria-hidden={open ? undefined : "true"} inert={!open}>
         <div className="wl-login-in">
-          <button className="wl-back" onClick={() => setOpen(false)}>{narrow ? "Tutup" : <><span aria-hidden="true">←</span> Lihat profil</>}</button>
+          <button className="wl-back" onClick={() => setOpen(false)}>Tutup</button>
           {children}
         </div>
       </aside>

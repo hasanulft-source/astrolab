@@ -507,14 +507,16 @@ export async function createWelcomeScene({ canvas, pane, ui, lowPower = false })
     { t: [37.5, 0.0, 15.5], H: 58, dir: [1, 1.22, 1], face: Math.PI / 4 },
   ];
   const tmpV = new THREE.Vector3(), tmpD = new THREE.Vector3(), tA = new THREE.Vector3(), tB = new THREE.Vector3(), dA = new THREE.Vector3(), dB = new THREE.Vector3();
-  let VW = 1, VH = 1, layout = 'copy', layoutK = 0; // layoutK eases 0 (copy at left) -> 1 (centred, login open)
+  let VW = 1, VH = 1, layout = 'copy', layoutK = 0; // layoutK eases 0 (copy panel at left) -> 1 (login card floating at right)
+  const CARD_RESERVE = 464; // login card width + gutters on the right (keep in sync with welcome.css)
   function frame3(target, dir, H) {
     const a = VW / VH;
     if (layout === 'portrait') {
       const h = H * Math.max(1, 0.95 / a), w = h * a;
       camera.left = -w / 2; camera.right = w / 2; camera.top = h * 0.34; camera.bottom = -h * 0.66;
     } else {
-      const h = H * lerp(1, Math.max(1, 1.15 / a), layoutK), w = h * a, fx = lerp(0.6, 0.5, layoutK);
+      const free = Math.max(0.45, (VW - CARD_RESERVE) / VW); // share of the width left of the card
+      const h = H * lerp(1, Math.max(1, 1.1 / (a * free)), layoutK), w = h * a, fx = lerp(0.6, free / 2, layoutK);
       camera.left = -w * fx; camera.right = w * (1 - fx); camera.top = h * 0.5; camera.bottom = -h * 0.5;
     }
     camera.updateProjectionMatrix();
@@ -649,7 +651,7 @@ export async function createWelcomeScene({ canvas, pane, ui, lowPower = false })
   raf = requestAnimationFrame(t => { last = t; loop(t); });
 
   return {
-    setLayout(l) { layout = l === 'portrait' ? 'portrait' : 'landscape'; layoutTarget = l === 'center' ? 1 : 0; if (layout === 'portrait') layoutK = 0; dirty = true; },
+    setLayout(l) { layout = l === 'portrait' ? 'portrait' : 'landscape'; layoutTarget = l === 'login' ? 1 : 0; if (layout === 'portrait') layoutK = 0; dirty = true; },
     setPlaying(v) { playing = !!v; dirty = true; },
     setSuspended(v) { suspended = !!v; dirty = true; },
     seek(j) { playhead = j === 0 ? 0 : chapStart(j) + MOVE * 0.84; dirty = true; },
