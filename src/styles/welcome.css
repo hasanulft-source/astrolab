@@ -1,0 +1,126 @@
+/* Astrolab — Welcome (pre-login film + login panel). All classes are prefixed wl- to stay clear of main.css. */
+.wl{
+  --wl-bg:#EAF3F5; --wl-paper:#fff; --wl-ink:#0E2A33; --wl-ink-2:#43606A; --wl-ink-3:#7D959D; --wl-line:#D3E3E7;
+  --wl-t9:#09637E; --wl-t7:#088395; --wl-t3:#7AB2B2; --wl-t0:#EBF4F6; --wl-warn:#B45309;
+  --wl-mono:'DM Mono', ui-monospace, Menlo, monospace;
+  --wl-shadow:0 1px 2px rgba(14,42,51,.06), 0 8px 24px rgba(14,42,51,.08);
+  position:fixed; inset:0; display:flex; overflow:hidden; background:var(--wl-bg); color:var(--wl-ink);
+  font-family:var(--font, 'Plus Jakarta Sans', system-ui, sans-serif); -webkit-font-smoothing:antialiased; z-index:1;
+}
+.wl *{box-sizing:border-box}
+.wl :focus-visible{outline:2px solid var(--wl-t7); outline-offset:3px; border-radius:6px}
+
+/* ---------- film pane ---------- */
+.wl-film{position:relative; flex:1 1 auto; min-width:0; height:100%; overflow:hidden}
+.wl-canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+.wl-veil{position:absolute; inset:0; pointer-events:none; transition:opacity .6s;
+  background:linear-gradient(90deg, rgba(234,243,245,.94) 0%, rgba(234,243,245,.78) 26%, rgba(234,243,245,0) 46%),
+             linear-gradient(0deg, rgba(234,243,245,.96) 0%, rgba(234,243,245,.7) 7%, rgba(234,243,245,0) 16%)}
+.wl.is-open .wl-veil{background:linear-gradient(0deg, rgba(234,243,245,.96) 0%, rgba(234,243,245,.7) 7%, rgba(234,243,245,0) 16%)}
+
+.wl-top{position:absolute; z-index:4; top:max(14px, env(safe-area-inset-top, 0px)); left:max(16px, env(safe-area-inset-left, 0px)); right:16px;
+  display:flex; align-items:center; gap:16px; padding:8px 8px 8px 16px; border-radius:999px;
+  background:rgba(255,255,255,.88); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border:1px solid var(--wl-line); box-shadow:var(--wl-shadow)}
+.wl-brand{display:flex; align-items:center; gap:9px; font-weight:800; font-size:19px; letter-spacing:-.03em}
+.wl-brand small{font-family:var(--wl-mono); font-weight:500; font-size:11px; letter-spacing:.04em; color:var(--wl-ink-3)}
+.wl-cta{all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:8px; background:var(--wl-t9); color:#fff; font-weight:700; font-size:14px;
+  padding:11px 18px; border-radius:999px; white-space:nowrap; transition:background .15s, opacity .3s}
+.wl-cta:hover{background:var(--wl-t7)}
+.wl-cta:focus-visible{outline:2px solid var(--wl-t7); outline-offset:3px}
+.wl-cta-top{margin-left:auto; font-size:13.5px; padding:10px 16px}
+.wl.is-open .wl-cta-top{opacity:0; pointer-events:none}
+
+/* ---------- copy panels ---------- */
+.wl-copy{position:absolute; inset:0; pointer-events:none; transition:opacity .5s, visibility .5s}
+.wl.is-open:not(.is-narrow) .wl-copy{opacity:0; visibility:hidden}
+.wl-panel{position:absolute; top:50%; left:max(24px, 4.5%); width:min(420px, 38%); transform:translateY(-50%); opacity:0; visibility:hidden}
+.wl-panel.is-on{visibility:visible}
+.wl-panel[data-step="0"]{opacity:1; visibility:visible}
+.wl-panel > *{pointer-events:auto}
+.wl-eyebrow{font-family:var(--wl-mono); font-size:12px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--wl-t7); margin:0 0 14px; display:flex; align-items:center; gap:8px}
+.wl-eyebrow::before{content:""; width:18px; height:2px; background:var(--wl-t7); border-radius:2px; flex:none}
+.wl-h{font-size:clamp(32px, 3.6vw, 52px); line-height:1.02; letter-spacing:-.045em; font-weight:800; margin:0 0 16px; text-wrap:balance; color:var(--wl-ink)}
+.wl-h span{display:block; color:var(--wl-t7)}
+.wl-lede{margin:0 0 20px; color:var(--wl-ink-2); font-size:15px; line-height:1.55; max-width:40ch}
+.wl-stats{display:flex; gap:26px; margin:0 0 22px; padding:0}
+.wl-stats div{min-width:0}
+.wl-stats dt{font-size:30px; font-weight:800; letter-spacing:-.04em; line-height:1; font-variant-numeric:tabular-nums}
+.wl-stats dd{margin:6px 0 0; font-size:12px; color:var(--wl-ink-3); line-height:1.35; max-width:13ch}
+.wl-ui{background:var(--wl-paper); border:1px solid var(--wl-line); border-radius:16px; padding:14px 16px; box-shadow:var(--wl-shadow); max-width:340px; font-size:13px}
+.wl-ui-head{margin-bottom:8px}
+.wl-ui-title{font-weight:700; font-size:13.5px}
+.wl-ui-sub{font-family:var(--wl-mono); font-size:11px; color:var(--wl-ink-3)}
+.wl-row{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px solid var(--wl-t0)}
+.wl-row span:last-child{font-family:var(--wl-mono); font-variant-numeric:tabular-nums; color:var(--wl-ink-2)}
+.wl-th span{font-family:var(--wl-mono); font-size:11px; color:var(--wl-ink-3)}
+.wl-norule{border-top:0; padding-bottom:0}
+.wl-chip{font-family:var(--wl-mono); font-size:11px; padding:3px 8px; border-radius:999px; background:var(--wl-t0); color:var(--wl-t9) !important; white-space:nowrap}
+.wl-chip.warn{background:#FDF1E3; color:var(--wl-warn) !important}
+.wl-big{display:flex; align-items:baseline; gap:8px; margin:2px 0 8px}
+.wl-big b{font-size:40px; letter-spacing:-.05em; line-height:1; font-variant-numeric:tabular-nums}
+.wl-big em{font-style:normal; font-family:var(--wl-mono); font-size:12px; color:var(--wl-ink-3)}
+.wl-bar{height:8px; border-radius:99px; background:var(--wl-t0); overflow:hidden; margin:6px 0 4px}
+.wl-bar i{display:block; height:100%; background:linear-gradient(90deg, var(--wl-t7), var(--wl-t9)); border-radius:99px}
+
+/* ---------- player + chapters ---------- */
+.wl-steps{position:absolute; z-index:3; left:0; right:0; bottom:0; display:flex; align-items:flex-end; gap:14px;
+  padding:0 max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))}
+.wl-pbtn{all:unset; cursor:pointer; flex:none; width:38px; height:38px; border-radius:50%; display:grid; place-items:center; background:var(--wl-t9); color:#fff; box-shadow:var(--wl-shadow)}
+.wl-pbtn:hover{background:var(--wl-t7)}
+.wl-pbtn:focus-visible{outline:2px solid var(--wl-t7); outline-offset:3px}
+.wl-tc{flex:none; align-self:center; font-family:var(--wl-mono); font-size:12px; color:var(--wl-ink-2); font-variant-numeric:tabular-nums; min-width:84px; white-space:nowrap}
+.wl-steps ol{list-style:none; margin:0; padding:0; flex:1; min-width:0; display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); gap:10px}
+.wl-steps ol button{all:unset; cursor:pointer; display:block; width:100%; padding:8px 0 2px}
+.wl-steps ol button:focus-visible{outline:2px solid var(--wl-t7); outline-offset:2px; border-radius:6px}
+.wl-lbl{display:flex; gap:8px; font-size:12px; font-weight:600; color:var(--wl-ink-2); margin-bottom:7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.wl-lbl b{font-family:var(--wl-mono); font-weight:500; color:var(--wl-t3)}
+.wl-trk{display:block; height:3px; border-radius:3px; background:rgba(122,178,178,.28); overflow:hidden}
+.wl-trk i{display:block; height:100%; width:0; background:var(--wl-t7)}
+.wl-steps li.on .wl-lbl{color:var(--wl-ink)}
+.wl-steps li.on .wl-lbl b{color:var(--wl-t7)}
+.wl.is-open:not(.is-narrow) .wl-tc{display:none}
+.wl.is-open:not(.is-narrow) .wl-lbl{font-size:0; gap:0}
+.wl.is-open:not(.is-narrow) .wl-lbl b{font-size:11px}
+
+/* ---------- login pane (desktop: right half) ---------- */
+.wl-login{position:relative; flex:0 0 0px; height:100%; overflow:hidden; background:linear-gradient(160deg, var(--accent-2, #0a525c) 0%, #062a35 100%);
+  transition:flex-basis .7s cubic-bezier(.22, .8, .2, 1)}
+.wl.is-open .wl-login{flex-basis:min(480px, 42vw)}
+.wl-login-in{position:relative; width:min(480px, 42vw); height:100%; overflow-y:auto}
+.wl-login .login-wrap{min-height:100%; background:transparent}
+.wl-back{all:unset; cursor:pointer; position:absolute; z-index:5; top:max(16px, env(safe-area-inset-top, 0px)); left:16px; font-size:13px; font-weight:600; color:rgba(255,255,255,.85);
+  padding:8px 12px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16)}
+.wl-back:hover{background:rgba(255,255,255,.16); color:#fff}
+.wl-back:focus-visible{outline:2px solid #fff; outline-offset:2px}
+
+/* plain-mode button to replay the film (phones that already logged in) */
+.wl-replay{all:unset; cursor:pointer; position:fixed; z-index:50; right:max(14px, env(safe-area-inset-right, 0px)); bottom:max(14px, env(safe-area-inset-bottom, 0px));
+  display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:999px; font:600 12.5px var(--font, system-ui); color:#09637E;
+  background:rgba(255,255,255,.94); border:1px solid #D3E3E7; box-shadow:0 6px 18px rgba(14,42,51,.12)}
+.wl-replay:focus-visible{outline:2px solid #088395; outline-offset:2px}
+
+/* ---------- phones / portrait: login rises as a bottom sheet ---------- */
+.wl.is-narrow .wl-panel{top:auto; transform:none; width:auto; bottom:calc(64px + env(safe-area-inset-bottom, 0px));
+  left:max(16px, env(safe-area-inset-left, 0px)); right:max(16px, env(safe-area-inset-right, 0px))}
+.wl.is-narrow .wl-veil{background:linear-gradient(0deg, rgba(234,243,245,.97) 0%, rgba(234,243,245,.9) 40%, rgba(234,243,245,0) 62%)}
+.wl.is-narrow .wl-h{font-size:clamp(28px, 8.4vw, 42px)}
+.wl.is-narrow .wl-lede{font-size:14px; margin-bottom:14px}
+.wl.is-narrow .wl-stats{gap:18px; margin-bottom:16px}
+.wl.is-narrow .wl-stats dt{font-size:24px}
+.wl.is-narrow .wl-brand small{display:none}
+.wl.is-narrow .wl-tc{display:none}
+.wl.is-narrow .wl-lbl{font-size:0; gap:0; margin-bottom:6px}
+.wl.is-narrow .wl-lbl b{font-size:11px}
+.wl.is-narrow .wl-steps ol{gap:6px}
+.wl.is-narrow .wl-login{position:absolute; z-index:10; left:0; right:0; bottom:0; height:auto; max-height:94%; flex:none;
+  border-radius:22px 22px 0 0; transform:translateY(104%); transition:transform .5s cubic-bezier(.22, .8, .2, 1); box-shadow:0 -12px 40px rgba(6,42,53,.25)}
+.wl.is-narrow.is-open .wl-login{transform:none}
+.wl.is-narrow .wl-login-in{width:auto; height:auto; max-height:94dvh}
+.wl.is-narrow .login-wrap, .wl.is-narrow .login-shell{min-height:0}
+.wl.is-narrow .wl-back{left:auto; right:14px; top:12px}
+@media (max-height: 740px){ .wl.is-narrow .wl-ui{display:none} }
+@media (max-width: 380px){ .wl-stats dd{font-size:11px} }
+
+@media (prefers-reduced-motion: reduce){
+  .wl-login, .wl.is-narrow .wl-login, .wl-copy, .wl-veil{transition:none}
+}

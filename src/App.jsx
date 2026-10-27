@@ -17,6 +17,7 @@ import { LaporanModal } from './utils/laporan';
 import { ChatScreen } from './pages/chat';
 import { BankSoal, PilihDariBankSoalModal } from './pages/banksoal';
 import { LatihanMandiri, MateriManager } from './pages/materi';
+import { Welcome } from './pages/welcome';
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -9817,7 +9818,7 @@ function AppInner() {
     }
   }
   return <>
-    {!user ? <LoginScreen onLogin={handleLogin} /> :
+    {!user ? <Welcome><LoginScreen onLogin={handleLogin} /></Welcome> :
       <div className="shell">
         <header className="hdr">
           <div className="hdr-brand">
