@@ -818,6 +818,7 @@ function MateriPdfManager({ store }) {
   const [progress, setProgress] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [settingsMateri, setSettingsMateri] = useState(null); // youtube materi yg sedang diatur durasinya
+  const [viewMateri, setViewMateri] = useState(null); // materi yang sedang dipratinjau guru (viewer sama dengan siswa)
   const materiList = store.getMateriList();
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -936,6 +937,14 @@ function MateriPdfManager({ store }) {
     borderRadius: 10, padding: "1px 7px", lineHeight: "16px"
   });
 
+  // Pratinjau guru: pakai viewer yang sama dengan siswa. user=null → tidak ada tracking "selesai nonton".
+  if (viewMateri) {
+    const back = () => setViewMateri(null);
+    if (viewMateri.tipe === "youtube") return <YoutubeMateriViewer materi={viewMateri} store={store} user={null} onBack={back} />;
+    if (viewMateri.tipe === "web") return <WebMateriViewer materi={viewMateri} store={store} user={null} onBack={back} />;
+    return <MateriViewer materi={viewMateri} store={store} user={null} onBack={back} />;
+  }
+
   return <div>
     {/* Jenjang tab bar */}
     <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
@@ -1051,6 +1060,7 @@ function MateriPdfManager({ store }) {
                     const tgl = new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
                     return (
                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", marginBottom: 6 }}>
+                      <button onClick={() => setViewMateri(m)} title="Lihat materi" style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit" }}>
                       <div style={{ width: 36, height: 36, borderRadius: 8, background: k.bg, display: "grid", placeItems: "center", flexShrink: 0 }}>
                         <I n={k.icon} s={16} style={{ color: k.color }} />
                       </div>
@@ -1062,6 +1072,8 @@ function MateriPdfManager({ store }) {
                             : <>{k.label} · {tgl}</>}
                         </div>
                       </div>
+                      </button>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: "5px 10px", color: "var(--accent-2)", gap: 5, fontSize: 12, fontWeight: 600 }} onClick={() => setViewMateri(m)} title="Lihat materi"><I n="maximize" s={14} /> Lihat</button>
                       {(m.tipe === "youtube" || m.tipe === "web") && <button className="btn btn-ghost btn-sm" style={{ padding: "5px 8px", color: "#0d9488" }} onClick={() => setSettingsMateri(m)} title="Atur durasi selesai"><I n="clock" s={14} /></button>}
                       <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "5px 8px" }} onClick={() => setConfirmDelete(m)} title="Hapus materi"><I n="trash" s={14} /></button>
                     </div>
