@@ -167,16 +167,23 @@ export function Items({ children }) {
   return <div className="ui-items">{children}</div>;
 }
 
-// icon: elemen ikon; tone ikon: "teal" | "amber" | "muted"; end: chip/angka di kanan
-export function Item({ icon, tone = "teal", title, meta, end, onClick, dim = false }) {
+// icon: elemen ikon; tone ikon: "teal" | "amber" | "muted"
+// badge: chip status di samping judul; end: angka/ikon di kanan (ikut area ketuk);
+// action: tombol di kanan yang TERPISAH dari area ketuk baris (mis. "Kerjakan")
+export function Item({ icon, tone = "teal", title, badge, meta, end, action, onClick, dim = false }) {
   const Tag = onClick ? "button" : "div";
-  return (
+  const row = (
     <Tag type={onClick ? "button" : undefined} className={`ui-item${dim ? " dim" : ""}`} onClick={onClick}>
       {icon && <span className={`ui-item-ic ${tone}`} aria-hidden="true">{icon}</span>}
-      <span className="ui-item-main"><b>{title}</b>{meta && <small>{meta}</small>}</span>
+      <span className="ui-item-main">
+        <span className="ui-item-title"><b>{title}</b>{badge}</span>
+        {meta && <small>{meta}</small>}
+      </span>
       {end != null && <span className="ui-item-end">{end}</span>}
     </Tag>
   );
+  if (!action) return row;
+  return <div className="ui-item-wrap">{row}<span className="ui-item-act">{action}</span></div>;
 }
 
 // Angka kecil berderet: [{ label, value }]

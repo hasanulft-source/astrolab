@@ -93,7 +93,10 @@
 /* Daftar baris */
 .ui-items{display:flex;flex-direction:column;margin:-4px 0}
 .ui-item{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line-soft);width:100%;font-family:var(--font);color:var(--ink)}
-.ui-item:first-child{border-top:0}
+.ui-item:first-child,.ui-item-wrap:first-child{border-top:0}
+.ui-item-wrap{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line-soft)}
+.ui-item-wrap > .ui-item{border-top:0;flex:1;min-width:0}
+.ui-item-act{flex:none;display:flex;align-items:center}
 button.ui-item{cursor:pointer}
 button.ui-item:hover .ui-item-main b{color:var(--accent)}
 button.ui-item:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px;border-radius:8px}
@@ -102,6 +105,8 @@ button.ui-item:focus-visible{outline:2px solid var(--accent-mid);outline-offset:
 .ui-item-ic.amber{background:var(--warn-bg);color:var(--warn)}
 .ui-item-ic.muted{background:var(--line-soft);color:var(--ink-3)}
 .ui-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ui-item-title{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:3px}
+.ui-item-title .ui-chip{font-size:11px;padding:2px 8px}
 .ui-item-main b{font-size:14px;font-weight:600;line-height:1.35;overflow-wrap:anywhere}
 .ui-item-main small{font-size:12px;color:var(--ink-3);line-height:1.4}
 .ui-item-end{flex:none;display:flex;align-items:center;gap:6px}

@@ -57,19 +57,28 @@ function useNow(ms) {
 const Num = ({ v }) => <span className={`ui-num${typeof v === "number" && v < KKTP ? " below" : ""}`}>{typeof v === "number" ? v : "–"}</span>;
 
 // Satu baris tugas — dipakai Beranda, Daftar Tugas, popup, dan layar hasil
-function TugasItem({ t, user, store, now, navigate, showMapel = false }) {
+// action=true → tombol "Kerjakan" di kanan (langsung ke soal kalau bisa; susulan/khusus lewat detail dulu).
+// direct=false dipakai di layar hasil: rute "kerjakan" → "kerjakan" tidak me-mount ulang KerjakanTugas, jadi lewat detail.
+function TugasItem({ t, user, store, now, navigate, showMapel = false, action = true, direct = true }) {
   const done = store.hasSub(user.id, t.id);
   const sub = done ? store.getSubBy(user.id, t.id) : null;
-  const susulan = !done && isLewat(t) && store.isSusulanAktif(t.id, user.id);
+  const lewat = isLewat(t);
+  const susulan = !done && lewat && store.isSusulanAktif(t.id, user.id);
   const meta = [showMapel && t.mapel, `${nSoal(t)} soal`, done ? `+${sub?.poinDapat || 0} poin` : `+${poinTugas(t)} poin`].filter(Boolean).join(" · ");
-  let end;
-  if (done) end = <Num v={sub?.nilai} />;
-  else if (susulan) end = <StatusChip>Susulan</StatusChip>;
-  else { const tg = tenggat(t.deadline, now); end = <StatusChip tone={tg.tone}>{tg.label}</StatusChip>; }
+  const detail = () => navigate("tugas-detail", { tugasId: t.id });
+  let badge = null;
+  if (susulan) badge = <StatusChip>Susulan</StatusChip>;
+  else if (!done) { const tg = tenggat(t.deadline, now); badge = <StatusChip tone={tg.tone}>{tg.label}</StatusChip>; }
+  const periodeTutup = t.periode && store.isSemesterClosed?.(t.periode);
+  const bisa = !done && t.status === "aktif" && nSoal(t) > 0 && (!lewat || susulan) && !periodeTutup;
+  // Susulan (bisa ada batas nilai) dan latihan khusus perlu dibaca dulu di detail
+  const langsung = direct && bisa && !susulan && !Array.isArray(t.assignedTo);
   return (
     <Item icon={done ? <I n="check" s={18} /> : Array.isArray(t.assignedTo) ? <I n="star" s={18} /> : <MapelIcon mapel={t.mapel} size={18} />}
       tone={done ? "muted" : susulan ? "amber" : "teal"} dim={done}
-      title={t.judul} meta={meta} end={end} onClick={() => navigate("tugas-detail", { tugasId: t.id })} />
+      title={t.judul} badge={badge} meta={meta} onClick={detail}
+      end={done ? <Num v={sub?.nilai} /> : null}
+      action={action && bisa ? <Button size="sm" onClick={langsung ? () => navigate("kerjakan", { tugasId: t.id }) : detail}>Kerjakan</Button> : null} />
   );
 }
 
@@ -78,7 +87,7 @@ function JadwalItem({ t, now }) {
   return (
     <Item icon={<I n="clock" s={18} />} tone="muted" title={t.judul}
       meta={`${t.mapel} · ${nSoal(t)} soal · dibuka ${fmtTgl(t.scheduledAt, true)}`}
-      end={<StatusChip tone="muted">{sisa > 0 ? `${durasi(sisa)} lagi` : "Segera dibuka"}</StatusChip>} />
+      badge={<StatusChip tone="muted">{sisa > 0 ? `${durasi(sisa)} lagi` : "Segera dibuka"}</StatusChip>} />
   );
 }
 
@@ -107,13 +116,11 @@ function LewatItem({ t, user, store, navigate, akses }) {
   const st = statusAkses(store, t, user.id);
   const meta = akses.error[t.id] || `${nSoal(t)} soal · ${t.graded === false ? "tidak dinilai" : "dihitung 0"}`;
   return (
-    <div className="sw-lewat">
-      <Item icon={<MapelIcon mapel={t.mapel} size={18} />} tone="amber" title={t.judul} meta={meta}
-        onClick={() => navigate("tugas-detail", { tugasId: t.id })} />
-      {st.kode === "menunggu"
+    <Item icon={<MapelIcon mapel={t.mapel} size={18} />} tone="amber" title={t.judul} meta={meta}
+      onClick={() => navigate("tugas-detail", { tugasId: t.id })}
+      action={st.kode === "menunggu"
         ? <StatusChip tone="muted">Menunggu</StatusChip>
-        : <Button variant="amber" size="sm" disabled={akses.loading[t.id]} onClick={() => akses.kirim(t)}>{akses.loading[t.id] ? "Mengirim..." : "Minta akses"}</Button>}
-    </div>
+        : <Button variant="amber" size="sm" disabled={akses.loading[t.id]} onClick={() => akses.kirim(t)}>{akses.loading[t.id] ? "Mengirim..." : "Minta akses"}</Button>} />
   );
 }
 
@@ -167,7 +174,8 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
 
         <div className="sw-home">
           {/* Status: ranking, poin, level, streak */}
-          <section className="sw-hero sw-a" aria-label="Status kamu">
+          <div className="sw-a">
+          <section className="sw-hero" aria-label="Status kamu">
             <div className="sw-hero-top">
               <div>
                 <span className="sw-hero-k">Ranking kelas {user.jenjang}</span>
@@ -186,6 +194,12 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
               </div>
             </div>
           </section>
+            <div className="sw-tiles">
+              <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
+              <div><span>Tugas selesai</span><b>{stats.tugasSelesai || 0}</b></div>
+              <div><span>Streak</span><b>{stats.streak || 0} <small>hari</small></b></div>
+            </div>
+          </div>
 
           <div className="sw-b">
             {store.isMissionActive(user.jenjang) && (
@@ -221,11 +235,6 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
           </div>
 
           <div className="sw-c">
-            <div className="sw-tiles">
-              <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
-              <div><span>Tugas selesai</span><b>{stats.tugasSelesai || 0}</b></div>
-              <div><span>Streak</span><b>{stats.streak || 0} <small>hari</small></b></div>
-            </div>
 
             <Card label={`Top 3 kelas ${user.jenjang}`} aside={<button type="button" className="ui-link" onClick={() => navigate("leaderboard")}>Ranking <I n="chevR" s={12} /></button>}>
               {lb.length === 0 ? <p className="ui-text">Belum ada ranking. Kerjakan tugas untuk mulai mengumpulkan poin.</p> : (
@@ -661,7 +670,7 @@ export function HasilTugas({ t, user, store, navigate, result, total, background
             {sisa.length > 0 ? (
               <div>
                 <div className="ui-label-row" style={{ marginBottom: 4 }}><span className="ui-label">Masih ada {sisa.length} tugas</span></div>
-                <Items>{sisa.map(st => <TugasItem key={st.id} t={st} user={user} store={store} now={now} navigate={navigate} showMapel />)}</Items>
+                <Items>{sisa.map(st => <TugasItem key={st.id} t={st} user={user} store={store} now={now} navigate={navigate} showMapel direct={false} />)}</Items>
               </div>
             ) : (
               <p className="ui-text" style={{ textAlign: "center" }}>Semua tugas sudah kamu kerjakan.</p>
