@@ -2,9 +2,11 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
   /* Fase 0a redesign (Okt 2026): palet teal Astrolab. Hijau dihapus (--good = teal), amber untuk perhatian,
-     merah (--bad) hanya untuk error & hapus. Abu teks dijaga kontras >= 4.5:1 di atas putih. */
-  --accent:#09637E;
-  --accent-2:#074F64;
+     merah (--bad) hanya untuk error & hapus. Abu teks dijaga kontras >= 4.5:1 di atas putih.
+     Ralat 30 Okt: --accent & --accent-2 kembali ke teal lama (lebih nyaman di mata untuk bidang besar:
+     header, hero, tombol, kartu login). Detail kecil (tint, bar, titik, chip) tetap palet baru. */
+  --accent:#0d6b7a;
+  --accent-2:#0a525c;
   --accent-soft:#D3E8EA;
   --accent-tint:#EBF4F6;
   --accent-mid:#088395;
