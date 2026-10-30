@@ -1,24 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
-  --accent:#0d6b7a;
-  --accent-2:#0a525c;
-  --accent-soft:#d8ebe9;
-  --accent-tint:#eaf4f3;
+  /* Fase 0a redesign (Okt 2026): palet teal Astrolab. Hijau dihapus (--good = teal), amber untuk perhatian,
+     merah (--bad) hanya untuk error & hapus. Abu teks dijaga kontras >= 4.5:1 di atas putih. */
+  --accent:#09637E;
+  --accent-2:#074F64;
+  --accent-soft:#D3E8EA;
+  --accent-tint:#EBF4F6;
   --surface:#ffffff;
-  --surface-alt:#f7f8fa;
-  --bg:#f2f4f6;
-  --line:#e2e6ea;
-  --line-soft:#edf0f3;
-  --ink:#1a1c1e;
-  --ink-2:#3a3d42;
-  --ink-3:#6b7280;
-  --ink-4:#9ca3af;
-  --good:#16a34a;--good-bg:#f0fdf4;
-  --warn:#d97706;--warn-bg:#fffbeb;
+  --surface-alt:#F5F8F9;
+  --bg:#F2F4F6;
+  --line:#DCE6E9;
+  --line-soft:#EEF3F5;
+  --ink:#0E2A33;
+  --ink-2:#43606A;
+  --ink-3:#58707A;
+  --ink-4:#8EA3AA;
+  --good:#088395;--good-bg:#DDEFF2;
+  --warn:#B45309;--warn-bg:#FDF1E3;
   --bad:#dc2626;--bad-bg:#fef2f2;
-  --shadow-sm:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);
-  --shadow:0 4px 12px rgba(0,0,0,.08),0 1px 3px rgba(0,0,0,.05);
+  --shadow-sm:0 1px 2px rgba(14,42,51,.06);
+  --shadow:0 1px 2px rgba(14,42,51,.05),0 6px 16px rgba(14,42,51,.06);
   --r:12px;--r-sm:8px;--r-xs:5px;
   --font:'Plus Jakarta Sans',system-ui,sans-serif;
   --mono:'DM Mono',monospace;
