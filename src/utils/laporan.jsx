@@ -108,7 +108,7 @@ const LAPORAN_CSS = `
 
 // ─── Identitas dokumen (dipakai laporan per siswa & rekap kelas) ───
 const SEKOLAH = { nama: "SMP Negeri 15 Banda Aceh", alamat: "Jl. Utama No. 28, Banda Aceh 23235" };
-const GURU = { nama: "M. Hasanul Fatta, S.Psi.", nip: "19991102 202421 1 003", jabatan: "Guru IPA & Informatika" };
+const GURU = { nama: "M. Hasanul Fatta, S.Pd., Gr.", nip: "19991102 202421 1 003", jabatan: "Guru IPA & Informatika" };
 const KKTP = 70;
 const MIN_TERISI = 3; // nilai sementara baru dicetak setelah minimal 3 komponen terisi
 
