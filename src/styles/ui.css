@@ -4,11 +4,12 @@
 .ui-page{max-width:480px;margin:0 auto;padding:12px 16px 32px;display:flex;flex-direction:column;gap:12px;color:var(--ink)}
 @media(min-width:900px){.ui-page.mid{max-width:680px}.ui-page.wide{max-width:960px}}
 
-/* Header halaman */
-.ui-head{background:var(--accent);color:#fff;border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:3px}
-.ui-head-ey{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.78)}
-.ui-head h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.03em;color:#fff}
-.ui-head-sub{font-size:13px;color:rgba(255,255,255,.85)}
+/* Header halaman — teks polos di atas latar (bukan kartu teal), seperti sapaan di Beranda */
+.ui-head{display:flex;flex-direction:column;gap:2px;padding:4px 2px 2px;color:var(--ink)}
+.ui-head-ey{font-size:13px;font-weight:500;color:var(--ink-3)}
+.ui-head h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1.2;color:var(--ink);overflow-wrap:anywhere}
+.ui-head-sub{font-size:13px;color:var(--ink-3)}
+@media(max-width:480px){.ui-head h1{font-size:22px}}
 
 /* Kartu bagian */
 .ui-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
