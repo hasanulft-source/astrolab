@@ -34,7 +34,7 @@ export function deadlineEnd(dl) {
 const durasi = ms => {
   const hari = Math.floor(ms / 86400000), jam = Math.floor((ms % 86400000) / 3600000), mnt = Math.floor((ms % 3600000) / 60000);
   if (hari >= 1) return `${hari} hari`;
-  if (jam >= 1) return `${jam} jam ${mnt} mnt`;
+  if (jam >= 1) return `${jam} jam`; // label singkat supaya muat di samping judul; jam pasti ada di detail
   return mnt >= 1 ? `${mnt} mnt` : "kurang dari 1 mnt";
 };
 

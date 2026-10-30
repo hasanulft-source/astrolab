@@ -138,3 +138,15 @@
 .sw-code.lines div.bug{background:rgba(217,162,107,.24)}
 .sw-code.lines span{color:#7D959D;min-width:22px;text-align:right;margin-right:12px;user-select:none}
 .sw-code.lines code{white-space:pre;font-family:inherit}
+
+@media(max-width:480px){
+  .sw-greet h1{font-size:22px}
+  .sw-hero{padding:16px 16px}
+  .sw-hero-n{font-size:34px}
+  .sw-tiles div{padding:10px 11px}
+  .sw-tiles b{font-size:20px}
+  .sw-overdue{padding:12px 14px;gap:12px}
+  .sw-overdue > b{font-size:28px}
+  .sw-mission{padding:10px 12px}
+  .sw-mission-ic{width:34px;height:34px}
+}

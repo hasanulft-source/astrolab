@@ -127,3 +127,18 @@ button.ui-item:focus-visible{outline:2px solid var(--accent-mid);outline-offset:
 .ui-link{all:unset;cursor:pointer;font-family:var(--font);font-size:12.5px;font-weight:700;color:var(--accent);display:inline-flex;align-items:center;gap:4px}
 .ui-link:hover{text-decoration:underline}
 .ui-link:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px;border-radius:4px}
+
+/* HP sempit: rapatkan baris daftar supaya status muat di samping judul */
+@media(max-width:480px){
+  .ui-card{padding:14px 14px}
+  .ui-item{gap:10px;padding:10px 0}
+  .ui-item-wrap{gap:8px}
+  .ui-item-ic{width:30px;height:30px;border-radius:8px}
+  .ui-item-ic svg{width:16px;height:16px}
+  .ui-item-main b{font-size:13.5px}
+  .ui-item-main small{font-size:11.5px}
+  .ui-item-title{column-gap:6px}
+  .ui-item-title .ui-chip{font-size:10.5px;padding:1px 7px}
+  .ui-btn.sm{font-size:12px;padding:6px 10px}
+  .ui-num{font-size:18px}
+}
