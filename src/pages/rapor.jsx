@@ -6,9 +6,10 @@
 import { useEffect, useState } from "react";
 import { getDatabase, ref, get } from "firebase/database";
 import { fmtDl } from "../utils/helpers";
+import { KKTP, Page, TopBar, PageHeader, Card, Tabs, Dots, StatBlock, KktpLegend, ScoreRow, ScoreRows, DeltaBadge, ActionCallout, EmptyState, MoveTrack } from "../components/ui";
 import "../styles/rapor.css";
 
-export const KKTP = 70;
+export { KKTP }; // sumber: components/ui.jsx
 const MIN_TERISI = 3; // nilai sementara baru tampil setelah minimal 3 komponen terisi
 const sanitize = s => s.replace(/[.#$/[\]]/g, "-");
 
@@ -54,88 +55,60 @@ export function buildRapor({ rec = {}, boosts = {}, tugas = [], subs = [], siswa
   return { mapel, komponen, terisi: terisi.length, nilai, sts, lanjutan, terlewat: terlewatList.length };
 }
 
-// ─── Tampilan (murni) ───
+// ─── Tampilan (murni) — memakai komponen dasar di components/ui.jsx ───
 const f1 = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
-
-function Track({ pre, post }) {
-  const W = 360, X = v => 12 + v / 100 * (W - 24);
-  return (
-    <svg viewBox={`0 0 ${W} 56`} role="img" aria-label={`STS ${pre}, Asesmen Lanjutan ${post}, KKTP ${KKTP}, skala 0 sampai 100`} className="rp-track">
-      <rect x={X(0)} y="22" width={X(100) - X(0)} height="8" rx="4" fill="#EEF3F5" />
-      {[0, 50, 100].map(v => <text key={v} x={X(v)} y="52" textAnchor="middle" fontFamily="DM Mono, monospace" fontSize="11" fill="#7D959D">{v}</text>)}
-      <line x1={X(KKTP)} y1="13" x2={X(KKTP)} y2="39" stroke="#0E2A33" strokeOpacity=".5" strokeWidth="1.5" strokeDasharray="3 3" />
-      <text x={X(KKTP)} y="9" textAnchor="middle" fontFamily="DM Mono, monospace" fontSize="10.5" fill="#43606A">KKTP</text>
-      <line x1={X(pre)} y1="26" x2={X(post)} y2="26" stroke={post >= pre ? "#088395" : "#B45309"} strokeWidth="5" strokeLinecap="round" />
-      <circle cx={X(pre)} cy="26" r="7" fill="#fff" stroke="#8A9BA2" strokeWidth="2.5" />
-      <circle cx={X(post)} cy="26" r="8" fill={post >= pre ? "#088395" : "#B45309"} stroke="#fff" strokeWidth="2.5" />
-    </svg>
-  );
-}
+const Arrow = () => <svg className="rp-arr" width="26" height="18" viewBox="0 0 28 20" aria-hidden="true"><path d="M2 10h22M17 3l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
 function MapelRapor({ r, onLihatTugas }) {
-  const dots = r.komponen.map(k => <i key={k.key} className={typeof k.val === "number" ? "on" : ""} />);
+  const dots = r.komponen.map(k => typeof k.val === "number");
   const d = r.sts != null && r.lanjutan != null ? r.lanjutan - r.sts : null;
   const stsBonus = (r.komponen.find(k => k.key === "uts") || {}).boost > 0;
   return (
     <>
-      <section className="rp-card" aria-label={`Nilai semester ${r.mapel}`}>
-        <span className="rp-k">Nilai semester {r.mapel}</span>
+      <Card label={`Nilai semester ${r.mapel}`}>
         {r.terisi >= MIN_TERISI ? (
-          <div className="rp-status">
-            <div className="rp-big">{f1(r.nilai)}</div>
-            <div><p><b>Nilai sementara</b>, dari {r.terisi} dari 6 komponen yang sudah dinilai. Akan berubah sampai semua komponen terisi.</p><div className="rp-dots" aria-hidden="true">{dots}</div></div>
-          </div>
+          <StatBlock value={f1(r.nilai)} dots={dots}>
+            <p><b>Nilai sementara</b>, dari {r.terisi} dari 6 komponen yang sudah dinilai. Akan berubah sampai semua komponen terisi.</p>
+          </StatBlock>
         ) : (
           <div>
-            <div className="rp-wait">Belum ada nilai sementara</div>
-            <p className="rp-p">Baru {r.terisi} dari 6 komponen yang dinilai. Nilai sementara muncul setelah minimal {MIN_TERISI} komponen terisi.</p>
-            <div className="rp-dots" aria-hidden="true">{dots}</div>
+            <div className="ui-title" style={{ marginBottom: 6 }}>Belum ada nilai sementara</div>
+            <p className="ui-text">Baru {r.terisi} dari 6 komponen yang dinilai. Nilai sementara muncul setelah minimal {MIN_TERISI} komponen terisi.</p>
+            <Dots filled={dots} />
           </div>
         )}
-      </section>
+      </Card>
 
-      <section className="rp-card" aria-label="Perkembangan">
-        <div className="rp-krow"><span className="rp-k">Perkembangan</span><span>STS → Asesmen Lanjutan</span></div>
+      <Card label="Perkembangan" aside="STS → Asesmen Lanjutan">
         {d == null ? (
-          <p className="rp-p">{r.sts == null ? "Nilai STS belum dimasukkan." : `Asesmen Lanjutan ${r.mapel} belum dinilai. Perkembangan dari STS akan tampil di sini.`}</p>
+          <p className="ui-text">{r.sts == null ? "Nilai STS belum dimasukkan." : `Asesmen Lanjutan ${r.mapel} belum dinilai. Perkembangan dari STS akan tampil di sini.`}</p>
         ) : (
           <>
             <div className="rp-scores">
               <div className="rp-sc pre"><span>STS{stsBonus ? " (tanpa bonus)" : ""}</span><b>{r.sts}</b></div>
-              <svg className="rp-arr" width="26" height="18" viewBox="0 0 28 20" aria-hidden="true"><path d="M2 10h22M17 3l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <Arrow />
               <div className="rp-sc post"><span>Asesmen Lanjutan</span><b>{r.lanjutan}</b></div>
             </div>
-            <span className={`rp-badge ${d < 0 ? "down" : ""}`}>{d > 0 ? "+" : d < 0 ? "−" : "±"}{Math.abs(d)} poin</span>
-            <Track pre={r.sts} post={r.lanjutan} />
-            <p className="rp-p">{d > 0 ? <>Kamu naik <b>{d} poin</b> dari STS.</> : d < 0 ? <>Kali ini <b>{Math.abs(d)} poin</b> di bawah STS. Ceritakan ke guru bagian mana yang terasa sulit.</> : <>Nilaimu sama dengan STS.</>} Asesmen Lanjutan tidak mengubah nilai STS maupun nilai rapormu.</p>
+            <DeltaBadge delta={d} />
+            <MoveTrack from={r.sts} to={r.lanjutan} labelFrom="STS" labelTo="Asesmen Lanjutan" />
+            <p className="ui-text">{d > 0 ? <>Kamu naik <b>{d} poin</b> dari STS.</> : d < 0 ? <>Kali ini <b>{Math.abs(d)} poin</b> di bawah STS. Ceritakan ke guru bagian mana yang terasa sulit.</> : <>Nilaimu sama dengan STS.</>} Asesmen Lanjutan tidak mengubah nilai STS maupun nilai rapormu.</p>
           </>
         )}
-      </section>
+      </Card>
 
-      <section className="rp-card" aria-label="Komponen nilai">
-        <div className="rp-krow"><span className="rp-k">Komponen nilai</span><span className="rp-legend"><i />KKTP {KKTP}</span></div>
-        <div className="rp-komp">
-          {r.komponen.map(k => {
-            const has = typeof k.val === "number", below = has && k.val < KKTP;
-            return (
-              <div className="rp-kr" key={k.key}>
-                <div className="rp-nm">{k.label}<small>{k.bobot}%</small></div>
-                <div className={`rp-val ${has ? (below ? "below" : "") : "none"}`}>{has ? Math.round(k.val) : "Belum"}</div>
-                <div>
-                  {has && <div className="rp-bar"><i className={below ? "below" : ""} style={{ width: `${k.val}%` }} /></div>}
-                  {(k.det || k.boost > 0) && <div className="rp-det" style={{ marginTop: has ? 5 : 0 }}>{k.det}{k.boost > 0 ? `${k.det ? " · " : ""}termasuk bonus +${k.boost}` : ""}</div>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <Card label="Komponen nilai" aside={<KktpLegend />}>
+        <ScoreRows>
+          {r.komponen.map(k => (
+            <ScoreRow key={k.key} label={k.label} weight={k.bobot} value={k.val}
+              detail={(k.det || k.boost > 0) ? `${k.det}${k.boost > 0 ? `${k.det ? " · " : ""}termasuk bonus +${k.boost}` : ""}` : null} />
+          ))}
+        </ScoreRows>
+      </Card>
 
       {r.terlewat > 0 && onLihatTugas && (
-        <section className="rp-card" aria-label="Yang bisa kamu lakukan">
-          <span className="rp-k">Yang bisa kamu lakukan</span>
-          <div className="rp-act"><p>{r.terlewat} tugas lewat tenggat<span>Dihitung 0 sampai dikerjakan. Minta akses susulan ke guru.</span></p><button type="button" onClick={onLihatTugas}>Lihat tugas</button></div>
-        </section>
+        <Card label="Yang bisa kamu lakukan">
+          <ActionCallout title={`${r.terlewat} tugas lewat tenggat`} note="Dihitung 0 sampai dikerjakan. Minta akses susulan ke guru." actionLabel="Lihat tugas" onAction={onLihatTugas} />
+        </Card>
       )}
     </>
   );
@@ -147,21 +120,16 @@ export function RaporView({ nama, kelas, periode, mapels, rapor, published, onLi
   const r = rapor[active];
   return (
     <div className="rp">
-      <div className="topbar"><button className="topbar-back" onClick={onBack} aria-label="Kembali"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></button><div className="topbar-title">Rapor Perkembangan</div><div style={{ width: 36 }} /></div>
-      <div className="rp-wrap">
-        <header className="rp-head"><span className="rp-ey">{periode}</span><h1>Rapor Perkembangan</h1><span className="rp-who">{nama} · {kelas}</span></header>
-        {mapels.length > 1 && (
-          <div className="rp-tabs" role="tablist">
-            {mapels.map(m => <button key={m} role="tab" aria-selected={m === active} onClick={() => setTab(m)}>{m}</button>)}
-          </div>
-        )}
+      <TopBar title="Rapor Perkembangan" onBack={onBack} />
+      <Page>
+        <PageHeader eyebrow={periode} title="Rapor Perkembangan" subtitle={`${nama} · ${kelas}`} />
+        {mapels.length > 1 && <Tabs items={mapels} value={active} onChange={setTab} />}
         {!published[active] ? (
-          <section className="rp-card rp-center">
-            <div className="rp-wait">Nilai {active} belum diterbitkan</div>
-            <p className="rp-p">Guru belum menerbitkan nilai {active} semester ini. Nanti akan muncul di sini.</p>
-          </section>
+          <Card center ariaLabel={`Nilai ${active} belum diterbitkan`}>
+            <EmptyState title={`Nilai ${active} belum diterbitkan`}>Guru belum menerbitkan nilai {active} semester ini. Nanti akan muncul di sini.</EmptyState>
+          </Card>
         ) : r ? <MapelRapor r={r} onLihatTugas={onLihatTugas} /> : null}
-      </div>
+      </Page>
     </div>
   );
 }
@@ -192,8 +160,8 @@ export function RaporSiswaV2({ user, store, navigate }) {
   const back = () => navigate("profil");
   if (!loaded) return (
     <div className="rp">
-      <div className="topbar"><button className="topbar-back" onClick={back} aria-label="Kembali"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></button><div className="topbar-title">Rapor Perkembangan</div><div style={{ width: 36 }} /></div>
-      <div className="rp-wrap"><p className="rp-p" style={{ textAlign: "center", padding: "48px 0" }}>Memuat rapor...</p></div>
+      <TopBar title="Rapor Perkembangan" onBack={back} />
+      <Page><p className="ui-text" style={{ textAlign: "center", padding: "48px 0" }}>Memuat rapor...</p></Page>
     </div>
   );
 
