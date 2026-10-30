@@ -18,6 +18,7 @@ import { ChatScreen } from './pages/chat';
 import { BankSoal, PilihDariBankSoalModal } from './pages/banksoal';
 import { LatihanMandiri, MateriManager } from './pages/materi';
 import { Welcome } from './pages/welcome';
+import { RaporSiswaV2 } from './pages/rapor';
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -9810,7 +9811,7 @@ function AppInner() {
       else if (route === "review-tugas") screen = <ReviewTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "profil") screen = <ProfilSiswa user={user} store={store} navigate={navigate} />;
-      else if (route === "rapor") screen = <RaporSiswa user={user} store={store} navigate={navigate} />;
+      else if (route === "rapor") screen = <RaporSiswaV2 user={user} store={store} navigate={navigate} />;
       else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
       else if (route === "mission") screen = <MissionSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
