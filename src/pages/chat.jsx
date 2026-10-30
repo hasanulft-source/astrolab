@@ -35,7 +35,7 @@ import { LevelBadge } from '../components/gamification';
 
 // ─── Read receipt: double checkmark (grey = sent, blue = read) ───
 function ReadCheck({ read }) {
-  const c = read ? "#53bdeb" : "#8696a0";
+  const c = read ? "#088395" : "#8EA3AA";
   return (
     <svg width="16" height="11" viewBox="0 0 16 11" style={{ marginLeft: 3, flexShrink: 0, verticalAlign: "text-bottom" }}>
       <path d="M11.07.65a.46.46 0 0 0-.3-.1.49.49 0 0 0-.38.18L4.2 8.36 2.19 6.27a.46.46 0 0 0-.34-.16.46.46 0 0 0-.34.16.43.43 0 0 0-.1.34c0 .12.05.23.15.32l2.34 2.43a.5.5 0 0 0 .35.16.49.49 0 0 0 .36-.16L11.15 1.27a.46.46 0 0 0-.08-.62z" fill={c}/>
@@ -193,7 +193,7 @@ function AksesDoneBadge({ sub }) {
     <div style={{
       display: "flex", alignItems: "center", gap: 5, marginTop: 8,
       padding: "7px 10px", borderRadius: 10,
-      background: "rgba(16,185,129,.08)", border: "1px solid rgba(16,185,129,.18)"
+      background: "var(--accent-tint)"
     }}>
       <I n="check" s={13} style={{ color: "var(--good)" }} />
       <span style={{ fontSize: 12, fontWeight: 700, color: "var(--good)" }}>Sudah Dikerjakan</span>
@@ -239,13 +239,13 @@ function AksesMessageCard({ m, user, store, navigate }) {
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
           <div style={{
             width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center",
-            background: isApproved ? "rgba(16,185,129,.1)" : isRejected ? "rgba(220,53,69,.08)" : "rgba(245,158,11,.1)"
+            background: isApproved ? "var(--accent-tint)" : isRejected ? "var(--line-soft)" : "var(--warn-bg)"
           }}>
             <I n={isApproved ? "check" : isRejected ? "x" : "clock"} s={14}
-              style={{ color: isApproved ? "var(--good)" : isRejected ? "var(--bad)" : "var(--warn)" }} />
+              style={{ color: isApproved ? "var(--accent)" : isRejected ? "var(--ink-3)" : "var(--warn)" }} />
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
-            color: isApproved ? "var(--good)" : isRejected ? "var(--bad)" : "var(--warn)"
+            color: isApproved ? "var(--accent)" : isRejected ? "var(--ink-3)" : "var(--warn)"
           }}>
             {isApproved ? "Diizinkan" : isRejected ? "Ditolak" : "Permintaan Akses"}
           </div>
@@ -257,8 +257,8 @@ function AksesMessageCard({ m, user, store, navigate }) {
         {isGuru && isPending && (
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button onClick={() => setShowApproveModal(true)} style={{
-              flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
-              background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+              flex: 1, padding: "8px 0", borderRadius: 9, border: "none",
+              background: "var(--accent)",
               color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 4
             }}><I n="check" s={14} /> Izinkan</button>
@@ -267,9 +267,9 @@ function AksesMessageCard({ m, user, store, navigate }) {
               await store.rejectAkses(meta.tugasId, meta.siswaId);
               setRejecting(false);
             }} disabled={rejecting} style={{
-              flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
-              background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)",
-              color: "#fff", fontWeight: 700, fontSize: 13,
+              flex: 1, padding: "8px 0", borderRadius: 9, border: "1px solid var(--line)",
+              background: "var(--surface)",
+              color: "var(--ink-2)", fontWeight: 700, fontSize: 13,
               cursor: rejecting ? "not-allowed" : "pointer", opacity: rejecting ? .6 : 1,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 4
             }}>{rejecting ? "..." : <><I n="x" s={14} /> Tolak</>}</button>
@@ -288,15 +288,15 @@ function AksesMessageCard({ m, user, store, navigate }) {
     const showKerjakan = isApproved && !isGuru && navigate && meta.tugasId && !sudahDikerjakan;
     return (
       <div style={{
-        background: isApproved ? "rgba(16,185,129,.06)" : "rgba(220,53,69,.04)",
-        border: `1.5px solid ${isApproved ? "rgba(16,185,129,.2)" : "rgba(220,53,69,.15)"}`,
+        background: isApproved ? "var(--accent-tint)" : "var(--surface)",
+        border: `1.5px solid ${isApproved ? "var(--accent-light)" : "var(--line)"}`,
         borderRadius: 14, padding: "12px 14px", maxWidth: 300, width: "100%"
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
           <I n={isApproved ? "check" : "x"} s={14}
-            style={{ color: isApproved ? "var(--good)" : "var(--bad)" }} />
+            style={{ color: isApproved ? "var(--accent)" : "var(--ink-3)" }} />
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
-            color: isApproved ? "var(--good)" : "var(--bad)"
+            color: isApproved ? "var(--accent)" : "var(--ink-3)"
           }}>
             {isApproved ? "Akses Diizinkan" : "Akses Ditolak"}
           </div>
@@ -305,8 +305,8 @@ function AksesMessageCard({ m, user, store, navigate }) {
         <div className="msg-time">{fmtTime(m.ts)}</div>
         {showKerjakan && (
           <button onClick={() => navigate("tugas-detail", { tugasId: meta.tugasId })} style={{
-            width: "100%", padding: "9px 0", borderRadius: 10, border: "none", marginTop: 8,
-            background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
+            width: "100%", padding: "8px 0", borderRadius: 9, border: "none", marginTop: 8,
+            background: "var(--accent)",
             color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 5
           }}><I n="book" s={14} /> Kerjakan</button>
@@ -326,14 +326,14 @@ function MissionAttendanceCard({ m }) {
   const meta = m.meta || {};
   return (
     <div style={{
-      background: "var(--surface)", border: "1.5px solid #99f6e4",
+      background: "var(--surface)", border: "1.5px solid var(--accent-light)",
       borderRadius: 14, padding: "12px 14px", maxWidth: 300, width: "100%"
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "#ccfbf1" }}>
-          <I n="mapPin" s={15} style={{ color: "#0d9488" }} />
+        <div style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--accent-tint)" }}>
+          <I n="mapPin" s={15} style={{ color: "var(--accent)" }} />
         </div>
-        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "#0f766e" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--accent)" }}>
           Konfirmasi Kehadiran
         </div>
       </div>
@@ -545,12 +545,12 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
       {/* Error banner — visible inline, no alert() dependency */}
       {imgError && (
         <div style={{
-          padding: "8px 16px", background: "#fef2f2", borderTop: "1px solid #fecaca",
-          display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#b91c1c"
+          padding: "8px 16px", background: "var(--bad-bg)", borderTop: "1px solid var(--line)",
+          display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--bad)"
         }}>
           <I n="alert" s={16} />
           <span style={{ flex: 1 }}>{imgError}</span>
-          <button onClick={() => setImgError(null)} style={{ background: "none", border: "none", color: "#b91c1c", cursor: "pointer", fontWeight: 700, fontSize: 16, padding: "0 4px" }}>&times;</button>
+          <button onClick={() => setImgError(null)} style={{ background: "none", border: "none", color: "var(--bad)", cursor: "pointer", fontWeight: 700, fontSize: 16, padding: "0 4px" }}>&times;</button>
         </div>
       )}
 
@@ -673,8 +673,8 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
     const previewText = last
       ? (last.type === "akses-request" ? "Permintaan akses tugas"
         : last.type === "akses-response" ? (last.meta?.status === "approved" ? "Akses diizinkan" : "Akses ditolak")
-        : last.type === "mission-attendance" ? "📍 Konfirmasi kehadiran"
-        : last.type === "image" ? "📷 Foto"
+        : last.type === "mission-attendance" ? "Konfirmasi kehadiran"
+        : last.type === "image" ? "Foto"
         : last.text)
       : null;
 
@@ -739,10 +739,12 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
         </div>
       )}
       <div className="page" style={{ paddingBottom: 0 }}>
-        <div className="dt">
-          <div><h1>Pesan</h1><p>{isGuru ? "Chat dengan semua siswa" : "Chat dengan guru dan teman sekelas"}</p></div>
-          {isGuru && <button className="btn btn-primary btn-sm" onClick={() => setShowBcModal(true)}><I n="send" s={13} /> Broadcast</button>}
-        </div>
+        <header className="ui-head" style={{ marginBottom: 12 }}>
+          <span className="ui-head-ey">{isGuru ? "Guru" : `Kelas ${user.jenjang}`}</span>
+          <h1>Pesan</h1>
+          <span className="ui-head-sub">{isGuru ? "Chat dengan semua siswa" : "Chat dengan guru dan teman sekelas"}</span>
+        </header>
+        {isGuru && <div className="dt" style={{ justifyContent: "flex-end", marginBottom: 12 }}><button className="btn btn-primary btn-sm" onClick={() => setShowBcModal(true)}><I n="send" s={13} /> Broadcast</button></div>}
 
         {/* Broadcast box */}
         {broadcasts.length > 0 && (
@@ -762,7 +764,7 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
         )}
       </div>
       <div className="chat-list" style={{ marginTop: 8 }}>
-        <Card pad="none" style={{ overflow: "hidden", margin: "0 16px" }}>
+        <Card pad="none" style={{ overflow: "hidden", margin: "0 16px", borderRadius: 16, border: "1px solid var(--line)", boxShadow: "none" }}>
           {filtered.length === 0
             ? <div className="empty" style={{ padding: 32 }}>Belum ada siswa di kelas ini.</div>
             : filtered.map(c => <ContactItem key={c.id} c={c} />)

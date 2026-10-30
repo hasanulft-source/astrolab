@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { I } from '../components/icons';
 import { shuffle } from '../utils/helpers';
-import { Confirm, Card } from '../components/visual';
+import { Confirm, Card, ConfettiRain } from '../components/visual';
 
 // Key STABIL untuk progress latihan: hash teks pertanyaan.
 // Soal dari tugas lama sering TIDAK punya `id` (codebase pakai origIdx sebagai fallback),
@@ -136,8 +136,8 @@ function normalizeEmbedUrl(url) {
 // Metadata tampilan per tipe materi (ikon, warna, label).
 function materiKind(m) {
   const t = m.tipe || "pdf";
-  if (t === "youtube") return { icon: "play", color: "#dc2626", bg: "#fde8e8", label: "Video YouTube" };
-  if (t === "web") return { icon: "link2", color: "#7c3aed", bg: "#f3e8ff", label: "Tautan Web" };
+  if (t === "youtube") return { icon: "play", color: "var(--accent)", bg: "var(--accent-tint)", label: "Video YouTube" };
+  if (t === "web") return { icon: "link2", color: "var(--ink-2)", bg: "var(--line-soft)", label: "Tautan Web" };
   return { icon: "book", color: "var(--accent-2)", bg: "var(--accent-tint)", label: null };
 }
 
@@ -161,7 +161,7 @@ function MateriDoneControl({ store, user, materiId, dark = false, watchSeconds, 
     if (isSiswa && autoDone && !done && left <= 0) { try { store.markMateriDone(materiId); } catch {} }
   }, [left, autoDone, done, isSiswa, materiId]);
   if (!isSiswa) return null;
-  if (done) return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: dark ? "#86efac" : "var(--good)", padding: "6px 12px", borderRadius: 99, background: dark ? "rgba(134,239,172,.15)" : "var(--good-bg)", flexShrink: 0 }}><I n="check" s={13} /> Selesai</span>;
+  if (done) return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: dark ? "#BFE0E2" : "var(--good)", padding: "6px 12px", borderRadius: 99, background: dark ? "rgba(122,178,178,.22)" : "var(--good-bg)", flexShrink: 0 }}><I n="check" s={13} /> Selesai</span>;
   const ready = left <= 0;
   // Mode auto: siswa tidak perlu klik — cukup tampilkan hitung mundur, lalu otomatis "Selesai".
   if (autoDone) return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, padding: "7px 13px", borderRadius: 99, flexShrink: 0, background: dark ? "rgba(255,255,255,.18)" : "var(--surface-alt)", color: dark ? "#fff" : "var(--ink-3)" }}><I n="clock" s={13} /> {ready ? "Menyimpan..." : `Nonton ${left}s lagi`}</span>;
@@ -582,36 +582,27 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
     setDone(false);
   }
 
-  // ── Result screen ──
+  // ── Result screen ── (redesign Fase 2: kelas ui-* dari styles/ui.css, tanpa emoji; salah = amber)
   if (done) {
     const correct = results.filter(Boolean).length;
     const pct = Math.round((correct / total) * 100);
-    const emoji = pct >= 80 ? "🎉" : pct >= 50 ? "💪" : "📖";
-    return <div>
+    return <div className="sw">
       <div className="topbar">
         <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
         <div className="topbar-title" style={{ fontSize: 13 }}>Hasil Latihan</div>
         <div style={{ width: 36 }} />
       </div>
-      <div style={{ padding: 24, textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>{emoji}</div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: "var(--ink)" }}>{correct}/{total}</div>
-        <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>jawaban benar ({pct}%)</div>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8, marginBottom: 20 }}>{bab}</div>
-        {/* Progress bar */}
-        <div style={{ height: 8, background: "var(--surface-alt)", borderRadius: 4, overflow: "hidden", marginBottom: 24 }}>
-          <div style={{ width: `${pct}%`, height: "100%", background: pct >= 80 ? "var(--good)" : pct >= 50 ? "var(--accent)" : "var(--bad)", borderRadius: 4, transition: "width .5s ease" }} />
-        </div>
-        {/* Per-question summary */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 24 }}>
-          {results.map((ok, i) => (
-            <div key={i} style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, fontFamily: "var(--mono)", background: ok ? "var(--good-bg)" : "var(--bad-bg)", color: ok ? "var(--good)" : "var(--bad)", border: `1.5px solid ${ok ? "var(--good)" : "var(--bad)"}` }}>{i + 1}</div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-          <button className="btn btn-outline" onClick={onBack}><I n="chevL" s={14} /> Kembali</button>
-          <button className="btn btn-primary" onClick={handleRetry}><I n="rotate" s={14} /> Coba Lagi</button>
-        </div>
+      <div className="ui-page">
+        <section className="ui-card">
+          <div className="ui-label-row"><span className="ui-label">Hasil latihan</span><span className="ui-aside">{bab}</span></div>
+          <div className="lm-score">{pct >= 80 && <ConfettiRain intensity={pct === 100 ? "high" : "medium"} />}<b>{correct}<span>/{total}</span></b><p className="ui-text">jawaban benar ({pct}%). Latihan tidak masuk nilai, jadi coba lagi sampai paham.</p></div>
+          <div className="ui-meter"><i style={{ width: `${pct}%` }} /></div>
+          <div className="lm-dots">{results.map((ok, i) => <span key={i} className={ok ? "ok" : "no"} aria-label={`Soal ${i + 1} ${ok ? "benar" : "salah"}`}>{i + 1}</span>)}</div>
+          <div className="lm-act">
+            <button type="button" className="ui-btn outline" onClick={onBack}><I n="chevL" s={14} /> Kembali</button>
+            <button type="button" className="ui-btn" onClick={handleRetry}><I n="rotate" s={14} /> Coba lagi</button>
+          </div>
+        </section>
       </div>
     </div>;
   }
@@ -630,7 +621,7 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
     {/* Progress dots */}
     <div style={{ display: "flex", gap: 3, padding: "8px 16px" }}>
       {soalList.map((_, i) => (
-        <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i < idx ? (results[i] ? "var(--good)" : "var(--bad)") : i === idx ? "var(--accent)" : "var(--line)", transition: "background .2s" }} />
+        <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < idx ? (results[i] ? "var(--accent-mid)" : "var(--warn-bar)") : i === idx ? "var(--accent)" : "var(--line)", transition: "background .2s" }} />
       ))}
     </div>
     <div style={{ padding: "12px 16px 24px" }}>
@@ -650,13 +641,13 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
           <div className="quiz-letter">{String.fromCharCode(65 + i)}</div>
           <span style={{ flex: 1 }}>{o}</span>
           {answered && i === soal.jawaban && <I n="check" s={16} style={{ color: "var(--good)", flexShrink: 0 }} />}
-          {answered && i === selected && i !== soal.jawaban && <I n="x" s={16} style={{ color: "var(--bad)", flexShrink: 0 }} />}
+          {answered && i === selected && i !== soal.jawaban && <I n="x" s={16} style={{ color: "var(--warn)", flexShrink: 0 }} />}
         </button>;
       })}
       {/* Feedback */}
-      {answered && <div style={{ marginTop: 16, padding: 14, borderRadius: "var(--r)", background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", border: `1px solid ${isCorrect ? "var(--good)" : "var(--bad)"}` }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: isCorrect ? "var(--good)" : "var(--bad)", marginBottom: soal.pembahasan ? 8 : 0 }}>
-          {isCorrect ? "Benar! ✓" : `Salah — Jawaban: ${String.fromCharCode(65 + soal.jawaban)}`}
+      {answered && <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: isCorrect ? "var(--accent-tint)" : "var(--warn-bg)" }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: isCorrect ? "var(--accent)" : "var(--warn)", marginBottom: soal.pembahasan ? 6 : 0 }}>
+          {isCorrect ? "Benar" : `Belum tepat. Jawabannya ${String.fromCharCode(65 + soal.jawaban)}.`}
         </div>
         {soal.pembahasan && soal.pembahasan.trim() && <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink-1)", whiteSpace: "pre-wrap" }}>{soal.pembahasan}</div>}
       </div>}
@@ -699,108 +690,78 @@ export function LatihanMandiri({ user, store, navigate }) {
   });
   const mapelKeys = Object.keys(grouped).sort();
 
-  const tabStyle = (active) => ({
-    flex: 1, padding: "10px 0", fontSize: 13, fontWeight: active ? 700 : 500,
-    color: active ? "var(--accent)" : "var(--ink-3)",
-    borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
-    background: "none", border: "none", borderTop: "none", borderLeft: "none", borderRight: "none",
-    cursor: "pointer", transition: "all .15s", letterSpacing: ".01em"
-  });
+  // Redesign Fase 2: memakai kelas ui-* (styles/ui.css, dimuat global lewat App). Import file ini tetap 4.
+  const tabItems = [["materi", "Materi"], ["latihan", "Latihan mandiri"]];
+  return <div className="sw">
+    <div className="ui-page mid">
+      <header className="ui-head"><span className="ui-head-ey">Kelas {user.jenjang}</span><h1>Mandiri</h1><span className="ui-head-sub">Baca materi dan latih soal kapan saja. Tidak masuk nilai.</span></header>
+      <div className="ui-tabs" role="tablist">
+        {tabItems.map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>)}
+      </div>
 
-  return <div>
-    <div className="topbar"><div style={{ width: 36 }} /><div className="topbar-title">Mandiri</div><div style={{ width: 36 }} /></div>
-    {/* Tab bar */}
-    <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", background: "var(--surface)" }}>
-      <button style={tabStyle(tab === "materi")} onClick={() => setTab("materi")}><I n="book" s={13} style={{ marginRight: 5, verticalAlign: -2 }} />Materi</button>
-      <button style={tabStyle(tab === "latihan")} onClick={() => setTab("latihan")}><I n="edit" s={13} style={{ marginRight: 5, verticalAlign: -2 }} />Latihan Mandiri</button>
-    </div>
-
-    {tab === "materi" && <div style={{ padding: 16 }}>
-      {mapelKeys.length === 0 && <Card><div className="empty empty-box"><I n="book" s={32} /><h3>Belum ada materi</h3><p>Guru belum menambahkan materi.</p></div></Card>}
-      {mapelKeys.map(mapel => (
-        <div key={mapel} style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mapel}</div>
-          {Object.entries(grouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, items]) => (
-            <div key={bab} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <I n="layers" s={14} style={{ color: "var(--accent-2)" }} /> {bab}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => {
-                  const k = materiKind(m);
-                  const isPdf = (m.tipe || "pdf") === "pdf";
-                  const isHd = isPdf && m.createdAt && Date.now() - m.createdAt < 7 * 86400000;
-                  return <button key={m.id} onClick={() => setViewMateri(m)}
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", transition: "border-color .15s" }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent-2)"}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line-soft)"}>
-                    <div style={{ width: 40, height: 40, borderRadius: 8, background: k.bg, display: "grid", placeItems: "center", flexShrink: 0 }}>
-                      <I n={k.icon} s={18} style={{ color: k.color }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>{m.judul}{isHd && <span style={{ fontSize: 9, fontWeight: 700, color: "#059669", background: "#d1fae5", padding: "1px 5px", borderRadius: 4 }}>HD</span>}</div>
-                      <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{k.label || `${m.pageCount} halaman`}</div>
-                    </div>
-                    <I n="chevR" s={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-                  </button>;
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>}
-
-    {tab === "latihan" && <div style={{ padding: 16 }}>
-      {latihanMapelKeys.length === 0 && <Card><div className="empty empty-box">
-        <I n="edit" s={32} />
-        <h3>Belum ada latihan</h3>
-        <p style={{ color: "var(--ink-3)", fontSize: 13 }}>Soal latihan akan tersedia setelah tugas yang terkait materi selesai (melewati deadline).</p>
-      </div></Card>}
-      {latihanMapelKeys.map(mapel => (
-        <div key={mapel} style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>{mapel}</div>
-          {Object.entries(latihanGrouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soalRaw]) => {
-            const pool = dedupSoal(soalRaw);
-            const seenSet = store.getLatihanSeen(mapel, bab);
-            const total = pool.length;
-            const seen = pool.filter(s => seenSet.has(latihanSoalKey(s.pertanyaan))).length;
-            const remaining = total - seen;
-            const rondeLagi = Math.ceil(remaining / 10);
-            const pct = total ? Math.round((seen / total) * 100) : 0;
-            const selesai = total > 0 && remaining === 0;
-            return (
-              <div key={bab} style={{ background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", padding: "14px 16px", marginBottom: 12, boxShadow: "var(--shadow-sm)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 8, background: "linear-gradient(135deg, var(--accent-tint), var(--accent-soft))", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                    <I n="edit" s={18} style={{ color: "var(--accent)" }} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{bab}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{total} soal · sudah dilatih {seen}/{total}</div>
-                  </div>
-                </div>
-                <div style={{ height: 7, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden", marginBottom: 8 }}>
-                  <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: selesai ? "var(--good)" : "var(--accent)", transition: "width .4s" }} />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: selesai ? "var(--good)" : "var(--ink-2)" }}>
-                    {selesai ? "Semua soal sudah dilatih 🎉" : `Kerjakan ${rondeLagi} kali lagi untuk selesaikan semua`}
+      {tab === "materi" && <>
+        {mapelKeys.length === 0 && <section className="ui-card center"><div className="ui-empty"><I n="book" s={28} /><div className="ui-title">Belum ada materi</div><p className="ui-text">Materi dari guru akan muncul di sini.</p></div></section>}
+        {mapelKeys.map(mapel => Object.entries(grouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, items]) => (
+          <section key={mapel + bab} className="ui-card">
+            <div className="ui-label-row"><span className="ui-label">{bab}</span><span className="ui-aside">{mapel}</span></div>
+            <div className="ui-items">
+              {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => {
+                const k = materiKind(m);
+                const isPdf = (m.tipe || "pdf") === "pdf";
+                const baru = m.createdAt && Date.now() - m.createdAt < 7 * 86400000;
+                const selesai = store.isMateriDone ? store.isMateriDone(m.id) : false;
+                return <button key={m.id} type="button" className="ui-item" onClick={() => setViewMateri(m)}>
+                  <span className="ui-item-ic" aria-hidden="true" style={{ background: k.bg, color: k.color }}><I n={k.icon} s={17} /></span>
+                  <span className="ui-item-main">
+                    <span className="ui-item-title"><b>{m.judul}</b>{selesai ? <span className="ui-chip">Selesai</span> : baru ? <span className="ui-chip amber">Baru</span> : null}</span>
+                    <small>{k.label || (isPdf && m.pageCount ? `PDF · ${m.pageCount} halaman` : "PDF")}</small>
                   </span>
-                  {selesai
-                    ? <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        <button className="btn btn-outline btn-sm" onClick={() => store.resetLatihanProgress(mapel, bab)}><I n="rotate" s={13} /> Ulang</button>
-                        <button className="btn btn-soft btn-sm" onClick={() => setQuizBab({ bab, mapel, soal: pool })}>Review</button>
-                      </div>
-                    : <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => setQuizBab({ bab, mapel, soal: pool })}>Mulai <I n="chevR" s={13} /></button>
-                  }
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>}
+                  <span className="ui-item-end"><I n="chevR" s={16} style={{ color: "var(--ink-4)" }} /></span>
+                </button>;
+              })}
+            </div>
+          </section>
+        )))}
+      </>}
+
+      {tab === "latihan" && <>
+        {latihanMapelKeys.length === 0 && <section className="ui-card center"><div className="ui-empty"><I n="edit" s={28} /><div className="ui-title">Belum ada latihan</div><p className="ui-text">Soal latihan tersedia setelah tenggat tugas yang terkait materi lewat.</p></div></section>}
+        {latihanMapelKeys.map(mapel => (
+          <section key={mapel} className="ui-card">
+            <div className="ui-label-row"><span className="ui-label">{mapel}</span><span className="ui-aside">10 soal per ronde</span></div>
+            <div className="ui-items">
+              {Object.entries(latihanGrouped[mapel]).sort((a, b) => a[0].localeCompare(b[0])).map(([bab, soalRaw]) => {
+                const pool = dedupSoal(soalRaw);
+                const seenSet = store.getLatihanSeen(mapel, bab);
+                const total = pool.length;
+                const seen = pool.filter(s => seenSet.has(latihanSoalKey(s.pertanyaan))).length;
+                const remaining = total - seen;
+                const rondeLagi = Math.ceil(remaining / 10);
+                const pct = total ? Math.round((seen / total) * 100) : 0;
+                const selesai = total > 0 && remaining === 0;
+                return (
+                  <div key={bab} className="lm-row">
+                    <div className="lm-row-top">
+                      <span className="ui-item-main">
+                        <span className="ui-item-title"><b>{bab}</b>{selesai && <span className="ui-chip">Semua sudah dilatih</span>}</span>
+                        <small>{seen} dari {total} soal sudah dilatih{!selesai && ` · ${rondeLagi} ronde lagi`}</small>
+                      </span>
+                      {selesai
+                        ? <span className="lm-row-act">
+                            <button type="button" className="ui-btn outline sm" onClick={() => store.resetLatihanProgress(mapel, bab)}><I n="rotate" s={12} /> Ulang</button>
+                            <button type="button" className="ui-btn sm" onClick={() => setQuizBab({ bab, mapel, soal: pool })}>Review</button>
+                          </span>
+                        : <button type="button" className="ui-btn sm" onClick={() => setQuizBab({ bab, mapel, soal: pool })}>{seen ? "Lanjut" : "Mulai"}</button>}
+                    </div>
+                    <div className="ui-meter"><i style={{ width: `${pct}%` }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </>}
+    </div>
   </div>;
 }
 

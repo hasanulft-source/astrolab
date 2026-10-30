@@ -6,9 +6,10 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtDl } from "../utils/helpers";
 import { I } from "../components/icons";
-import { MapelIcon, UserAvatar } from "../components/visual";
-import { getLevel, getLevelProgress, TierIcon, LevelBadge, LevelCard, BadgeChip } from "../components/gamification";
+import { MapelIcon, UserAvatar, ConfettiRain } from "../components/visual";
+import { LevelBadge, LevelCard, BadgeChip } from "../components/gamification";
 import { KKTP, Page, TopBar, PageHeader, Card, Tabs, StatusChip, ActionCallout, ScoreBar, Button, Items, Item, Facts, Meter } from "../components/ui";
+import { Medal, LevelStrip, StreakValue, Orbit } from "../components/seru";
 import "../styles/siswa.css";
 
 // ─── Aturan bersama (murni) ───
@@ -162,7 +163,6 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
   const hour = new Date(now).getHours();
   const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
   const poin = stats.poin || 0;
-  const lv = getLevel(poin), prog = getLevelProgress(poin);
 
   return (
     <div className="sw">
@@ -176,6 +176,7 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
           {/* Status: ranking, poin, level, streak */}
           <div className="sw-a">
           <section className="sw-hero" aria-label="Status kamu">
+            <Orbit />
             <div className="sw-hero-top">
               <div>
                 <span className="sw-hero-k">Ranking kelas {user.jenjang}</span>
@@ -186,18 +187,12 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
                 <b className="sw-hero-n">{poin.toLocaleString("id-ID")}</b>
               </div>
             </div>
-            <div className="sw-hero-lv">
-              <TierIcon tierId={lv.tierId} size={26} color="#fff" />
-              <div className="sw-hero-lv-main">
-                <div className="sw-hero-lv-row"><b>{lv.name}</b><span>{prog.next ? `${prog.needed} poin lagi ke ${prog.next.name}` : "Level tertinggi"}</span></div>
-                <div className="sw-hero-bar"><i style={{ width: `${prog.next ? prog.pct : 100}%` }} /></div>
-              </div>
-            </div>
+            <div className="sw-hero-lv"><LevelStrip poin={poin} onDark /></div>
           </section>
             <div className="sw-tiles">
               <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
               <div><span>Tugas selesai</span><b>{stats.tugasSelesai || 0}</b></div>
-              <div><span>Streak</span><b>{stats.streak || 0} <small>hari</small></b></div>
+              <div className="streak"><span>Streak</span><b><StreakValue streak={stats.streak || 0} /></b></div>
             </div>
           </div>
 
@@ -241,7 +236,7 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
                 <div className="sw-top">
                   {lb.slice(0, 3).map(s => (
                     <div key={s.id} className={`sw-top-row${s.id === user.id ? " me" : ""}`}>
-                      <span className="sw-top-rank">{s.rank}</span>
+                      <Medal rank={s.rank} />
                       <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
                       <span className="sw-top-name"><b>{s.nama}{s.id === user.id && <em> · kamu</em>}</b><LevelBadge poin={s.poin || 0} size="xs" showName={false} /></span>
                       <span className="sw-top-pts">{(s.poin || 0).toLocaleString("id-ID")}</span>
@@ -642,6 +637,7 @@ export function HasilTugas({ t, user, store, navigate, result, total, background
     else if (kPct >= 50) momen = `Kelas sudah ${kPct}% selesai.`;
   }
   const tutup = () => navigate("leaderboard");
+  const rayakan = result.nilai >= 80 || result.newBadges?.length > 0;
 
   return (
     <div style={{ minHeight: "100vh", position: "relative" }}>
@@ -654,8 +650,10 @@ export function HasilTugas({ t, user, store, navigate, result, total, background
           </div>
           <div className="sw-pop-body">
             <div className="sw-score">
+              {rayakan && <ConfettiRain intensity={result.nilai >= 90 ? "high" : "medium"} />}
               <b className={result.nilai < KKTP ? "sw-below" : ""}>{result.nilai}</b>
-              <span>{result.correctCount} dari {total} soal benar · +{result.poinDapat} poin</span>
+              <span>{result.correctCount} dari {total} soal benar</span>
+              <span className="sw-poin-chip">+{result.poinDapat} poin</span>
               {adaEsai && <small>Soal esai dan refleksi dinilai guru menyusul, jadi nilai ini bisa berubah.</small>}
             </div>
             {momen && <div className="sw-momen">{momen}</div>}

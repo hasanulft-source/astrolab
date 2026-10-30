@@ -20,6 +20,9 @@ import { LatihanMandiri, MateriManager } from './pages/materi';
 import { Welcome } from './pages/welcome';
 import { RaporSiswaV2 } from './pages/rapor';
 import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, HasilTugas } from './pages/siswa';
+import { RankingScreen } from './pages/ranking';
+import { ProfilSiswaV2 } from './pages/profil';
+import { MisiSiswa, MisiModal } from './pages/misi';
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -3408,7 +3411,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
 
   // Layar hasil (redesign Fase 1, pages/siswa.jsx) — hanya tampilan; nilai & poin sudah dihitung di doSubmit
   if (submitted && result) {
-    return <HasilTugas t={t} user={user} store={store} navigate={navigate} result={result} total={total} background={<LeaderboardScreen user={user} store={store} />} />;
+    return <HasilTugas t={t} user={user} store={store} navigate={navigate} result={result} total={total} background={<RankingScreen user={user} store={store} />} />;
   }
 
   const pct = Math.round(((idx + 1) / total) * 100);
@@ -9627,7 +9630,7 @@ function AppInner() {
       else if (route === "tugas-guru") screen = <TugasGuru store={store} navigate={navigate} />;
       else if (route === "buat-tugas") screen = <BuatTugas store={store} navigate={navigate} presetAssignedTo={params.presetAssignedTo} presetJenjang={params.presetJenjang} />;
       else if (route === "edit-tugas") screen = <BuatTugas store={store} navigate={navigate} editId={params.tugasId} />;
-      else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
+      else if (route === "leaderboard") screen = <RankingScreen user={user} store={store} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
       else if (route === "kelas") screen = <KelasView store={store} navigate={navigate} />;
       else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
@@ -9641,16 +9644,16 @@ function AppInner() {
       else if (route === "mission-guru") screen = <MissionGuru store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
     } else {
-      if (route === "home") screen = <BerandaSiswa user={user} store={store} navigate={navigate} MissionModal={MissionSiswaModal} />;
-      else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
+      if (route === "home") screen = <BerandaSiswa user={user} store={store} navigate={navigate} MissionModal={MisiModal} />;
+      else if (route === "leaderboard") screen = <RankingScreen user={user} store={store} />;
       else if (route === "tugas") screen = <DaftarTugasSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "tugas-detail") screen = <DetailTugasSiswa user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "review-tugas") screen = <ReviewTugasSiswa user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
-      else if (route === "profil") screen = <ProfilSiswa user={user} store={store} navigate={navigate} />;
+      else if (route === "profil") screen = <ProfilSiswaV2 user={user} store={store} navigate={navigate} LaporModal={LaporModal} />;
       else if (route === "rapor") screen = <RaporSiswaV2 user={user} store={store} navigate={navigate} />;
       else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
-      else if (route === "mission") screen = <MissionSiswa user={user} store={store} navigate={navigate} />;
+      else if (route === "mission") screen = <MisiSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
       else screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
     }
