@@ -157,8 +157,9 @@ export function MoveTrack({ from, to, kktp = KKTP, labelFrom = "awal", labelTo =
 // ─── Fase 1 ───
 
 // Tombol. variant: "primary" | "outline" | "amber". full = selebar kartu.
-export function Button({ variant = "primary", full = false, children, ...rest }) {
-  return <button type="button" className={`ui-btn ${variant}${full ? " full" : ""}`} {...rest}>{children}</button>;
+// size: "md" (default) | "sm" (tombol di dalam baris daftar)
+export function Button({ variant = "primary", full = false, size = "md", children, ...rest }) {
+  return <button type="button" className={`ui-btn ${variant}${full ? " full" : ""}${size === "sm" ? " sm" : ""}`} {...rest}>{children}</button>;
 }
 
 // Daftar baris yang bisa diketuk (tugas, siswa, dll). Dipakai di dalam Card.

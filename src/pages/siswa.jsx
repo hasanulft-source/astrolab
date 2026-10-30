@@ -83,15 +83,47 @@ function JadwalItem({ t, now }) {
   );
 }
 
-// ═══════════════════════════ BERANDA ═══════════════════════════
-let _popupShown = false; // popup "tugas belum dikerjakan" hanya sekali per sesi, seperti versi lama
+// Status permintaan akses susulan untuk tugas yang lewat tenggat:
+// "minta" (belum pernah / ditolak / susulan lama sudah habis) | "menunggu"
+export function statusAkses(store, t, uid) {
+  const req = store.getAksesRequest(t.id, uid);
+  if (req?.status === "pending") return { kode: "menunggu", req };
+  return { kode: "minta", req, catatan: req?.status === "rejected" ? "Permintaan sebelumnya ditolak." : req?.status === "approved" ? "Kesempatan susulan sebelumnya sudah lewat." : null };
+}
 
+function useMintaAkses(store, user) {
+  const [loading, setLoading] = useState({});
+  const [error, setError] = useState({});
+  const kirim = async t => {
+    setLoading(p => ({ ...p, [t.id]: true }));
+    setError(p => ({ ...p, [t.id]: null }));
+    try { await store.requestAkses(t.id, user.id, user.namaDisplay || user.nama, t.judul); }
+    catch (e) { console.error("[MintaAkses] error:", e); setError(p => ({ ...p, [t.id]: "Gagal mengirim. Coba lagi." })); }
+    finally { setLoading(p => ({ ...p, [t.id]: false })); }
+  };
+  return { loading, error, kirim };
+}
+
+function LewatItem({ t, user, store, navigate, akses }) {
+  const st = statusAkses(store, t, user.id);
+  const meta = akses.error[t.id] || st.catatan || `${t.mapel} · ${nSoal(t)} soal`;
+  return (
+    <div className="sw-lewat">
+      <Item icon={<MapelIcon mapel={t.mapel} size={18} />} tone="amber" title={t.judul} meta={meta}
+        onClick={() => navigate("tugas-detail", { tugasId: t.id })} />
+      {st.kode === "menunggu"
+        ? <StatusChip tone="muted">Menunggu guru</StatusChip>
+        : <Button variant="amber" size="sm" disabled={akses.loading[t.id]} onClick={() => akses.kirim(t)}>{akses.loading[t.id] ? "Mengirim..." : "Minta akses"}</Button>}
+    </div>
+  );
+}
+
+// ═══════════════════════════ BERANDA ═══════════════════════════
 export function BerandaSiswa({ user, store, navigate, MissionModal }) {
   const now = useNow(30000);
   const [showMission, setShowMission] = useState(false);
   const stats = store.getStats(user.id);
   const allTugas = store.getTugas().filter(t => t.jenjang === user.jenjang && t.status === "aktif" && untukSaya(t, user.id));
-  const tugas = allTugas.filter(t => !isLewat(t)).sort(byNewest);
   const akanDatang = store.getTugas()
     .filter(t => t.jenjang === user.jenjang && t.status === "scheduled" && t.scheduledAt && untukSaya(t, user.id))
     .sort((a, b) => ts(a.scheduledAt) - ts(b.scheduledAt));
@@ -109,29 +141,16 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
     store.resetStreakIfMissed(user.id, missedIds.split(","));
   }, [missedIds, store.loading]);
 
-  // Popup: belum dikerjakan + susulan aktif + lewat yang aksesnya belum ditolak
-  const pendingTugas = allTugas.filter(t => {
-    if (store.hasSub(user.id, t.id)) return false;
-    if (!isLewat(t) || store.isSusulanAktif(t.id, user.id)) return true;
-    const req = store.getAksesRequest(t.id, user.id);
-    return !(req && req.status === "rejected");
-  });
-  const [showPopup, setShowPopup] = useState(false);
-  const popupTriggered = useRef(false);
-  useEffect(() => {
-    if (popupTriggered.current || _popupShown || store.loading) return;
-    if (pendingTugas.length > 0) { popupTriggered.current = true; setShowPopup(true); }
-  }, [store.loading, pendingTugas.length]);
-  const closePopup = () => { _popupShown = true; setShowPopup(false); };
-
-  // Satu aksi utama: tugas yang masih bisa dikerjakan dengan batas waktu terdekat (susulan pakai tenggat barunya)
+  // Pengganti popup login: semua yang masih bisa dikerjakan, batas waktu terdekat di atas (susulan pakai tenggat barunya)
   const batasKerja = t => {
     if (isLewat(t)) { const sus = store.getSusulan(t.id, user.id); return sus?.deadlineBaru ? ts(sus.deadlineBaru) : Infinity; }
     return deadlineEnd(t.deadline) || Infinity;
   };
-  const berikutnya = allTugas
+  const perlu = allTugas
     .filter(t => !store.hasSub(user.id, t.id) && (!isLewat(t) || store.isSusulanAktif(t.id, user.id)))
-    .sort((a, b) => batasKerja(a) - batasKerja(b))[0];
+    .sort((a, b) => batasKerja(a) - batasKerja(b));
+  const akses = useMintaAkses(store, user);
+  const LIMIT = 4;
 
   const hour = new Date(now).getHours();
   const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
@@ -177,22 +196,22 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
               </button>
             )}
 
-            {berikutnya ? (
-              <ActionCallout tone="teal" title={`Berikutnya: ${berikutnya.judul}`}
-                note={`${berikutnya.mapel} · ${nSoal(berikutnya)} soal · ${isLewat(berikutnya) ? "susulan" : tenggat(berikutnya.deadline, now).label.toLowerCase()}`}
-                actionLabel="Kerjakan" onAction={() => navigate("tugas-detail", { tugasId: berikutnya.id })} />
-            ) : allTugas.length > 0 && tugasLewat.length === 0 ? (
-              <ActionCallout tone="teal" title="Semua tugas sudah kamu kerjakan" note="Cek posisimu di ranking kelas." actionLabel="Ranking" onAction={() => navigate("leaderboard")} />
-            ) : null}
-            {tugasLewat.length > 0 && (
-              <ActionCallout title={`${tugasLewat.length} tugas lewat tenggat`} note="Dihitung 0 sampai dikerjakan. Minta akses susulan ke guru." actionLabel="Lihat" onAction={() => navigate("tugas")} />
-            )}
-
-            <Card label="Tugas aktif" aside={<button type="button" className="ui-link" onClick={() => navigate("tugas")}>Semua tugas <I n="chevR" s={12} /></button>}>
-              {tugas.length === 0
-                ? <p className="ui-text">Belum ada tugas aktif dari guru.</p>
-                : <Items>{tugas.slice(0, 4).map(t => <TugasItem key={t.id} t={t} user={user} store={store} now={now} navigate={navigate} showMapel />)}</Items>}
+            <Card label="Perlu dikerjakan" aside={<button type="button" className="ui-link" onClick={() => navigate("tugas")}>Semua tugas <I n="chevR" s={12} /></button>}>
+              {perlu.length > 0 ? (
+                <Items>{perlu.slice(0, LIMIT).map(t => <TugasItem key={t.id} t={t} user={user} store={store} now={now} navigate={navigate} showMapel />)}</Items>
+              ) : (
+                <p className="ui-text">{allTugas.length === 0 ? "Belum ada tugas aktif dari guru." : tugasLewat.length ? "Tidak ada tugas yang masih terbuka." : "Semua tugas sudah kamu kerjakan. Cek posisimu di ranking kelas."}</p>
+              )}
+              {perlu.length > LIMIT && <button type="button" className="ui-link" onClick={() => navigate("tugas")}>{perlu.length - LIMIT} tugas lainnya <I n="chevR" s={12} /></button>}
             </Card>
+
+            {tugasLewat.length > 0 && (
+              <Card label="Lewat tenggat" aside={`${tugasLewat.length} tugas`}>
+                <p className="ui-text">Dihitung 0 sampai dikerjakan. Minta akses susulan ke guru kalau kamu punya alasan.</p>
+                <Items>{tugasLewat.slice(0, 3).map(t => <LewatItem key={t.id} t={t} user={user} store={store} navigate={navigate} akses={akses} />)}</Items>
+                {tugasLewat.length > 3 && <button type="button" className="ui-link" onClick={() => navigate("tugas")}>Lihat semua ({tugasLewat.length}) <I n="chevR" s={12} /></button>}
+              </Card>
+            )}
 
             {akanDatang.length > 0 && (
               <Card label="Akan dibuka" aside={`${akanDatang.length} tugas`}>
@@ -227,69 +246,6 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
       </Page>
 
       {showMission && MissionModal && <MissionModal user={user} store={store} navigate={navigate} onClose={() => setShowMission(false)} />}
-      {showPopup && pendingTugas.length > 0 && <TugasPopup pendingTugas={pendingTugas} store={store} user={user} navigate={navigate} onClose={closePopup} />}
-    </div>
-  );
-}
-
-// Popup saat masuk: tugas yang belum dikerjakan (aturan & aksi sama dengan TugasHariIniPopup lama)
-function TugasPopup({ pendingTugas, store, user, navigate, onClose }) {
-  const now = useNow(30000);
-  const [loading, setLoading] = useState({});
-  const [error, setError] = useState({});
-  const aktif = pendingTugas.filter(t => !isLewat(t) || store.isSusulanAktif(t.id, user.id));
-  const lewat = pendingTugas.filter(t => isLewat(t) && !store.isSusulanAktif(t.id, user.id));
-
-  const mintaAkses = async t => {
-    setLoading(p => ({ ...p, [t.id]: true }));
-    setError(p => ({ ...p, [t.id]: null }));
-    try { await store.requestAkses(t.id, user.id, user.namaDisplay || user.nama, t.judul); }
-    catch (e) { console.error("[MintaAkses] error:", e); setError(p => ({ ...p, [t.id]: "Gagal mengirim permintaan. Coba lagi." })); }
-    finally { setLoading(p => ({ ...p, [t.id]: false })); }
-  };
-  const buka = t => { onClose(); navigate("tugas-detail", { tugasId: t.id }); };
-
-  const row = (t, overdue) => {
-    const req = store.getAksesRequest(t.id, user.id);
-    const siswa = Array.isArray(t.assignedTo) ? store.getAllSiswa(t.jenjang).filter(s => t.assignedTo.includes(s.id)) : store.getAllSiswa(t.jenjang);
-    const sudah = store.getSubs().filter(s => s.tugasId === t.id).length;
-    const tg = tenggat(t.deadline, now);
-    return (
-      <div key={t.id} className="sw-pop-row">
-        <div className="sw-pop-row-top">
-          <span className="sw-pop-mapel">{t.mapel}</span>
-          {overdue ? <StatusChip tone="amber">Lewat tenggat</StatusChip> : store.isSusulanAktif(t.id, user.id) && isLewat(t) ? <StatusChip>Susulan</StatusChip> : <StatusChip tone={tg.tone}>{tg.label}</StatusChip>}
-        </div>
-        <b className="sw-pop-title">{t.judul}</b>
-        <small className="sw-pop-meta">{nSoal(t)} soal · +{poinTugas(t)} poin{siswa.length > 1 && sudah > 0 ? ` · ${sudah} dari ${siswa.length} teman sudah mengerjakan` : ""}</small>
-        {overdue && (!req || req.status === "rejected") ? (
-          <>
-            <div className="sw-pop-act"><Button variant="amber" disabled={loading[t.id]} onClick={() => mintaAkses(t)}>{loading[t.id] ? "Mengirim..." : <><I n="send" s={14} /> Minta akses susulan</>}</Button></div>
-            {req?.status === "rejected" && !error[t.id] && <small className="sw-pop-note">Permintaan sebelumnya ditolak. Kamu bisa minta lagi.</small>}
-            {error[t.id] && <small className="sw-pop-note err">{error[t.id]}</small>}
-          </>
-        ) : overdue && req?.status === "pending" ? (
-          <small className="sw-pop-wait"><I n="clock" s={13} /> Permintaan akses terkirim, menunggu persetujuan guru.</small>
-        ) : (
-          <div className="sw-pop-act"><Button onClick={() => buka(t)}>Kerjakan <I n="chevR" s={14} /></Button></div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 250 }}>
-      <div className="sw-pop" role="dialog" aria-modal="true" aria-labelledby="sw-pop-h" onClick={e => e.stopPropagation()}>
-        <div className="sw-pop-head">
-          <div><h2 id="sw-pop-h">{pendingTugas.length} tugas belum dikerjakan</h2><p>Kamu bisa menutup ini dan mengerjakan nanti.</p></div>
-          <button type="button" className="sw-x" onClick={onClose} aria-label="Tutup"><I n="x" s={16} /></button>
-        </div>
-        <div className="sw-pop-body">
-          {aktif.map(t => row(t, false))}
-          {aktif.length > 0 && lewat.length > 0 && <div className="sw-sep">Lewat tenggat</div>}
-          {lewat.map(t => row(t, true))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -429,7 +385,6 @@ export function DetailTugasSiswa({ user, store, tugasId, navigate }) {
   const kelasDone = kelasTotal > 1 ? store.getSubs().filter(s => s.tugasId === t.id).length : 0;
   const kelasPct = kelasTotal > 1 ? Math.round(kelasDone / kelasTotal * 100) : 0;
 
-  const req = store.getAksesRequest ? store.getAksesRequest(t.id, user.id) : null;
   const mintaAkses = async () => {
     setAkses({ loading: true, error: null });
     try { await store.requestAkses(t.id, user.id, user.namaDisplay || user.nama, t.judul); setAkses({ loading: false, error: null }); }
@@ -484,16 +439,14 @@ export function DetailTugasSiswa({ user, store, tugasId, navigate }) {
         {!bisa && !done && lewat && !periodeTutup && (
           <Card label="Tugas sudah ditutup">
             <p className="ui-text">Tenggatnya sudah lewat, jadi tugas ini dihitung 0 sampai kamu mengerjakannya lewat susulan.</p>
-            {(!req || req.status === "rejected") ? (
+            {statusAkses(store, t, user.id).kode === "menunggu" ? (
+              <p className="sw-wait"><I n="clock" s={14} /> Permintaan akses terkirim, menunggu persetujuan guru.</p>
+            ) : (
               <>
-                <Button variant="amber" full disabled={akses.loading} onClick={mintaAkses}>{akses.loading ? "Mengirim..." : <><I n="send" s={14} /> Minta akses susulan</>}</Button>
-                {req?.status === "rejected" && !akses.error && <p className="ui-text">Permintaan sebelumnya ditolak. Kamu bisa minta lagi.</p>}
+                {statusAkses(store, t, user.id).catatan && !akses.error && <p className="ui-text">{statusAkses(store, t, user.id).catatan} Kamu bisa minta lagi.</p>}
+                <div><Button variant="amber" disabled={akses.loading} onClick={mintaAkses}>{akses.loading ? "Mengirim..." : <><I n="send" s={14} /> Minta akses susulan</>}</Button></div>
                 {akses.error && <p className="ui-text" style={{ color: "var(--bad)" }}>{akses.error}</p>}
               </>
-            ) : req.status === "pending" ? (
-              <Button variant="outline" full disabled><I n="clock" s={14} /> Menunggu persetujuan guru</Button>
-            ) : (
-              <p className="ui-text">Permintaanmu sudah disetujui. Tugas bisa dikerjakan setelah guru membuka susulannya.</p>
             )}
           </Card>
         )}
