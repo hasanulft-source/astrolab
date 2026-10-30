@@ -55,7 +55,6 @@ function useNow(ms) {
 }
 
 const Num = ({ v }) => <span className={`ui-num${typeof v === "number" && v < KKTP ? " below" : ""}`}>{typeof v === "number" ? v : "–"}</span>;
-const Chev = () => <I n="chevR" s={16} style={{ color: "var(--ink-4)" }} />;
 
 // Satu baris tugas — dipakai Beranda, Daftar Tugas, popup, dan layar hasil
 function TugasItem({ t, user, store, now, navigate, showMapel = false }) {
@@ -106,19 +105,21 @@ function useMintaAkses(store, user) {
 
 function LewatItem({ t, user, store, navigate, akses }) {
   const st = statusAkses(store, t, user.id);
-  const meta = akses.error[t.id] || st.catatan || `${t.mapel} · ${nSoal(t)} soal`;
+  const meta = akses.error[t.id] || `${nSoal(t)} soal · ${t.graded === false ? "tidak dinilai" : "dihitung 0"}`;
   return (
     <div className="sw-lewat">
       <Item icon={<MapelIcon mapel={t.mapel} size={18} />} tone="amber" title={t.judul} meta={meta}
         onClick={() => navigate("tugas-detail", { tugasId: t.id })} />
       {st.kode === "menunggu"
-        ? <StatusChip tone="muted">Menunggu guru</StatusChip>
+        ? <StatusChip tone="muted">Menunggu</StatusChip>
         : <Button variant="amber" size="sm" disabled={akses.loading[t.id]} onClick={() => akses.kirim(t)}>{akses.loading[t.id] ? "Mengirim..." : "Minta akses"}</Button>}
     </div>
   );
 }
 
 // ═══════════════════════════ BERANDA ═══════════════════════════
+let _bukaArsip = null; // Beranda → Daftar Tugas: mapel yang dibuka + bagian "Lewat tenggat" langsung terbuka
+
 export function BerandaSiswa({ user, store, navigate, MissionModal }) {
   const now = useNow(30000);
   const [showMission, setShowMission] = useState(false);
@@ -149,7 +150,6 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
   const perlu = allTugas
     .filter(t => !store.hasSub(user.id, t.id) && (!isLewat(t) || store.isSusulanAktif(t.id, user.id)))
     .sort((a, b) => batasKerja(a) - batasKerja(b));
-  const akses = useMintaAkses(store, user);
   const LIMIT = 4;
 
   const hour = new Date(now).getHours();
@@ -206,11 +206,11 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
             </Card>
 
             {tugasLewat.length > 0 && (
-              <Card label="Lewat tenggat" aside={`${tugasLewat.length} tugas`}>
-                <p className="ui-text">Dihitung 0 sampai dikerjakan. Minta akses susulan ke guru kalau kamu punya alasan.</p>
-                <Items>{tugasLewat.slice(0, 3).map(t => <LewatItem key={t.id} t={t} user={user} store={store} navigate={navigate} akses={akses} />)}</Items>
-                {tugasLewat.length > 3 && <button type="button" className="ui-link" onClick={() => navigate("tugas")}>Lihat semua ({tugasLewat.length}) <I n="chevR" s={12} /></button>}
-              </Card>
+              <button type="button" className="sw-overdue" onClick={() => { _bukaArsip = tugasLewat.some(t => t.mapel === "IPA") ? "IPA" : tugasLewat[0].mapel; navigate("tugas"); }}>
+                <b>{tugasLewat.length}</b>
+                <span><strong>tugas lewat tenggat</strong><small>Dihitung 0 · ketuk untuk minta akses susulan</small></span>
+                <I n="chevR" s={16} />
+              </button>
             )}
 
             {akanDatang.length > 0 && (
@@ -254,8 +254,10 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
 export function DaftarTugasSiswa({ user, store, navigate }) {
   const now = useNow(30000);
   const isVII = user.jenjang === "VII";
-  const [mapel, setMapel] = useState("IPA");
-  const [showArsip, setShowArsip] = useState(false);
+  const [buka] = useState(() => { const v = _bukaArsip; _bukaArsip = null; return v; });
+  const [mapel, setMapel] = useState(buka && (isVII || buka === "IPA") ? buka : "IPA");
+  const [showArsip, setShowArsip] = useState(!!buka);
+  const akses = useMintaAkses(store, user);
   const [showAllDone, setShowAllDone] = useState(false);
 
   const semuaRaw = store.getTugas().filter(t => t.jenjang === user.jenjang && t.mapel === mapel && untukSaya(t, user.id));
@@ -343,14 +345,7 @@ export function DaftarTugasSiswa({ user, store, navigate }) {
                 </button>
                 {showArsip && (
                   <>
-                    <p className="ui-text">Tugas ini tidak dikerjakan sampai tenggat. Buka tugasnya untuk minta akses susulan ke guru.</p>
-                    <Items>
-                      {arsip.map(t => (
-                        <Item key={t.id} icon={<MapelIcon mapel={t.mapel} size={18} />} tone="amber" dim title={t.judul}
-                          meta={`${nSoal(t)} soal · ${t.graded === false ? "tidak dikerjakan" : "dihitung 0"}`}
-                          end={<Chev />} onClick={() => navigate("tugas-detail", { tugasId: t.id })} />
-                      ))}
-                    </Items>
+                    <Items>{arsip.map(t => <LewatItem key={t.id} t={t} user={user} store={store} navigate={navigate} akses={akses} />)}</Items>
                   </>
                 )}
               </Card>
