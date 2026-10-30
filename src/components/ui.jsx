@@ -5,8 +5,10 @@ import "../styles/ui.css";
 
 export const KKTP = 70;
 
-export function Page({ wide = false, children }) {
-  return <div className={`ui-page${wide ? " wide" : ""}`}>{children}</div>;
+// size: "narrow" (480 px, default) | "mid" (680 px di laptop) | "wide" (960 px di laptop). `wide` lama tetap jalan.
+export function Page({ wide = false, size, children }) {
+  const sz = size || (wide ? "wide" : "narrow");
+  return <div className={`ui-page${sz === "narrow" ? "" : " " + sz}`}>{children}</div>;
 }
 
 // Topbar HP (main.css menyembunyikannya di layar >= 768px; judul halaman tetap tampil di PageHeader)
@@ -150,4 +152,43 @@ export function MoveTrack({ from, to, kktp = KKTP, labelFrom = "awal", labelTo =
       <circle cx={X(to)} cy="26" r="8" fill={col} stroke="var(--surface)" strokeWidth="2.5" />
     </svg>
   );
+}
+
+// ─── Fase 1 ───
+
+// Tombol. variant: "primary" | "outline" | "amber". full = selebar kartu.
+export function Button({ variant = "primary", full = false, children, ...rest }) {
+  return <button type="button" className={`ui-btn ${variant}${full ? " full" : ""}`} {...rest}>{children}</button>;
+}
+
+// Daftar baris yang bisa diketuk (tugas, siswa, dll). Dipakai di dalam Card.
+export function Items({ children }) {
+  return <div className="ui-items">{children}</div>;
+}
+
+// icon: elemen ikon; tone ikon: "teal" | "amber" | "muted"; end: chip/angka di kanan
+export function Item({ icon, tone = "teal", title, meta, end, onClick, dim = false }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag type={onClick ? "button" : undefined} className={`ui-item${dim ? " dim" : ""}`} onClick={onClick}>
+      {icon && <span className={`ui-item-ic ${tone}`} aria-hidden="true">{icon}</span>}
+      <span className="ui-item-main"><b>{title}</b>{meta && <small>{meta}</small>}</span>
+      {end != null && <span className="ui-item-end">{end}</span>}
+    </Tag>
+  );
+}
+
+// Angka kecil berderet: [{ label, value }]
+export function Facts({ items }) {
+  return (
+    <dl className="ui-facts">
+      {items.map(it => <div key={it.label}><dt>{it.label}</dt><dd>{it.value}</dd></div>)}
+    </dl>
+  );
+}
+
+// Bar kemajuan polos (tanpa garis KKTP), mis. "12 dari 34 sudah mengerjakan"
+export function Meter({ value, max = 100, label }) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, value / max * 100)) : 0;
+  return <div className="ui-meter" role="img" aria-label={label || `${value} dari ${max}`}><i style={{ width: `${pct}%` }} /></div>;
 }

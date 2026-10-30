@@ -19,6 +19,7 @@ import { BankSoal, PilihDariBankSoalModal } from './pages/banksoal';
 import { LatihanMandiri, MateriManager } from './pages/materi';
 import { Welcome } from './pages/welcome';
 import { RaporSiswaV2 } from './pages/rapor';
+import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, HasilTugas } from './pages/siswa';
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -3173,7 +3174,7 @@ function ExcelSandboxPlayer({ soal, answer, selected }) {
 
         {result && (
           <div style={{ marginTop: 10, padding: "8px 12px", background: result.error ? "var(--bad-bg)" : "var(--good-bg)", border: `1px solid ${result.error ? "#fca5a5" : "var(--good)"}`, borderRadius: 6, fontSize: 13, fontFamily: "var(--mono)" }}>
-            {result.error ? <span style={{ color: "var(--bad)" }}>⚠ {result.error}</span> : <span style={{ color: "var(--good)" }}>= {result.value}</span>}
+            {result.error ? <span style={{ color: "var(--bad)" }}>{result.error}</span> : <span style={{ color: "var(--good)" }}>= {result.value}</span>}
           </div>
         )}
 
@@ -3189,7 +3190,7 @@ function ExcelSandboxPlayer({ soal, answer, selected }) {
         )}
 
         <div style={{ marginTop: 10, fontSize: 10, color: "var(--ink-3)" }}>
-          💡 Fungsi: <b>SUM</b>, <b>AVERAGE</b>, <b>COUNT</b>, <b>MAX</b>, <b>MIN</b>, <b>ROUND</b>. Range: <b>A1:B3</b>
+          Fungsi: <b>SUM</b>, <b>AVERAGE</b>, <b>COUNT</b>, <b>MAX</b>, <b>MIN</b>, <b>ROUND</b>. Range: <b>A1:B3</b>
         </div>
       </div>
 
@@ -3405,173 +3406,9 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     }
   }
 
-  // Result screen — popup overlay on top of LeaderboardScreen
+  // Layar hasil (redesign Fase 1, pages/siswa.jsx) — hanya tampilan; nilai & poin sudah dihitung di doSubmit
   if (submitted && result) {
-    const newPoin = (store.getStats(user.id).poin || 0);
-    // Sisa tugas
-    const sisaTugas = store.getTugas().filter(st => {
-      if (st.id === t.id) return false;
-      if (st.jenjang !== user.jenjang || st.status !== "aktif") return false;
-      if (Array.isArray(st.assignedTo) && !st.assignedTo.includes(user.id)) return false;
-      if (store.hasSub(user.id, st.id)) return false;
-      const stLewat = fmtDl(st.deadline).tone === "bad";
-      if (stLewat && !store.isSusulanAktif(st.id, user.id)) return false;
-      return true;
-    });
-    // Score color: gradient from red (0) to green (100)
-    const nilaiColor = result.nilai >= 75 ? "var(--good)" : result.nilai >= 50 ? "var(--warn)" : "var(--bad)";
-    return <div style={{ minHeight: "100vh", position: "relative" }}>
-      {/* LeaderboardScreen as background */}
-      <LeaderboardScreen user={user} store={store} />
-      {/* Popup overlay */}
-      {!showSisaTugas && <div className="modal-overlay" style={{ zIndex: 250, position: "fixed" }}>
-        <div onClick={e => e.stopPropagation()} style={{
-          background: "var(--surface)", borderRadius: 20, width: "100%", maxWidth: 400,
-          boxShadow: "0 20px 60px rgba(0,0,0,.25)", overflow: "hidden", maxHeight: "85vh",
-          display: "flex", flexDirection: "column", margin: 20
-        }}>
-          {/* Header — teal gradient */}
-          <div style={{
-            background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)",
-            padding: "12px 16px", position: "relative", borderRadius: "20px 20px 0 0"
-          }}>
-            <button onClick={() => navigate("leaderboard")} style={{
-              position: "absolute", top: 10, right: 12, background: "rgba(255,255,255,.18)",
-              border: "none", borderRadius: 99, width: 28, height: 28, display: "grid", placeItems: "center",
-              color: "#fff", cursor: "pointer", backdropFilter: "blur(4px)"
-            }}><I n="x" s={14} /></button>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{result.nilai >= 90 ? "Keren!" : result.nilai >= 70 ? "Selesai!" : "Selesai"}</div>
-            </div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginTop: 2 }}>{t.judul}</div>
-          </div>
-          {/* Scrollable body */}
-          <div style={{ padding: 0, overflowY: "auto", flex: 1 }}>
-            {/* Score */}
-            <div style={{ textAlign: "center", padding: "20px 16px 4px" }}>
-              <div className="stat-num" style={{ fontSize: 52, fontWeight: 800, color: nilaiColor, letterSpacing: "-.03em", lineHeight: 1, fontFamily: "var(--mono)" }}>{result.nilai}</div>
-              <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>nilai · {result.correctCount}/{total} benar</div>
-              <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>+{result.poinDapat} poin didapat</div>
-            </div>
-            {/* Completion moment */}
-            {(() => {
-              const cmAllSiswa = store.getAllSiswa(t.jenjang);
-              const cmSiswaList = Array.isArray(t.assignedTo) ? cmAllSiswa.filter(s => t.assignedTo.includes(s.id)) : cmAllSiswa;
-              const cmTotal = cmSiswaList.length;
-              if (cmTotal < 2) return null;
-              const cmDone = store.getSubs().filter(s => s.tugasId === t.id).length;
-              const cmPct = Math.round((cmDone / cmTotal) * 100);
-              const showPosition = cmDone <= Math.ceil(cmTotal * 0.5);
-              const isMilestone = cmPct >= 50 && cmPct < 100;
-              const isComplete = cmPct >= 100;
-              if (!showPosition && !isMilestone && !isComplete) return null;
-              return (
-                <div style={{ padding: "0 16px" }}>
-                  <div style={{ padding: "10px 18px", borderRadius: 12, background: isComplete ? "#f0fdf4" : "var(--surface-alt)", border: isComplete ? "1.5px solid #86efac" : "1px solid var(--line-soft)", textAlign: "center" }}>
-                    {showPosition && <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}><span style={{ fontWeight: 700, color: "var(--accent)" }}>Kamu yang ke-{cmDone}</span> dari kelasmu yang menyelesaikan tugas ini</div>}
-                    {!showPosition && isMilestone && <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>Kelas sudah <span style={{ fontWeight: 700, color: "var(--good)" }}>{cmPct}%</span> selesai!</div>}
-                    {isComplete && <div style={{ fontSize: 13, color: "var(--good)", fontWeight: 700, lineHeight: 1.5 }}>Seluruh kelas sudah menyelesaikan tugas ini!</div>}
-                  </div>
-                </div>
-              );
-            })()}
-            {/* LevelCard */}
-            <div style={{ padding: "12px 16px 0" }}><LevelCard poin={newPoin} /></div>
-            {/* Late indicator */}
-            {!result.ontime && (
-              <div style={{ textAlign: "center", padding: "10px 16px 0" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 99, background: "var(--bad-bg)", color: "var(--bad)", border: "1px solid #fca5a5", fontSize: 12, fontWeight: 600 }}>Telat — streak direset</span>
-              </div>
-            )}
-            {/* New badges */}
-            {result.newBadges?.length > 0 && (
-              <div style={{ padding: "12px 16px 0" }}>
-                <div style={{ padding: "14px 16px", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>Badge Baru Terbuka!</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                    {result.newBadges.map(id => <BadgeChip key={id} badgeId={id} />)}
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* Sisa tugas cards */}
-            {sisaTugas.length > 0 && (
-              <div style={{ padding: "14px 16px 0" }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 99, fontSize: 12, fontWeight: 700, color: "var(--warn)", background: "var(--warn-bg)", border: "1px solid #fcd34d", marginBottom: 10 }}>
-                  <I n="zap" s={12} /> Masih ada {sisaTugas.length} tugas lagi!
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {sisaTugas.map(st => {
-                    const dl = fmtDl(st.deadline);
-                    const soalCount = st.soal?.length || 0;
-                    const poinMax = st.graded === false ? Math.round((st.poinMax || 0) * 0.2) : (st.poinMax || 0);
-                    const allSiswa = store.getAllSiswa(st.jenjang);
-                    const siswaList = Array.isArray(st.assignedTo) ? allSiswa.filter(s => st.assignedTo.includes(s.id)) : allSiswa;
-                    const totalSiswa = siswaList.length;
-                    const sudahKerjakan = store.getSubs().filter(s => s.tugasId === st.id).length;
-                    const pctDone = totalSiswa > 0 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
-                    const barColor = pctDone >= 75 ? "var(--accent)" : "var(--bad)";
-                    return (
-                      <div key={st.id} style={{ border: "1.5px solid var(--line)", borderRadius: 14, padding: "14px 16px", background: "var(--surface)" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "var(--accent-tint)", padding: "3px 8px", borderRadius: 6, letterSpacing: ".03em", textTransform: "uppercase" }}>{st.mapel}</span>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: dl.tone === "bad" ? "var(--bad)" : dl.tone === "warn" ? "var(--warn)" : "var(--ink-3)", display: "flex", alignItems: "center", gap: 4 }}><I n="clock" s={12} />{dl.label}</span>
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.4 }}>{st.judul}</div>
-                        <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="fileText" s={12} />{soalCount} soal</span>
-                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="target" s={12} />+{poinMax} pt</span>
-                        </div>
-                        {totalSiswa > 0 && <div style={{ marginBottom: 12 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sudah mengerjakan</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{sudahKerjakan}/{totalSiswa}</span>
-                          </div>
-                          <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                            <div style={{ height: "100%", borderRadius: 99, transition: "width .4s", width: `${pctDone}%`, background: barColor }} />
-                          </div>
-                        </div>}
-                        <button onClick={() => navigate("tugas-detail", { tugasId: st.id })} style={{
-                          width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-                          background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
-                          color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                          boxShadow: "0 2px 8px rgba(13,107,122,.3)"
-                        }}>Kerjakan Sekarang <span style={{ fontSize: 16 }}>→</span></button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {/* All done badge */}
-            {sisaTugas.length === 0 && (
-              <div style={{ textAlign: "center", padding: "14px 16px 0" }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 99, fontSize: 12, fontWeight: 700, color: "var(--good)", background: "var(--good-bg)", border: "1.5px solid #86efac" }}>
-                  <I n="checkCircle" s={14} /> Semua tugas selesai!
-                </div>
-                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.5 }}>Mantap! Cek posisimu di ranking kelas.</div>
-              </div>
-            )}
-          </div>
-          {/* Footer */}
-          {sisaTugas.length > 0 && (
-            <div style={{ padding: "8px 14px 12px", textAlign: "center", fontSize: 11, color: "var(--ink-4)" }}>Kamu bisa menutup dan mengerjakan nanti</div>
-          )}
-          {sisaTugas.length === 0 && (
-            <div style={{ padding: "8px 16px 14px" }}>
-              <button onClick={() => navigate("leaderboard")} style={{
-                width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-                background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
-                color: "#fff", fontFamily: "var(--font)", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                boxShadow: "0 2px 8px rgba(13,107,122,.3)"
-              }}>Lihat Ranking <span style={{ fontSize: 16 }}>→</span></button>
-            </div>
-          )}
-        </div>
-      </div>}
-    </div>;
+    return <HasilTugas t={t} user={user} store={store} navigate={navigate} result={result} total={total} background={<LeaderboardScreen user={user} store={store} />} />;
   }
 
   const pct = Math.round(((idx + 1) / total) * 100);
@@ -3690,9 +3527,9 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
         />
         <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
           <span>{(answers[safeIdx] || "").length} karakter · {((answers[safeIdx] || "").trim().split(/\s+/).filter(Boolean) || []).length} kata</span>
-          <span>📝 Dinilai manual oleh guru</span>
+          <span>Dinilai manual oleh guru</span>
         </div>
-        <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2, fontStyle: "italic" }}>✋ Tempel (paste) dinonaktifkan — ketik langsung jawabanmu</div>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Tempel (paste) dimatikan, ketik langsung jawabanmu.</div>
       </div>}
       {soal.type === "pg" && soal.opsi?.map((o, i) => <button key={i} className={`quiz-opt ${answers[safeIdx] === i ? "selected" : ""}`} onClick={() => answer(i)}><div className="quiz-letter">{String.fromCharCode(65 + i)}</div><span style={{ flex: 1 }}>{o}</span></button>)}
       {soal.type === "tf" && <div style={{ display: "flex", gap: 10 }}>{["Benar", "Salah"].map((o, i) => <button key={i} className={`quiz-opt ${answers[safeIdx] === i ? "selected" : ""}`} style={{ flex: 1 }} onClick={() => answer(i)}><div className="quiz-letter">{i === 0 ? "B" : "S"}</div><span style={{ flex: 1 }}>{o}</span></button>)}</div>}
@@ -3734,8 +3571,8 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
             </div>
           );
         })}
-        <div style={{ fontSize: 10, color: "var(--ink-3)", fontStyle: "italic", marginBottom: 4 }}>✋ Tempel (paste) dinonaktifkan — ketik langsung jawabanmu</div>
-        <div style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right" }}>📝 Dinilai manual oleh guru</div>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>Tempel (paste) dimatikan, ketik langsung jawabanmu.</div>
+        <div style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right" }}>Dinilai manual oleh guru</div>
       </div>}
     </div>
 
@@ -9804,11 +9641,11 @@ function AppInner() {
       else if (route === "mission-guru") screen = <MissionGuru store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
     } else {
-      if (route === "home") screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
+      if (route === "home") screen = <BerandaSiswa user={user} store={store} navigate={navigate} MissionModal={MissionSiswaModal} />;
       else if (route === "leaderboard") screen = <LeaderboardScreen user={user} store={store} />;
-      else if (route === "tugas") screen = <DaftarTugas user={user} store={store} navigate={navigate} />;
-      else if (route === "tugas-detail") screen = <DetailTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
-      else if (route === "review-tugas") screen = <ReviewTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
+      else if (route === "tugas") screen = <DaftarTugasSiswa user={user} store={store} navigate={navigate} />;
+      else if (route === "tugas-detail") screen = <DetailTugasSiswa user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
+      else if (route === "review-tugas") screen = <ReviewTugasSiswa user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "profil") screen = <ProfilSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "rapor") screen = <RaporSiswaV2 user={user} store={store} navigate={navigate} />;
