@@ -4539,8 +4539,19 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
               <input type="file" accept=".xlsx" style={{ display: "none" }} onChange={async e => {
                 const file = e.target.files[0]; if (!file) return;
                 try {
-                  const imported = await importSoalFromExcel(file);
-                  if (imported.length === 0) { alert("Tidak ada soal yang berhasil diimpor. Pastikan format file sesuai template."); return; }
+                  let imported = await importSoalFromExcel(file);
+                  // File template Sandbox Terverifikasi (punya sheet "Tabel") → jadi 1 soal sandbox
+                  if (imported.length === 0) {
+                    let sbx = null;
+                    try { sbx = await importSandboxFromExcel(file); }
+                    catch (errSbx) { if (!/Sheet "Tabel" tidak ditemukan/.test(errSbx?.message || "")) { alert("Gagal membaca soal sandbox: " + errSbx.message); e.target.value = ""; return; } }
+                    if (sbx) {
+                      const poinLanjutan = sbx.lanjutan.reduce((a, x) => a + (Number(x.poin) || 0), 0);
+                      imported = [{ id: uid(), type: "sandbox", pertanyaan: sbx.pertanyaan || "Kerjakan tabel berikut.", tugas: sbx.tugas, poinSandbox: sbx.poinSandbox, tabel: sbx.tabel, jawaban: sbx.jawaban, lanjutan: sbx.lanjutan, poin: sbx.poinSandbox + poinLanjutan }];
+                      if (sbx.peringatan?.length) alert(sbx.peringatan.join("\n"));
+                    }
+                  }
+                  if (imported.length === 0) { alert("Tidak ada soal yang berhasil diimpor. Pastikan format file sesuai template."); e.target.value = ""; return; }
                   setSoal(s => [...s, ...imported]);
                   alert(`✅ Berhasil mengimpor ${imported.length} soal!`);
                 } catch (err) { console.error("Import soal error:", err); alert("Gagal membaca file: " + (err?.message || "Pastikan file .xlsx sesuai format template.")); }
