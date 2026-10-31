@@ -265,9 +265,10 @@ function useStore() {
   const getTugas = () => tugas;
   const addTugas = async (t) => {
     const newRef = push(ref(db, "tugas"));
-    await set(newRef, { ...t, createdAt: new Date().toISOString(), status: t.scheduledAt ? "scheduled" : "aktif" });
+    const terjadwal = !!t.scheduledAt && new Date(t.scheduledAt).getTime() > Date.now();
+    await set(newRef, { ...t, createdAt: new Date().toISOString(), status: terjadwal ? "scheduled" : "aktif", scheduledAt: terjadwal ? t.scheduledAt : null });
     // Push notification ke siswa (skip jika scheduled — belum aktif)
-    if (!t.scheduledAt) {
+    if (!terjadwal) {
       try {
         let siswaIds;
         if (t.assignedTo && t.assignedTo.length > 0) {
@@ -4213,6 +4214,8 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
     jenjang: existing?.jenjang || presetJenjang || "VII", deadline: existing?.deadline || "",
     poinMax: existing?.poinMax || 100, deskripsi: existing?.deskripsi || "",
     materi: existing?.materi || "",
+    // Jadwal publish: hanya dimuat kalau tugas masih terjadwal (yang sudah tayang tidak perlu jadwal lagi)
+    scheduledAt: existing?.status === "scheduled" ? (existing.scheduledAt || null) : null,
     // Tugas Personal ("Latihan Khusus"): assignedTo = array siswaId, atau null = class-wide
     // Preset dari quick action Perlu Perhatian: langsung set assignedTo & switch ke mode personal
     assignedTo: existing?.assignedTo || (Array.isArray(presetAssignedTo) && presetAssignedTo.length > 0 ? presetAssignedTo : null),
@@ -4300,6 +4303,10 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
     if (!form.judul.trim()) { setErr("Judul tugas wajib diisi."); return; }
     if (!form.deadline) { setErr("Deadline wajib diisi."); return; }
     if (soal.length === 0) { setErr("Tambahkan minimal 1 soal."); return; }
+    if (form.scheduledAt && form.deadline) {
+      const dlAkhir = new Date(`${String(form.deadline).slice(0, 10)}T23:59:59`).getTime();
+      if (new Date(form.scheduledAt).getTime() > dlAkhir) { setErr("Jadwal publish jatuh setelah deadline. Mundurkan deadline atau majukan jadwalnya."); return; }
+    }
     // Validasi tugas personal: harus ada minimal 1 siswa di-assign
     if (isPersonal && (form.assignedTo || []).length === 0) {
       setErr("Tugas Personal harus di-assign ke minimal 1 siswa. Pilih siswa di bawah atau matikan mode Personal.");
@@ -4340,7 +4347,14 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
       // Auto-tag periode aktif saat tugas dibuat (atau pertahankan existing kalau edit)
       periode: existing?.periode || store.getActivePeriode(),
     };
-    if (editId) store.updateTugas(editId, data); else store.addTugas(data);
+    if (editId) {
+      const terjadwal = !!form.scheduledAt && new Date(form.scheduledAt).getTime() > Date.now();
+      const sudahDikerjakan = store.getSubs().filter(x => x.tugasId === editId).length;
+      if (terjadwal && existing?.status !== "scheduled" && sudahDikerjakan > 0) { setErr(`Tugas ini sudah dikerjakan ${sudahDikerjakan} siswa, jadi tidak bisa dijadwalkan ulang. Kosongkan jadwal publish.`); return; }
+      data.status = terjadwal ? "scheduled" : "aktif";
+      data.scheduledAt = terjadwal ? form.scheduledAt : null;
+      store.updateTugas(editId, data);
+    } else store.addTugas(data);
     setSaved(true); setTimeout(() => navigate("home-guru"), 1200);
   }
 
