@@ -28,14 +28,15 @@ function Lembar({ soal, formulas = {}, hasil = {}, sel, onCellDown, onCellClick,
   const jwSel = (soal.jawaban || []).map(j => j.sel);
   const isi = kunci ? Object.fromEntries((soal.jawaban || []).map(j => [j.sel, j.rumusKunci || ""])) : formulas;
   const out = hitungSemua(tabel, jwSel, isi);
+  const selPos = sel ? parseAddr(sel) : null;
   return (
     <div className="sbx-wrap">
       <table className="sbx-sheet">
-        <thead><tr><th className="rh" />{Array.from({ length: cols }, (_, c) => <th key={c}>{colName(c)}</th>)}</tr></thead>
+        <thead><tr><th className="rh" />{Array.from({ length: cols }, (_, c) => <th key={c} className={selPos && selPos.c === c ? "sel-col" : undefined}>{colName(c)}</th>)}</tr></thead>
         <tbody>
           {tabel.map((row, r) => (
             <tr key={r}>
-              <th className="rh">{r + 1}</th>
+              <th className={`rh${selPos && selPos.r === r ? " sel-row" : ""}`}>{r + 1}</th>
               {Array.from({ length: cols }, (_, c) => {
                 const a = addr(r, c), ans = jwSel.includes(a), raw = row[c] ?? "";
                 const cls = [];

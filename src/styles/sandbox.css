@@ -25,11 +25,19 @@
 .sbx-tools button:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px}
 
 /* Lembar */
-.sbx-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;-webkit-overflow-scrolling:touch;background:var(--surface)}
-.sbx-sheet{border-collapse:collapse;font-size:13px;min-width:100%;font-variant-numeric:tabular-nums}
-.sbx-sheet th{background:var(--line-soft);color:var(--ink-3);font-family:var(--mono);font-weight:500;font-size:11px;padding:3px 8px;border:1px solid var(--line);text-align:center}
+/* Header kolom (A, B, C) & nomor baris (1, 2, 3) dibekukan seperti Excel: lembar bisa digeser ke samping & ke bawah di dalam bingkainya */
+.sbx-wrap{overflow:auto;max-height:min(62vh,520px);border:1px solid var(--line);border-radius:10px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:var(--surface)}
+.sbx-sheet{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%;font-variant-numeric:tabular-nums}
+.sbx-sheet th{background:var(--line-soft);color:var(--ink-3);font-family:var(--mono);font-weight:500;font-size:11px;padding:3px 8px;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:center}
+.sbx-sheet thead th{position:sticky;top:0;z-index:2}
+.sbx-sheet th.rh{position:sticky;left:0;z-index:1;box-shadow:1px 0 0 var(--line)}
+.sbx-sheet thead th.rh{z-index:3}
+.sbx-sheet thead th{box-shadow:0 1px 0 var(--line)}
+.sbx-sheet th.sel-col,.sbx-sheet th.sel-row{background:var(--accent-tint);color:var(--accent);font-weight:700}
 .sbx-sheet th.rh{width:28px}
-.sbx-sheet td{border:1px solid var(--line);padding:0;height:36px;min-width:68px;background:var(--surface);color:var(--ink)}
+.sbx-sheet td{border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;height:36px;min-width:68px;background:var(--surface);color:var(--ink)}
+.sbx-sheet tr > :last-child{border-right:0}
+.sbx-sheet tbody tr:last-child > *{border-bottom:0}
 .sbx-sheet td .v{display:block;position:relative;padding:8px 9px;white-space:nowrap;cursor:pointer;user-select:none}
 .sbx-sheet td.num .v{text-align:right;font-family:var(--mono);font-size:12.5px}
 .sbx-sheet td.head{background:var(--surface-alt);font-weight:700;font-size:12.5px}
