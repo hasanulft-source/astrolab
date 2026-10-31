@@ -12,7 +12,7 @@ import { IC, I } from './components/icons';
 import { shuffle, fmtDl, uid, getTahunAjaran, getSemesterAktif, getPeriodeAktif, getPeriodeOptions, fmtLastSeen, withTimeout, fuzzyMatchText, compressImage, SKIP_PREFIXES, genSiswaId, getFirstName, genPassword } from './utils/helpers';
 import { getFlameTheme, FlameAnimated, StreakCometSVG, StreakCard, Avatar, UserAvatar, OnlineDot, Confirm, LogoBold, ConfettiRain, CelebrationAvatar, MapelIcon, Card } from './components/visual';
 import { TIERS, LEVELS, getLevel, getTier, getLevelProgress, TierIcon, LevelBadge, BADGE_RIMS, BadgeGlyph, BadgeIcon, AUTO_BADGES, MANUAL_BADGES, ALL_BADGES, checkAutoBadges, LevelCard, BadgeChip, BadgesRow, PoinChart } from './components/gamification';
-import { downloadTemplateSoal, exportNilai, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, backupFromStore, importSoalFromExcel, parseNilaiAkhirExcel, exportLatihanSoal } from './utils/excel';
+import { downloadTemplateSandbox, importSandboxFromExcel, downloadTemplateSoal, exportNilai, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, backupFromStore, importSoalFromExcel, parseNilaiAkhirExcel, exportLatihanSoal } from './utils/excel';
 import { LaporanModal } from './utils/laporan';
 import { ChatScreen } from './pages/chat';
 import { BankSoal, PilihDariBankSoalModal } from './pages/banksoal';
@@ -23,6 +23,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
+import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -3260,6 +3261,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
   if (!t || !t.soal?.length) return <div className="empty">Soal tidak tersedia.</div>;
   const soalList = shuffledSoal.length ? shuffledSoal : t.soal.map((s, i) => ({ ...s, _origIdx: i }));
   const total = soalList.length;
+  const totalButir = soalList.reduce((n, s) => n + jumlahButir(s), 0); // sandbox = beberapa butir
   // Safety: kalau idx out of bound (data corrupt / soal berubah), reset ke 0
   const safeIdx = (idx >= 0 && idx < total) ? idx : 0;
   const soal = soalList[safeIdx];
@@ -3312,6 +3314,11 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     const soalResults = []; // simpan hasil per soal untuk analisis
     soalList.forEach((s, i) => {
       const ans = answers[i];
+      // Sandbox Terverifikasi: 1 butir sandbox + 1 butir per PG lanjutan (lihat components/sandbox.jsx)
+      if (s.type === "sandbox") {
+        nilaiSandbox(s, ans, s._origIdx ?? i).forEach(it => { if (it.correct) { totalPoin += it.poinSoal; correctCount++; } soalResults.push(it); });
+        return;
+      }
       const poinSoal = s.poin || Math.floor(t.poinMax / total);
       let correct = false;
       if (s.type === "pg" || s.type === "tf") correct = ans === s.jawaban;
@@ -3352,7 +3359,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       soalResults.push(resultItem);
     });
     // Hitung nilai hanya dari soal auto-graded (essay & refleksi menyusul setelah dinilai guru)
-    const nonEssayTotal = t.soal.filter(s => s.type !== "essay" && s.type !== "refleksi").length || 1;
+    const nonEssayTotal = t.soal.filter(s => s.type !== "essay" && s.type !== "refleksi").reduce((n, s) => n + jumlahButir(s), 0) || 1;
     let nilai = Math.round((correctCount / nonEssayTotal) * 100);
 
     // Cek apakah siswa submit lewat window susulan personal dengan nilai maksimal dibatasi.
@@ -3386,7 +3393,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     // selamanya. Dengan timeout, siswa dapat feedback jelas untuk retry.
     try {
       await withTimeout(Promise.all([
-        store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total, ontime, soalResults, hasEssay }),
+        store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total: totalButir, ontime, soalResults, hasEssay }),
         store.updateStats(user.id, nilai, totalPoin, ontime),
       ]));
       // Update perfectCount setelah updateStats selesai (urutan penting biar gak overwrite)
@@ -3411,7 +3418,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
 
   // Layar hasil (redesign Fase 1, pages/siswa.jsx) — hanya tampilan; nilai & poin sudah dihitung di doSubmit
   if (submitted && result) {
-    return <HasilTugas t={t} user={user} store={store} navigate={navigate} result={result} total={total} background={<RankingScreen user={user} store={store} />} />;
+    return <HasilTugas t={t} user={user} store={store} navigate={navigate} result={result} total={totalButir} background={<RankingScreen user={user} store={store} />} />;
   }
 
   const pct = Math.round(((idx + 1) / total) * 100);
@@ -3434,6 +3441,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     if (s?.type === "refleksi") {
       return !a.k1?.trim() || !a.k2?.trim() || !a.k3?.trim() || !a.k4?.trim();
     }
+    if (s?.type === "sandbox") return !sandboxSelesai(s, a);
     return false;
   });
   const curOk = !belumDijawab.includes(idx);
@@ -3518,6 +3526,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.55, marginBottom: 20 }}>{soal.pertanyaan}</div>
       {soal.gambar && <div style={{ marginBottom: 20, textAlign: "center" }}><img src={soal.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, border: "1px solid var(--line)" }} /></div>}
       {soal.type === "excel" && <ExcelSandboxPlayer soal={soal} answer={answer} selected={answers[safeIdx]} />}
+      {soal.type === "sandbox" && <SandboxPlayer key={soal.id || safeIdx} soal={soal} value={answers[safeIdx]} onChange={answer} />}
       {soal.type === "essay" && <div>
         <textarea
           className="inp"
@@ -3956,6 +3965,7 @@ const QTYPES = [
   { id: "komplex", name: "Mencocokkan", desc: "Multi jawaban benar", icon: "link2" },
   { id: "pasang", name: "Susun Urutan", desc: "Pasangan kiri-kanan", icon: "sortDesc" },
   { id: "excel", name: "Excel Sandbox", desc: "Tabel + rumus + PG (Informatika)", icon: "chartBar" },
+  { id: "sandbox", name: "Sandbox Terverifikasi", desc: "Rumus harus benar dulu, lalu PG analisis", icon: "layers" },
   { id: "essay", name: "Essay", desc: "Jawaban panjang, dinilai manual", icon: "edit" },
 ];
 
@@ -3966,6 +3976,7 @@ function QuestionBuilder({ soal, setSoal }) {
     else if (type === "tf") setSoal(s => [...s, { ...base, jawaban: 0 }]);
     else if (type === "excel") setSoal(s => [...s, { ...base, headers: ["Nama", "Nilai"], table: [["Budi", "85"], ["Sari", "92"], ["Andi", "78"]], opsi: ["", "", "", ""], jawaban: 0 }]);
     else if (type === "essay") setSoal(s => [...s, { ...base, kataKunci: "", panduanNilai: "" }]);
+    else if (type === "sandbox") setSoal(s => [...s, { ...base, poin: 20, poinSandbox: 20, tugas: "", tabel: [], jawaban: [], lanjutan: [] }]);
     else setSoal(s => [...s, { ...base, kiri: ["", ""], kanan: ["", ""], jawaban: [0, 1] }]);
   }
   function upQ(id, patch) { setSoal(s => s.map(q => q.id === id ? { ...q, ...patch } : q)); }
@@ -3983,7 +3994,9 @@ function QuestionBuilder({ soal, setSoal }) {
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-2)" }}>{qt?.name}</span>
           <div style={{ flex: 1 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input type="number" className="inp" style={{ width: 68, padding: "4px 8px", fontSize: 12 }} value={q.poin} min={1} onChange={e => upQ(q.id, { poin: Number(e.target.value) })} title="Poin soal" />
+            {q.type === "sandbox"
+              ? <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }} title="Poin sandbox + soal analisis">{q.poin}</span>
+              : <input type="number" className="inp" style={{ width: 68, padding: "4px 8px", fontSize: 12 }} value={q.poin} min={1} onChange={e => upQ(q.id, { poin: Number(e.target.value) })} title="Poin soal" />}
             <span style={{ fontSize: 11, color: "var(--ink-3)" }}>pt</span>
             <button className="btn btn-ghost btn-sm" onClick={() => rmQ(q.id)} style={{ color: "var(--bad)", padding: "4px 8px" }}>× Hapus</button>
           </div>
@@ -4113,6 +4126,9 @@ function QuestionBuilder({ soal, setSoal }) {
               <input className="inp" style={{ flex: 1, padding: "7px 11px", fontSize: 13 }} placeholder={`Pilihan ${String.fromCharCode(65 + i)}`} value={o} onChange={e => upOpsi(q.id, i, e.target.value)} />
             </div>)}
           </div>}
+
+          {/* Sandbox Terverifikasi */}
+          {q.type === "sandbox" && <SandboxEditor q={q} upQ={upQ} importExcel={importSandboxFromExcel} downloadTemplate={downloadTemplateSandbox} />}
 
           {/* Essay */}
           {q.type === "essay" && <div>
@@ -4304,6 +4320,7 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
         const kananKosong = (q.kanan || []).some(k => !k?.trim());
         if (kiriKosong || kananKosong) { setErr(`Soal ${num}: ada item pasangan yang masih kosong.`); return; }
       }
+      if (q.type === "sandbox") { const e = validasiSandbox(q); if (e) { setErr(`Soal ${num}: ${e}`); return; } }
       if (q.type === "excel") {
         if (!(q.headers || []).length) { setErr(`Soal ${num}: tabel butuh minimal 1 kolom.`); return; }
         if (!(q.table || []).length) { setErr(`Soal ${num}: tabel butuh minimal 1 baris.`); return; }

@@ -2,6 +2,7 @@
 // Extracted from App.jsx (Wave 3)
 
 import { uid, getTahunAjaran } from './helpers.js';
+import { hitungSemua, addr as alamatSel, colIdx, colName } from './rumus.js';
 
 // Centralized ExcelJS loader — used for ALL Excel read/write operations.
 // SheetJS removed from public CDNs (403), ExcelJS 4.4.0 on cdnjs is the replacement.
@@ -763,4 +764,157 @@ export async function exportLatihanSoal(soalList, meta = {}) {
   a.download = `Latihan_${safe(meta.jenjang)}_${safe(meta.mapel)}_${safe(meta.bab)}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ═══════════════ Soal Sandbox Terverifikasi (Okt 2026) ═══════════════
+// Satu file = satu soal. Sheet "Tabel": sel yang berisi RUMUS = sel jawaban siswa (rumus guru = kunci).
+// Sheet "Soal": pertanyaan, instruksi, poin sandbox, toleransi. Sheet "Lanjutan": PG analisis.
+
+export async function downloadTemplateSandbox() {
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Astrolab · Our Classroom";
+  const head = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF0D6B7A" } }, font: { name: "Arial", bold: true, color: { argb: "FFFFFFFF" }, size: 11 }, alignment: { vertical: "middle", wrapText: true } };
+  const ans = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFE3F2F4" } }, font: { name: "Arial", bold: true, color: { argb: "FF0D6B7A" } } };
+
+  const s1 = wb.addWorksheet("Soal", { properties: { tabColor: { argb: "FF0D6B7A" } } });
+  s1.columns = [{ header: "Isian", width: 22 }, { header: "Nilai", width: 80 }];
+  s1.getRow(1).eachCell(c => Object.assign(c, head));
+  s1.addRows([
+    ["Pertanyaan", "Hitung massa jenis tiap benda dari hasil pengukuran berikut."],
+    ["Instruksi", "Isi kolom D2:D6 dengan rumus massa ÷ volume memakai alamat sel. Lalu isi D7 dengan rata-rata memakai AVERAGE."],
+    ["Poin sandbox", 20],
+    ["Toleransi", 0.01],
+    ["Catatan", "Jangan ubah nama sheet. Di sheet Tabel, sel yang kamu isi RUMUS otomatis menjadi sel jawaban siswa, dan hasil rumusmu menjadi kuncinya. Fungsi yang kamu pakai (mis. AVERAGE) otomatis wajib dipakai siswa; bisa dimatikan di Astrolab. Fungsi yang didukung: SUM, AVERAGE, COUNT, MAX, MIN, ROUND, ABS, SQRT."],
+  ]);
+  s1.getColumn(2).alignment = { wrapText: true, vertical: "top" };
+
+  const s2 = wb.addWorksheet("Tabel", { properties: { tabColor: { argb: "FF088395" } } });
+  const rows = [
+    ["Benda", "Massa (g)", "Volume (cm³)", "Massa jenis (g/cm³)"],
+    ["Kayu jati", 36, 50, { formula: "B2/C2" }],
+    ["Batu kali", 130, 50, { formula: "B3/C3" }],
+    ["Besi", 157.4, 20, { formula: "B4/C4" }],
+    ["Plastik PVC", 70, 50, { formula: "B5/C5" }],
+    ["Aluminium", 54, 20, { formula: "B6/C6" }],
+    ["Rata-rata", "", "", { formula: "AVERAGE(D2:D6)" }],
+  ];
+  rows.forEach(r => s2.addRow(r));
+  s2.columns.forEach((c, i) => { c.width = i === 0 ? 16 : 20; });
+  s2.getRow(1).eachCell(c => Object.assign(c, head));
+  for (let r = 2; r <= 7; r++) Object.assign(s2.getCell(`D${r}`), ans);
+
+  const s3 = wb.addWorksheet("Lanjutan", { properties: { tabColor: { argb: "FFC98A12" } } });
+  s3.columns = [{ header: "Pertanyaan", width: 55 }, { header: "Pilihan A", width: 22 }, { header: "Pilihan B", width: 22 }, { header: "Pilihan C", width: 22 }, { header: "Pilihan D", width: 22 }, { header: "Jawaban (A/B/C/D)", width: 16 }, { header: "Poin", width: 8 }, { header: "Pembahasan", width: 45 }];
+  s3.getRow(1).eachCell(c => Object.assign(c, head));
+  s3.addRows([
+    ["Air punya massa jenis 1 g/cm³. Benda mana yang terapung di air?", "Batu kali", "Kayu jati", "Plastik PVC", "Aluminium", "B", 10, "Hanya kayu jati yang massa jenisnya di bawah 1 g/cm³."],
+    ["Kalau batu kali dipotong jadi dua sama besar, massa jenis tiap potongan menjadi …", "1,3 g/cm³", "2,6 g/cm³", "5,2 g/cm³", "Tidak bisa dihitung", "B", 10, "Massa dan volume sama-sama jadi setengah, jadi massa jenis tetap."],
+  ]);
+  s3.eachRow((row, i) => { if (i > 1) row.alignment = { wrapText: true, vertical: "top" }; });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = "Template_Soal_Sandbox_Astrolab.xlsx";
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// Geser rujukan relatif sebanyak dr baris & dc kolom (untuk menerjemahkan rumus bersama Excel)
+const geserRumus2D = (f, dr, dc) => String(f).replace(/(\$?)([A-Za-z]{1,2})(\$?)(\d+)/g, (m, d1, col, d2, row, off, str) => {
+  if (/[A-Za-z]/.test(str[off - 1] || "")) return m;
+  const kol = d1 ? col : colName(colIdx(col.toUpperCase()) + dc);
+  const bar = d2 ? row : +row + dr;
+  return `${d1}${kol}${d2}${bar}`;
+});
+
+const teksSel = v => {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object") {
+    if (v.richText) return v.richText.map(x => x.text).join("");
+    if (v.text !== undefined) return String(v.text);
+    if (v instanceof Date) return v.toLocaleDateString("id-ID");
+  }
+  return v;
+};
+
+export async function importSandboxFromExcel(file) {
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
+  const cari = nama => wb.worksheets.find(w => w.name.trim().toLowerCase() === nama);
+  const wsTabel = cari("tabel") || wb.worksheets.find(w => /tabel/i.test(w.name));
+  if (!wsTabel) throw new Error('Sheet "Tabel" tidak ditemukan. Pakai template sandbox.');
+
+  // Info soal
+  const info = {};
+  const wsSoal = cari("soal");
+  if (wsSoal) wsSoal.eachRow((row, i) => { if (i > 1) info[String(teksSel(row.getCell(1).value)).trim().toLowerCase()] = teksSel(row.getCell(2).value); });
+  const toleransi = Number(String(info["toleransi"] ?? "0.01").replace(",", ".")) || 0.01;
+
+  // Tabel + rumus guru
+  let maxR = 0, maxC = 0;
+  wsTabel.eachRow({ includeEmpty: false }, (row, r) => row.eachCell({ includeEmpty: false }, (cell, c) => { if (teksSel(cell.value) !== "") { maxR = Math.max(maxR, r); maxC = Math.max(maxC, c); } }));
+  if (!maxR) throw new Error('Sheet "Tabel" masih kosong.');
+  if (maxR > 40 || maxC > 12) throw new Error("Tabel terlalu besar untuk layar HP. Maksimal 40 baris × 12 kolom.");
+  const tabel = [], kunci = {}, cache = {};
+  for (let r = 1; r <= maxR; r++) {
+    const row = [];
+    for (let c = 1; c <= maxC; c++) {
+      const v = wsTabel.getRow(r).getCell(c).value;
+      const a = alamatSel(r - 1, c - 1);
+      if (v && typeof v === "object" && (v.formula || v.sharedFormula)) {
+        // Rumus hasil "seret/isi ke bawah" di Excel disimpan sebagai rumus bersama: terjemahkan dari sel induknya.
+        let f = v.formula;
+        if (!f && v.sharedFormula) {
+          const induk = wsTabel.getCell(v.sharedFormula).value;
+          const m = String(v.sharedFormula).match(/^([A-Z]+)(\d+)$/);
+          if (induk && induk.formula && m) f = geserRumus2D(induk.formula, r - +m[2], (c - 1) - colIdx(m[1]));
+        }
+        if (!f) throw new Error(`Rumus di sel ${a} tidak terbaca. Ketik ulang rumusnya langsung di sel itu.`);
+        kunci[a] = "=" + String(f).replace(/^=/, "");
+        if (typeof v.result === "number") cache[a] = v.result;
+        row.push("");
+      } else {
+        const t = teksSel(v);
+        row.push(typeof t === "number" ? t : String(t ?? ""));
+      }
+    }
+    tabel.push(row);
+  }
+  const selJawab = Object.keys(kunci);
+  if (!selJawab.length) throw new Error('Belum ada sel berisi rumus di sheet "Tabel". Isi sel jawaban dengan rumus kunci, mis. =B2/C2.');
+
+  const out = hitungSemua(tabel, selJawab, kunci);
+  const peringatan = [];
+  const jawaban = selJawab.map(sel => {
+    const o = out[sel];
+    if (!o || o.err) throw new Error(`Rumus kunci di ${sel} (${kunci[sel]}) tidak bisa dihitung Astrolab: ${o?.err || "tidak terbaca"}.`);
+    if (typeof cache[sel] === "number" && Math.abs(cache[sel] - o.v) > toleransi) peringatan.push(`Hasil ${sel} di Excel (${cache[sel]}) beda dengan hitungan Astrolab (${o.v}); Astrolab yang dipakai.`);
+    const fungsi = [...o.info.fns];
+    return { sel, nilai: Math.round(o.v * 1e6) / 1e6, toleransi, harusRujuk: o.info.refs > 0, fungsi, fungsiAsal: fungsi, rumusKunci: kunci[sel] };
+  });
+
+  // PG lanjutan
+  const lanjutan = [];
+  const wsL = cari("lanjutan");
+  if (wsL) {
+    excelSheetToJson(wsL, { defval: "" }).forEach((r, i) => {
+      const tanya = String(teksSel(r["Pertanyaan"]) || "").trim();
+      if (!tanya) return;
+      const opsi = ["Pilihan A", "Pilihan B", "Pilihan C", "Pilihan D"].map(k => String(teksSel(r[k]) ?? "").trim()).filter(Boolean);
+      const kunciHuruf = String(teksSel(r["Jawaban (A/B/C/D)"] ?? r["Jawaban"]) || "").trim().toUpperCase();
+      const idx = "ABCD".indexOf(kunciHuruf);
+      if (opsi.length < 2) throw new Error(`Lanjutan baris ${i + 2}: minimal 2 pilihan.`);
+      if (idx < 0 || idx >= opsi.length) throw new Error(`Lanjutan baris ${i + 2}: jawaban harus A/B/C/D dan pilihannya terisi.`);
+      lanjutan.push({ pertanyaan: tanya, opsi, jawaban: idx, poin: Number(r["Poin"]) || 10, pembahasan: String(teksSel(r["Pembahasan"]) || "") });
+    });
+  }
+
+  return {
+    pertanyaan: String(info["pertanyaan"] || "").trim(),
+    tugas: String(info["instruksi"] || "").trim(),
+    poinSandbox: Number(info["poin sandbox"]) || 20,
+    tabel, jawaban, lanjutan, peringatan,
+  };
 }

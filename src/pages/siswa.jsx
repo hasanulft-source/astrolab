@@ -10,6 +10,7 @@ import { MapelIcon, UserAvatar, ConfettiRain } from "../components/visual";
 import { LevelBadge, LevelCard, BadgeChip } from "../components/gamification";
 import { KKTP, Page, TopBar, PageHeader, Card, Tabs, StatusChip, ActionCallout, ScoreBar, Button, Items, Item, Facts, Meter } from "../components/ui";
 import { Medal, LevelStrip, StreakValue, Orbit } from "../components/seru";
+import { SandboxReview } from "../components/sandbox";
 import "../styles/siswa.css";
 
 // ─── Aturan bersama (murni) ───
@@ -511,8 +512,10 @@ export function ReviewTugasSiswa({ user, store, tugasId, navigate }) {
     const benar = manual ? dinilai && (r?.nilaiEssay || 0) >= 60 : r?.correct === true;
     return { soal, idx, r, manual, dinilai, benar };
   });
-  const nBenar = res.filter(x => !x.manual && x.benar).length;
-  const nSalah = res.filter(x => !x.manual && !x.benar).length;
+  // Soal sandbox dihitung per butir (sandbox + tiap PG analisis), sama seperti saat dinilai
+  const butirSandbox = soalList.filter(x => x.type === "sandbox").flatMap(x => [byId[x.id], ...(x.lanjutan || []).map((_, k) => byId[`${x.id}#${k}`])]);
+  const nBenar = res.filter(x => !x.manual && x.soal.type !== "sandbox" && x.benar).length + butirSandbox.filter(x => x?.correct).length;
+  const nSalah = res.filter(x => !x.manual && x.soal.type !== "sandbox" && !x.benar).length + butirSandbox.filter(x => !x?.correct).length;
   const nTunggu = res.filter(x => x.manual && !x.dinilai).length;
 
   return (
@@ -537,7 +540,23 @@ export function ReviewTugasSiswa({ user, store, tugasId, navigate }) {
           </div>
         </Card>
 
-        {res.map(({ soal, idx, r, manual, dinilai, benar }) => (
+        {res.map(({ soal, idx, r, manual, dinilai, benar }) => soal.type === "sandbox" ? (
+          <Card key={idx} label={`Soal ${idx + 1}`} aside={<StatusChip tone={butirSandbox.length && [r, ...(soal.lanjutan || []).map((_, k) => byId[`${soal.id}#${k}`])].every(x => x?.correct) ? "teal" : "amber"}>Sandbox + {(soal.lanjutan || []).length} analisis</StatusChip>}>
+            <div className="sw-q">{soal.pertanyaan}</div>
+            <SandboxReview soal={soal} results={[r, ...(soal.lanjutan || []).map((_, k) => byId[`${soal.id}#${k}`])].filter(Boolean)} />
+            {(soal.lanjutan || []).map((q, k) => {
+              const rk = byId[`${soal.id}#${k}`];
+              return (
+                <div key={k} className="sw-sbx-pg">
+                  <div className="ui-label-row"><span className="ui-label">Analisis {k + 1}</span><StatusChip tone={rk?.correct ? "teal" : "amber"}>{rk?.correct ? "Benar" : rk?.pickedAnswer == null ? "Tidak dijawab" : "Salah"}</StatusChip></div>
+                  <div className="sw-q">{q.pertanyaan}</div>
+                  <Opsi soal={{ type: "pg", opsi: q.opsi }} keyIdx={q.jawaban} picked={rk?.pickedAnswer} />
+                  {q.pembahasan && q.pembahasan.trim() && <div className="sw-note"><b>Pembahasan</b>{q.pembahasan}</div>}
+                </div>
+              );
+            })}
+          </Card>
+        ) : (
           <Card key={idx} label={`Soal ${idx + 1}`}
             aside={manual
               ? (dinilai ? <StatusChip tone={benar ? "teal" : "amber"}>{soal.type === "refleksi" ? "Refleksi" : "Esai"} · {r.nilaiEssay}/100</StatusChip> : <StatusChip tone="muted">Belum dinilai</StatusChip>)
