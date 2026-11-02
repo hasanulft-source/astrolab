@@ -1109,6 +1109,15 @@ function useStore() {
     await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0, "nilai-manual", NILAI_POIN_RATE[field] || 0.1);
   };
 
+  // Asesmen Lanjutan (setelah STS): hanya untuk melihat perkembangan STS → Lanjutan di Rapor Perkembangan.
+  // Sengaja TIDAK memberi poin/XP dan TIDAK dibaca computeNilaiAkhir, jadi tidak mengubah nilai rapor.
+  const updateAsesmenLanjutan = async (siswaId, mapel, jenjang, periode, nilai) => {
+    const key = nilaiAkhirKey(siswaId, mapel, jenjang, periode);
+    const v = nilai === "" || nilai === null || nilai === undefined ? null : Number(nilai);
+    if (v !== null && (Number.isNaN(v) || v < 0 || v > 100)) throw new Error("Nilai harus 0–100");
+    await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, asesmenLanjutan: v, updatedAt: Date.now() });
+  };
+
   // Tambah kolom dinamis baru (BAB atau Kuis) — apply ke SEMUA siswa di kelas+mapel+periode itu sekaligus
   // (supaya kolom muncul konsisten di grid untuk semua siswa, walau nilai masih kosong)
   const addKolomDinamis = async (siswaIds, mapel, jenjang, periode, tipe, kolomLabel) => {
@@ -1740,7 +1749,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -8086,6 +8095,10 @@ function NilaiAkhirPage({ store }) {
       showToast("Gagal menyimpan nilai: " + (e?.message || "cek koneksi/izin akses"));
     }
   }
+  async function handleLanjutanSave(siswaId, val) {
+    try { await store.updateAsesmenLanjutan(siswaId, mapel, jenjang, periode, val); }
+    catch (e) { showToast("Gagal menyimpan nilai: " + (e?.message || "cek koneksi/izin akses")); }
+  }
   async function handleAddKolom(tipe, label) {
     const trimmed = label.trim();
     if (!trimmed) return;
@@ -8251,6 +8264,7 @@ function NilaiAkhirPage({ store }) {
                   <th style={{ ...thStyle, minWidth: 80, background: "var(--accent-tint)" }}>Sumatif<br/>Avg</th>
                   <th style={{ ...thStyle, minWidth: 90, background: "var(--surface)" }}>Tugas<br/>Astrolab<div style={{ fontSize: 9, fontWeight: 400, color: "var(--ink-3)" }}>auto</div></th>
                   <th style={{ ...thStyle, minWidth: 80 }}>STS</th>
+                  <th style={{ ...thStyle, minWidth: 92, background: "var(--surface)" }} title="Nilai Asesmen Lanjutan setelah STS. Hanya untuk Rapor Perkembangan, tidak masuk nilai akhir dan tidak memberi poin.">Asesmen<br/>Lanjutan<div style={{ fontSize: 9, fontWeight: 400, color: "var(--ink-3)" }}>tidak dihitung</div></th>
                   <th style={{ ...thStyle, minWidth: 80 }}>SAS</th>
                   {kuisKolom.map(k => (
                     <th key={k} style={{ ...thStyle, minWidth: 90 }}>
@@ -8281,6 +8295,7 @@ function NilaiAkhirPage({ store }) {
                       <td style={{ ...tdStyle, background: "var(--accent-tint)", fontWeight: 700, color: "var(--accent-2)" }}>{result.sumatifAvg !== null ? Math.round(result.sumatifAvg) : "—"}</td>
                       <td style={{ ...tdStyle, background: "var(--surface-alt)", color: "var(--ink-2)" }}>{result.tugasAvg !== null ? result.tugasAvg : "—"}</td>
                       <td style={tdStyle}><EditableCell value={rec.uts} onSave={v => handleManualSave(s.id, "uts", v)} /></td>
+                      <td style={{ ...tdStyle, background: "var(--surface-alt)" }}><EditableCell value={rec.asesmenLanjutan} onSave={v => handleLanjutanSave(s.id, v)} /></td>
                       <td style={tdStyle}><EditableCell value={rec.uas} onSave={v => handleManualSave(s.id, "uas", v)} /></td>
                       {kuisKolom.map(k => (
                         <td key={k} style={tdStyle}>
