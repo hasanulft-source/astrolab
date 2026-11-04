@@ -114,6 +114,9 @@ const MIN_TERISI = 3; // nilai sementara baru dicetak setelah minimal 3 komponen
 
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt1 = (v) => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
+// Maks. 2 angka di belakang koma, tanpa nol berlebih (49,2 · 19,6 · 86). Juga menghapus sisa floating point (19,599999…).
+const bul2 = (v) => Math.round(v * 100) / 100;
+const fmt2 = (v) => String(bul2(v)).replace(".", ",");
 const LOGO_SVG = `<svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true"><g transform="translate(16 17)"><polygon points="0,-11 5.5,-3.5 0,1 -5.5,-3.5" fill="#09637E"/><polygon points="-5.5,-3.5 -2,3.5 -8,9 -11.5,2" fill="#088395"/><polygon points="5.5,-3.5 11.5,2 8,9 2,3.5" fill="#088395"/><rect x="-3.5" y="1" width="7" height="2.2" rx=".5" fill="#7AB2B2"/></g></svg>`;
 
 // CSS khusus laporan per siswa — satu lembar A4 per siswa. Prefix ls- supaya tidak bentrok dengan LAPORAN_CSS.
@@ -245,9 +248,9 @@ function generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan = "semest
     if (h.sts == null || h.lanjutan == null) {
       return `<div class="ls-pk empty"><b style="color:#0E2A33;font-size:11.5px">${h.mapel}</b>${h.sts == null ? "Nilai STS belum dimasukkan." : "Asesmen Lanjutan belum dilaksanakan."}</div>`;
     }
-    const d = h.lanjutan - h.sts;
+    const d = bul2(h.lanjutan - h.sts);
     return `<div class="ls-pk"><div class="top"><b>${h.mapel}</b><span class="ls-w">STS → Lanjutan</span></div>
-      <div class="nums"><span class="a">${h.sts}</span><span class="ls-w">→</span><span class="b">${h.lanjutan}</span><span class="d ${d < 0 ? "down" : ""}">${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d)} poin</span></div>${lsTrack(h.sts, h.lanjutan)}</div>`;
+      <div class="nums"><span class="a">${fmt2(h.sts)}</span><span class="ls-w">→</span><span class="b">${fmt2(h.lanjutan)}</span><span class="d ${d < 0 ? "down" : ""}">${d > 0 ? "+" : d < 0 ? "−" : "±"}${fmt2(Math.abs(d))} poin</span></div>${lsTrack(h.sts, h.lanjutan)}</div>`;
   }).join("");
 
   // Tugas Astrolab yang memang berlaku untuk siswa ini (sama dengan filter getTugasAstrolabAvg)
@@ -282,8 +285,8 @@ function generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan = "semest
   else if (adaNilai.length === 1) kalimat.push(`${esc(namaPanggil)} sudah mengerjakan tugas <b>${esc(adaNilai[0].nama)}</b> dengan rata-rata ${adaNilai[0].rata}.`);
   else kalimat.push(`${esc(namaPanggil)} belum mengerjakan tugas Astrolab pada periode ini.`);
   hasil.filter(h => h.sts != null && h.lanjutan != null).forEach(h => {
-    const d = h.lanjutan - h.sts;
-    kalimat.push(d > 0 ? `Dari STS ke Asesmen Lanjutan ${h.mapel}, nilainya naik <b>${d} poin</b>.` : d < 0 ? `Asesmen Lanjutan ${h.mapel} ${Math.abs(d)} poin di bawah STS; perlu dibicarakan bersama.` : `Asesmen Lanjutan ${h.mapel} sama dengan STS.`);
+    const d = bul2(h.lanjutan - h.sts);
+    kalimat.push(d > 0 ? `Dari STS ke Asesmen Lanjutan ${h.mapel}, nilainya naik <b>${fmt2(d)} poin</b>.` : d < 0 ? `Asesmen Lanjutan ${h.mapel} ${fmt2(Math.abs(d))} poin di bawah STS; perlu dibicarakan bersama.` : `Asesmen Lanjutan ${h.mapel} sama dengan STS.`);
   });
   if (terlewat > 0) kalimat.push(`${terlewat} tugas belum dikerjakan; ${esc(namaPanggil)} masih bisa meminta akses susulan.`);
 

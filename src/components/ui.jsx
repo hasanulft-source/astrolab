@@ -114,7 +114,8 @@ export function StatusChip({ tone = "teal", children }) {
 
 export function DeltaBadge({ delta, unit = "poin" }) {
   const sign = delta > 0 ? "+" : delta < 0 ? "−" : "±";
-  return <span className={`ui-badge${delta < 0 ? " down" : ""}`}>{sign}{Math.abs(delta)} {unit}</span>;
+  const angka = String(Math.round(Math.abs(delta) * 100) / 100).replace(".", ","); // maks. 2 angka di belakang koma
+  return <span className={`ui-badge${delta < 0 ? " down" : ""}`}>{sign}{angka} {unit}</span>;
 }
 
 // "Yang bisa kamu lakukan": satu hal yang perlu ditindaklanjuti + tombolnya

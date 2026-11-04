@@ -57,11 +57,12 @@ export function buildRapor({ rec = {}, boosts = {}, tugas = [], subs = [], siswa
 
 // ─── Tampilan (murni) — memakai komponen dasar di components/ui.jsx ───
 const f1 = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
+const f2 = v => String(Math.round(v * 100) / 100).replace(".", ","); // maks. 2 angka di belakang koma
 const Arrow = () => <svg className="rp-arr" width="26" height="18" viewBox="0 0 28 20" aria-hidden="true"><path d="M2 10h22M17 3l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
 function MapelRapor({ r, onLihatTugas }) {
   const dots = r.komponen.map(k => typeof k.val === "number");
-  const d = r.sts != null && r.lanjutan != null ? r.lanjutan - r.sts : null;
+  const d = r.sts != null && r.lanjutan != null ? Math.round((r.lanjutan - r.sts) * 100) / 100 : null;
   const stsBonus = (r.komponen.find(k => k.key === "uts") || {}).boost > 0;
   return (
     <>
@@ -85,13 +86,13 @@ function MapelRapor({ r, onLihatTugas }) {
         ) : (
           <>
             <div className="rp-scores">
-              <div className="rp-sc pre"><span>STS{stsBonus ? " (tanpa bonus)" : ""}</span><b>{r.sts}</b></div>
+              <div className="rp-sc pre"><span>STS{stsBonus ? " (tanpa bonus)" : ""}</span><b>{f2(r.sts)}</b></div>
               <Arrow />
-              <div className="rp-sc post"><span>Asesmen Lanjutan</span><b>{r.lanjutan}</b></div>
+              <div className="rp-sc post"><span>Asesmen Lanjutan</span><b>{f2(r.lanjutan)}</b></div>
             </div>
             <DeltaBadge delta={d} />
             <MoveTrack from={r.sts} to={r.lanjutan} labelFrom="STS" labelTo="Asesmen Lanjutan" />
-            <p className="ui-text">{d > 0 ? <>Kamu naik <b>{d} poin</b> dari STS.</> : d < 0 ? <>Kali ini <b>{Math.abs(d)} poin</b> di bawah STS. Ceritakan ke guru bagian mana yang terasa sulit.</> : <>Nilaimu sama dengan STS.</>} Asesmen Lanjutan tidak mengubah nilai STS maupun nilai rapormu.</p>
+            <p className="ui-text">{d > 0 ? <>Kamu naik <b>{f2(d)} poin</b> dari STS.</> : d < 0 ? <>Kali ini <b>{f2(Math.abs(d))} poin</b> di bawah STS. Ceritakan ke guru bagian mana yang terasa sulit.</> : <>Nilaimu sama dengan STS.</>} Asesmen Lanjutan tidak mengubah nilai STS maupun nilai rapormu.</p>
           </>
         )}
       </Card>
