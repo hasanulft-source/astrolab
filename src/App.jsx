@@ -344,6 +344,92 @@ function useStore() {
     const guruId = fbGuru?.id || "fata";
     callPush("send", { targetAccountId: guruId, title: `${siswaName} mengumpulkan tugas`, body: tugasJudul, tag: `sub-${s.tugasId}` }).catch(() => {});
   };
+  // Kumpulkan tugas secara ATOMIK: submission + stats siswa dalam satu multi-path update.
+  // Cek server dulu supaya klik ulang setelah timeout tidak menambah poin dua kali.
+  const kumpulkanTugas = async (s, { perfect = false } = {}) => {
+    const key = `${s.siswaId}_${s.tugasId}`;
+    const ada = await get(ref(db, `submissions/${key}`));
+    if (ada.exists()) throw new Error("SUDAH_TERKUMPUL");
+    const st = getStats(s.siswaId);
+    const now = Date.now();
+    const newPoin = (st.poin || 0) + (s.poinDapat || 0);
+    const newNilai = [...(st.nilaiList || []), s.nilai];
+    const p = `stats/${s.siswaId}`;
+    // JSON round-trip: buang `undefined` (Firebase menolak seluruh tulisan kalau ada satu saja)
+    const bersih = JSON.parse(JSON.stringify({ ...s, submittedAt: new Date(now).toISOString() }));
+    const patch = {
+      [`submissions/${key}`]: bersih,
+      [`${p}/poin`]: newPoin,
+      [`${p}/poinHistory`]: [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "tugas", tugasId: s.tugasId }],
+      [`${p}/tugasSelesai`]: (st.tugasSelesai || 0) + 1,
+      [`${p}/nilaiList`]: newNilai,
+      [`${p}/nilaiRata`]: Math.round(newNilai.reduce((a, b) => a + b, 0) / newNilai.length),
+      [`${p}/streak`]: s.ontime ? (st.streak || 0) + 1 : 0,
+    };
+    if (perfect) patch[`${p}/perfectCount`] = (st.perfectCount || 0) + 1;
+    await update(ref(db), patch);
+    const siswa = getAllAccounts().find(a => a.id === s.siswaId);
+    const t = tugas.find(x => x.id === s.tugasId);
+    callPush("send", { targetAccountId: fbGuru?.id || "fata", title: `${siswa?.namaDisplay || siswa?.nama || s.siswaId} mengumpulkan tugas`, body: t?.judul || "Tugas", tag: `sub-${s.tugasId}` }).catch(() => {});
+  };
+
+  // ─── AUDIT POIN GANDA (bug soal-hantu, Nov 2026) ───
+  // Gejala: stats bertambah (poin, streak, tugasSelesai, nilaiList) tanpa submission.
+  // Kandidat = entri poinHistory tanpa label, sejak tanggal `sejakMs`, yang tidak punya submission
+  // siswa itu dalam ±2 menit. Jumlah yang dicentang otomatis = kelebihan tugasSelesai vs submission.
+  // Guru tetap meninjau: badge manual juga entri tanpa label, jadi jangan diperbaiki membabi buta.
+  const auditPoinGanda = (sejakMs = 0) => {
+    const hasil = [];
+    Object.entries(stats || {}).forEach(([sid, st]) => {
+      const akun = getAllAccounts().find(a => a.id === sid);
+      if (!akun || akun.role === "guru") return;
+      const mine = subs.filter(x => x.siswaId === sid);
+      const waktuSub = mine.map(x => new Date(x.submittedAt).getTime()).filter(Number.isFinite);
+      const hist = st.poinHistory || [];
+      const kandidat = [];
+      hist.forEach((e, i) => {
+        if (!e || e.reason || !e.ts || e.ts < sejakMs) return;
+        const delta = (e.poin || 0) - (i > 0 ? (hist[i - 1]?.poin || 0) : 0);
+        if (waktuSub.some(w => Math.abs(w - e.ts) <= 120000)) return;
+        kandidat.push({ i, ts: e.ts, delta });
+      });
+      const lebih = Math.max(0, (st.tugasSelesai || 0) - mine.length);
+      // Nilai > 100: submission dinilai dengan soal lama (layar siswa masih memegang soal yang sudah dihapus)
+      const nilaiAneh = mine.filter(x => typeof x.nilai === "number" && x.nilai > 100);
+      if ((lebih > 0 && kandidat.length) || nilaiAneh.length) {
+        const otomatis = new Set(kandidat.slice().sort((a, b) => b.ts - a.ts).slice(0, lebih).map(k => k.i));
+        hasil.push({ siswaId: sid, nama: akun.nama || sid, jenjang: akun.jenjang, poin: st.poin || 0, streak: st.streak || 0,
+          tugasSelesai: st.tugasSelesai || 0, jumlahSub: mine.length, lebih,
+          kandidat: kandidat.map(k => ({ ...k, pilih: otomatis.has(k.i) })), nilaiAneh });
+      }
+    });
+    return hasil.sort((a, b) => b.lebih - a.lebih);
+  };
+  // Hapus entri hantu terpilih: poin dikurangi total delta, entri dibuang dari poinHistory (entri
+  // sesudahnya digeser), tugasSelesai & streak dikurangi sejumlah entri, nilaiList dibangun ulang dari submission.
+  const perbaikiPoinGanda = async (siswaId, indeks) => {
+    const st = getStats(siswaId);
+    const hist = st.poinHistory || [];
+    const buang = new Set(indeks);
+    if (!buang.size) return;
+    let geser = 0, n = 0;
+    const baru = [];
+    hist.forEach((e, i) => {
+      const delta = (e.poin || 0) - (i > 0 ? (hist[i - 1]?.poin || 0) : 0);
+      if (buang.has(i)) { geser += delta; n++; return; }
+      baru.push({ ...e, poin: (e.poin || 0) - geser, minggu: baru.length + 1 });
+    });
+    const { nilaiList, nilaiRata } = recomputeNilaiStats(siswaId);
+    await update(ref(db, `stats/${siswaId}`), {
+      poin: Math.max(0, (st.poin || 0) - geser),
+      poinHistory: baru,
+      tugasSelesai: Math.max(0, (st.tugasSelesai || 0) - n),
+      streak: Math.max(0, (st.streak || 0) - n),
+      nilaiList, nilaiRata,
+    });
+    return { poin: geser, entri: n };
+  };
+
   const hasSub = (sid, tid) => subs.some(s => s.siswaId === sid && s.tugasId === tid);
   const getSubBy = (sid, tid) => subs.find(s => s.siswaId === sid && s.tugasId === tid);
 
@@ -1749,7 +1835,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -3220,38 +3306,41 @@ function ExcelSandboxPlayer({ soal, answer, selected }) {
   );
 }
 
+// Sidik soal: berubah kalau soal ditambah/dihapus/diurutkan ulang/diganti tipenya.
+function sidikSoal(soal) {
+  return (soal || []).map((s, i) => s?.id || `#${i}:${s?.type || "?"}:${String(s?.pertanyaan || s?.soal || "").slice(0, 40)}`).join("|");
+}
+
 function KerjakanTugas({ user, store, tugasId, navigate }) {
   const t = store.getTugas().find(x => x.id === tugasId);
   const SAVE_KEY = `astrolab.quiz.${user.id}.${tugasId}`;
 
-  // Randomize soal order — seed per user+tugas biar konsisten kalau refresh
-  const [shuffledSoal] = useState(() => {
-    if (!t?.soal?.length) return [];
-    // Cek apakah ada saved order
-    try {
-      const s = localStorage.getItem(SAVE_KEY);
-      if (s) {
-        const d = JSON.parse(s);
-        if (d.order) return d.order.map(i => ({ ...t.soal[i], _origIdx: i }));
-      }
-    } catch {}
-    // Generate random order baru
-    const order = shuffle(t.soal.map((_, i) => i));
-    try {
-      const s = localStorage.getItem(SAVE_KEY);
-      const d = s ? JSON.parse(s) : {};
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ ...d, order }));
-    } catch {}
-    return order.map(i => ({ ...t.soal[i], _origIdx: i }));
+  // Randomize soal order — seed per user+tugas biar konsisten kalau refresh.
+  // FIX soal-hantu: simpanan lokal (urutan + jawaban) dicocokkan dengan soal TERKINI lewat sidik soal.
+  // Dulu: guru hapus soal 4→3 setelah siswa klik Kerjakan → order lama [0..3] memunculkan soal ke-4
+  // yang kosong (tanpa id/type) → submission gagal ditulis (undefined) tapi stats sudah ditulis →
+  // poin & streak bertambah setiap klik Kumpulkan. Sekarang simpanan yang tidak cocok dibuang.
+  const [init] = useState(() => {
+    const kosong = { soal: [], idx: 0, answers: {}, fp: "", berubah: false };
+    if (!t?.soal?.length) return kosong;
+    const fp = sidikSoal(t.soal);
+    const n = t.soal.length;
+    let d = null;
+    try { const s = localStorage.getItem(SAVE_KEY); d = s ? JSON.parse(s) : null; } catch {}
+    const orderValid = o => Array.isArray(o) && o.length === n && new Set(o).size === n && o.every(i => Number.isInteger(i) && i >= 0 && i < n);
+    // Simpanan lama (belum punya fp) masih dipakai asal urutannya valid untuk jumlah soal sekarang
+    const cocok = d && orderValid(d.order) && (d.fp ? d.fp === fp : true);
+    const berubah = !!(d && (d.order || d.answers) && !cocok);
+    const order = cocok ? d.order : shuffle(t.soal.map((_, i) => i));
+    const simpan = cocok ? { ...d, fp } : { order, fp };
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(simpan)); } catch {}
+    return { soal: order.map(i => ({ ...t.soal[i], _origIdx: i })), idx: cocok ? (d.idx || 0) : 0, answers: cocok ? (d.answers || {}) : {}, fp, berubah };
   });
+  const shuffledSoal = init.soal;
 
-  // Auto-restore dari localStorage
-  const [idx, setIdx] = useState(() => {
-    try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s).idx || 0 : 0; } catch { return 0; }
-  });
-  const [answers, setAnswers] = useState(() => {
-    try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s).answers || {} : {}; } catch { return {}; }
-  });
+  // Auto-restore dari localStorage (sudah divalidasi di init)
+  const [idx, setIdx] = useState(init.idx);
+  const [answers, setAnswers] = useState(init.answers);
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -3314,6 +3403,14 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     // Kalau Device B masih offline-state-lama, deterministic key di addSub yang nge-catch.
     if (store.hasSub(user.id, t.id)) {
       alert("Tugas ini sudah pernah kamu kumpulkan dari perangkat lain. Buka detail tugas untuk lihat hasilnya.");
+      navigate("tugas-detail", { tugasId });
+      return;
+    }
+    // Guard: guru mengubah soal SAAT siswa sedang mengerjakan (layar ini masih memegang soal lama).
+    // Jangan nilai dengan soal lama — nilai bisa > 100 atau tercampur soal yang sudah dihapus.
+    if (init.fp && sidikSoal(t.soal) !== init.fp) {
+      try { localStorage.removeItem(SAVE_KEY); } catch {}
+      alert("Guru baru saja mengubah soal tugas ini.\n\nBuka lagi tugasnya untuk memuat soal terbaru. Jawabanmu perlu diisi ulang.");
       navigate("tugas-detail", { tugasId });
       return;
     }
@@ -3402,15 +3499,13 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
     // fail-fast saat offline (queue silent + retry), jadi tanpa timeout tombol bisa stuck
     // selamanya. Dengan timeout, siswa dapat feedback jelas untuk retry.
     try {
-      await withTimeout(Promise.all([
-        store.addSub({ siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total: totalButir, ontime, soalResults, hasEssay }),
-        store.updateStats(user.id, nilai, totalPoin, ontime),
-      ]));
-      // Update perfectCount setelah updateStats selesai (urutan penting biar gak overwrite)
-      if (nilai === 100) {
-        const cur = store.getStats(user.id);
-        await withTimeout(update(ref(db, `stats/${user.id}`), { perfectCount: (cur.perfectCount || 0) + 1 }));
-      }
+      // ATOMIK: submission + stats (+ perfectCount) ditulis dalam satu multi-path update.
+      // Dulu Promise.all([addSub, updateStats]) — kalau addSub gagal, stats tetap tertulis,
+      // lalu siswa klik ulang → poin & streak dobel terus. Sekarang semua masuk atau tidak sama sekali.
+      await withTimeout(store.kumpulkanTugas(
+        { siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total: totalButir, ontime, soalResults, hasEssay },
+        { perfect: nilai === 100 }
+      ));
       // Award badges (best-effort, gak fatal kalau gagal/timeout — siswa udah submit sukses)
       await Promise.all(newBadges.map(bid =>
         withTimeout(store.awardBadge(user.id, bid), 5000).catch(() => {})
@@ -3419,7 +3514,14 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
       setSubmitted(true);
     } catch (e) {
-      // Rollback: izinkan siswa coba submit ulang
+      // Ternyata sudah tercatat (mis. percobaan sebelumnya timeout tapi sebenarnya masuk)
+      if (e?.message === "SUDAH_TERKUMPUL") {
+        try { localStorage.removeItem(SAVE_KEY); } catch {}
+        alert("Tugas ini sudah tercatat terkumpul. Buka detail tugas untuk lihat hasilnya.");
+        navigate("tugas-detail", { tugasId });
+        return;
+      }
+      // Rollback: izinkan siswa coba submit ulang (aman: tidak ada yang tertulis sebagian)
       submitLockRef.current = false;
       setIsSubmitting(false);
       alert("Gagal mengumpulkan tugas.\n\n" + (e?.message || "Coba lagi nanti."));
@@ -3509,6 +3611,11 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <div style={{ fontSize: 12, fontFamily: "var(--mono)", fontWeight: 600, color: "var(--accent)" }}>{pct}%</div>
     </div>
 
+    {init.berubah && (
+      <div role="status" style={{ padding: "9px 16px", background: "var(--warn-bg)", color: "var(--ink)", fontSize: 12.5, borderBottom: "1px solid var(--line-soft)" }}>
+        Soal tugas ini sempat diubah guru, jadi jawaban yang tersimpan di perangkatmu direset. Silakan kerjakan dari awal.
+      </div>
+    )}
     {/* Progress bar */}
     <div style={{ height: 3, background: "var(--surface-alt)" }}>
       <div style={{ height: "100%", background: "var(--accent)", width: `${pct}%`, transition: "width .3s" }} />
@@ -7540,6 +7647,125 @@ function escapeHtml(s) {
 }
 
 // ─── MANAJEMEN SISWA (Guru) ───
+// ─── Audit poin ganda (guru) ───
+// Membersihkan efek bug soal-hantu: poin/streak bertambah setiap klik Kumpulkan walau tugas tidak tercatat.
+function AuditPoinGanda({ store }) {
+  const hariIni = new Date();
+  const tglDefault = new Date(hariIni.getTime() - 3 * 864e5).toISOString().slice(0, 10);
+  const [buka, setBuka] = useState(false);
+  const [sejak, setSejak] = useState(tglDefault);
+  const [hasil, setHasil] = useState(null);
+  const [pilih, setPilih] = useState({}); // { siswaId: Set(indeks) }
+  const [proses, setProses] = useState("");
+  const [pesan, setPesan] = useState("");
+
+  function periksa() {
+    const ms = new Date(sejak + "T00:00:00").getTime() || 0;
+    const h = store.auditPoinGanda(ms);
+    setHasil(h);
+    const p = {};
+    h.forEach(r => { p[r.siswaId] = new Set(r.kandidat.filter(k => k.pilih).map(k => k.i)); });
+    setPilih(p);
+    setPesan(h.length ? "" : "Tidak ada kejanggalan sejak tanggal itu.");
+  }
+  function toggle(sid, i) {
+    setPilih(p => { const n = new Set(p[sid] || []); n.has(i) ? n.delete(i) : n.add(i); return { ...p, [sid]: n }; });
+  }
+  async function perbaiki(r) {
+    const idx = [...(pilih[r.siswaId] || [])];
+    if (!idx.length) return;
+    setProses(r.siswaId);
+    try {
+      const out = await withTimeout(store.perbaikiPoinGanda(r.siswaId, idx));
+      setPesan(`${r.nama}: ${out.entri} entri dihapus, poin −${out.poin}, streak −${out.entri}.`);
+      setTimeout(periksa, 800);
+    } catch (e) { setPesan("Gagal: " + (e?.message || "coba lagi")); }
+    finally { setProses(""); }
+  }
+  async function nilaiUlang(r, sub) {
+    const t = store.getTugas().find(x => x.id === sub.tugasId);
+    if (!t) { setPesan("Tugas tidak ditemukan."); return; }
+    const ids = new Set((t.soal || []).map(x => x.id).filter(Boolean));
+    const res = (sub.soalResults || []).filter(x => ids.has(String(x.soalId || "").split("#")[0]));
+    const benar = res.filter(x => x.correct === true).length;
+    const denom = (t.soal || []).filter(x => x.type !== "essay" && x.type !== "refleksi").reduce((n, x) => n + jumlahButir(x), 0) || 1;
+    const nilaiBaru = res.length ? Math.min(100, Math.round(benar / denom * 100)) : 100;
+    setProses(sub.id);
+    try {
+      await withTimeout(store.updateSubmissionNilai(sub.id, nilaiBaru, `Koreksi otomatis: dinilai dengan soal lama (${sub.nilai}), dinilai ulang dengan soal terkini.`));
+      setPesan(`${r.nama}: nilai "${t.judul}" ${sub.nilai} → ${nilaiBaru}.`);
+      setTimeout(periksa, 800);
+    } catch (e) { setPesan("Gagal: " + (e?.message || "coba lagi")); }
+    finally { setProses(""); }
+  }
+  const jam = ts => new Date(ts).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  if (!buka) return (
+    <Card style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Cek poin ganda</div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Cari siswa yang poin & streak-nya bertambah padahal tugasnya tidak tercatat terkumpul.</div>
+        </div>
+        <button className="btn btn-outline btn-sm" onClick={() => { setBuka(true); }}>Buka</button>
+      </div>
+    </Card>
+  );
+
+  return (
+    <Card style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>Cek poin ganda</div>
+        <label style={{ fontSize: 12.5, color: "var(--ink-3)", display: "flex", alignItems: "center", gap: 6 }}>Sejak
+          <input type="date" className="inp" style={{ width: "auto", padding: "6px 8px" }} value={sejak} onChange={e => setSejak(e.target.value)} />
+        </label>
+        <button className="btn btn-primary btn-sm" onClick={periksa}>Periksa</button>
+        <button className="btn btn-outline btn-sm" onClick={() => { setBuka(false); setHasil(null); setPesan(""); }}>Tutup</button>
+      </div>
+      <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "0 0 10px" }}>
+        Entri yang dicentang otomatis = kelebihan "tugas selesai" dibanding tugas yang benar-benar terkumpul. Periksa dulu: badge yang diberikan manual juga bisa muncul di sini — hilangkan centangnya kalau itu badge.
+      </p>
+      {pesan && <div style={{ fontSize: 12.5, padding: "8px 10px", borderRadius: 8, background: "var(--accent-tint)", marginBottom: 10 }}>{pesan}</div>}
+      {hasil && hasil.map(r => {
+        const sel = pilih[r.siswaId] || new Set();
+        const totalPilih = r.kandidat.filter(k => sel.has(k.i)).reduce((a, k) => a + k.delta, 0);
+        return (
+          <div key={r.siswaId} style={{ borderTop: "1px solid var(--line-soft)", padding: "10px 0" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <b style={{ fontSize: 14 }}>{r.nama}</b>
+              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Kelas {r.jenjang} · {r.poin} poin · streak {r.streak} · tercatat selesai {r.tugasSelesai}, terkumpul {r.jumlahSub}{r.lebih > 0 ? <b style={{ color: "var(--warn)" }}> (lebih {r.lebih})</b> : null}</span>
+            </div>
+            {r.kandidat.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0" }}>
+                {r.kandidat.map(k => (
+                  <label key={k.i} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid var(--line)", background: sel.has(k.i) ? "var(--warn-bg)" : "var(--surface)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={sel.has(k.i)} onChange={() => toggle(r.siswaId, k.i)} />
+                    {jam(k.ts)} <span style={{ fontFamily: "var(--mono)" }}>+{k.delta}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {r.kandidat.length > 0 && (
+              <button className="btn btn-primary btn-sm" disabled={!sel.size || proses === r.siswaId} onClick={() => perbaiki(r)}>
+                {proses === r.siswaId ? "Memperbaiki…" : `Perbaiki: hapus ${sel.size} entri (−${totalPilih} poin, streak −${sel.size})`}
+              </button>
+            )}
+            {r.nilaiAneh.map(sub => {
+              const t = store.getTugas().find(x => x.id === sub.tugasId);
+              return (
+                <div key={sub.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, fontSize: 12.5 }}>
+                  <span>Nilai <b style={{ color: "var(--warn)" }}>{sub.nilai}</b> di "{t?.judul || sub.tugasId}" (dinilai dengan soal lama)</span>
+                  <button className="btn btn-outline btn-sm" disabled={proses === sub.id} onClick={() => nilaiUlang(r, sub)}>{proses === sub.id ? "Memproses…" : "Nilai ulang"}</button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </Card>
+  );
+}
+
 function ManajemenSiswa({ store }) {
   const [jenjang, setJenjang] = useState("VII");
   const [showAdd, setShowAdd] = useState(false);
@@ -7629,6 +7855,8 @@ function ManajemenSiswa({ store }) {
 
       {showAdd && <TambahSiswaModal store={store} onClose={() => setShowAdd(false)} onSuccess={(id, pw) => { setShowAdd(false); showToast(`Siswa ditambahkan! ID: ${id} · Password: ${pw}`); }} />}
       {showImport && <ImportSiswaModal store={store} onClose={() => setShowImport(false)} onSuccess={(n) => { setShowImport(false); showToast(`${n} siswa berhasil diimpor!`); }} />}
+
+      <AuditPoinGanda store={store} />
 
       <div className="tabs" style={{ marginBottom: 16 }}>
         {["VII","VIII"].map(j => (
