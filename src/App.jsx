@@ -8,10 +8,10 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, push, onValue, remove, update, onDisconnect, serverTimestamp } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import "./styles/main.css";
-import { IC, I } from './components/icons';
-import { shuffle, fmtDl, uid, getTahunAjaran, getSemesterAktif, getPeriodeAktif, getPeriodeOptions, fmtLastSeen, withTimeout, fuzzyMatchText, compressImage, SKIP_PREFIXES, genSiswaId, getFirstName, genPassword } from './utils/helpers';
-import { getFlameTheme, FlameAnimated, StreakCometSVG, StreakCard, Avatar, UserAvatar, OnlineDot, Confirm, LogoBold, ConfettiRain, CelebrationAvatar, MapelIcon, Card } from './components/visual';
-import { TIERS, LEVELS, getLevel, getTier, getLevelProgress, TierIcon, LevelBadge, BADGE_RIMS, BadgeGlyph, BadgeIcon, AUTO_BADGES, MANUAL_BADGES, ALL_BADGES, checkAutoBadges, LevelCard, BadgeChip, BadgesRow, PoinChart } from './components/gamification';
+import { I } from './components/icons';
+import { shuffle, fmtDl, uid, compressImage, getPeriodeAktif, getPeriodeOptions, withTimeout, fuzzyMatchText, genSiswaId, getFirstName, genPassword } from './utils/helpers';
+import { Avatar, UserAvatar, Confirm, LogoBold, Card } from './components/visual';
+import { getLevel, TierIcon, BadgeIcon, AUTO_BADGES, MANUAL_BADGES, ALL_BADGES, checkAutoBadges } from './components/gamification';
 import { downloadTemplateSandbox, importSandboxFromExcel, downloadTemplateSoal, exportNilai, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, backupFromStore, importSoalFromExcel, parseNilaiAkhirExcel, exportLatihanSoal } from './utils/excel';
 import { LaporanModal } from './utils/laporan';
 import { ChatScreen } from './pages/chat';
@@ -233,6 +233,11 @@ function useStore() {
   const [tugas, setTugas] = useState([]);
   const [subs, setSubs] = useState([]);
   const [stats, setStats] = useState({});
+  // Salinan stats terbaru di luar siklus render. Fungsi store yang dipanggil berturut-turut dalam satu
+  // alur (mis. kumpulkan tugas → badge) memegang `stats` dari render lama; tanpa ini tulisan kedua
+  // menimpa poin dari tulisan pertama. Listener Firebase memanggil callback secara sinkron untuk
+  // tulisan lokal, jadi statsLive langsung terbarui begitu update() dipanggil.
+  const statsLive = useRef({});
   const [loading, setLoading] = useState(true);
 
   // Set loading false setelah max 2 detik — tidak bergantung pada Firebase response
@@ -256,7 +261,9 @@ function useStore() {
       setSubs(data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : []);
     }, () => {});
     const u3 = onValue(statsRef, snap => {
-      setStats(snap.val() || {});
+      const v = snap.val() || {};
+      statsLive.current = v; // dibaca getStats — lihat catatan di sana
+      setStats(v);
     }, () => {});
     return () => { u1(); u2(); u3(); };
   }, []);
@@ -346,7 +353,7 @@ function useStore() {
   };
   // Kumpulkan tugas secara ATOMIK: submission + stats siswa dalam satu multi-path update.
   // Cek server dulu supaya klik ulang setelah timeout tidak menambah poin dua kali.
-  const kumpulkanTugas = async (s, { perfect = false } = {}) => {
+  const kumpulkanTugas = async (s, { perfect = false, badges = [] } = {}) => {
     const key = `${s.siswaId}_${s.tugasId}`;
     const ada = await get(ref(db, `submissions/${key}`));
     if (ada.exists()) throw new Error("SUDAH_TERKUMPUL");
@@ -355,18 +362,29 @@ function useStore() {
     const newPoin = (st.poin || 0) + (s.poinDapat || 0);
     const newNilai = [...(st.nilaiList || []), s.nilai];
     const p = `stats/${s.siswaId}`;
+    // Badge otomatis ditulis bersama submission. Dulu awardBadge dipanggil terpisah sesudahnya dengan
+    // stats lama → poin tugas tertimpa (siswa kehilangan poin tugas setiap kali dapat badge).
+    const punya = badgesData[s.siswaId] || {};
+    const badgeBaru = [...new Set(badges)].filter(b => !punya[b]);
+    const riwayat = [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "tugas", tugasId: s.tugasId }];
+    let poinAkhir = newPoin;
+    badgeBaru.forEach(b => {
+      const bp = ALL_BADGES.find(x => x.id === b)?.poin || 0;
+      if (bp > 0) { poinAkhir += bp; riwayat.push({ minggu: riwayat.length + 1, poin: poinAkhir, ts: now, reason: "badge", badgeId: b, delta: bp }); }
+    });
     // JSON round-trip: buang `undefined` (Firebase menolak seluruh tulisan kalau ada satu saja)
     const bersih = JSON.parse(JSON.stringify({ ...s, submittedAt: new Date(now).toISOString() }));
     const patch = {
       [`submissions/${key}`]: bersih,
-      [`${p}/poin`]: newPoin,
-      [`${p}/poinHistory`]: [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "tugas", tugasId: s.tugasId }],
+      [`${p}/poin`]: poinAkhir,
+      [`${p}/poinHistory`]: riwayat,
       [`${p}/tugasSelesai`]: (st.tugasSelesai || 0) + 1,
       [`${p}/nilaiList`]: newNilai,
       [`${p}/nilaiRata`]: Math.round(newNilai.reduce((a, b) => a + b, 0) / newNilai.length),
       [`${p}/streak`]: s.ontime ? (st.streak || 0) + 1 : 0,
     };
     if (perfect) patch[`${p}/perfectCount`] = (st.perfectCount || 0) + 1;
+    badgeBaru.forEach(b => { patch[`badges/${s.siswaId}/${b}`] = true; });
     await update(ref(db), patch);
     const siswa = getAllAccounts().find(a => a.id === s.siswaId);
     const t = tugas.find(x => x.id === s.tugasId);
@@ -434,7 +452,7 @@ function useStore() {
   const getSubBy = (sid, tid) => subs.find(s => s.siswaId === sid && s.tugasId === tid);
 
   // STATS
-  const getStats = (sid) => stats[sid] || { poin: 0, poinHistory: [], tugasSelesai: 0, nilaiList: [], nilaiRata: 0, streak: 0, streakResetFor: {} };
+  const getStats = (sid) => statsLive.current[sid] || stats[sid] || { poin: 0, poinHistory: [], tugasSelesai: 0, nilaiList: [], nilaiRata: 0, streak: 0, streakResetFor: {} };
   const updateStats = async (sid, nilai, poinDapat, ontime = true) => {
     const s = getStats(sid);
     const newPoin = s.poin + poinDapat;
@@ -531,23 +549,26 @@ function useStore() {
         updatedAt: now,
       },
     ];
-    await update(ref(db, `submissions/${subId}`), {
-      nilai: nilaiBaru,
-      poinDapat: poinBaru,
-      riwayatIntervensi: riwayatBaru,
-    });
-
     // Update stats siswa — adjust total poin & recompute nilaiList/nilaiRata
     const st = getStats(sub.siswaId);
-    const newPoin = (st.poin || 0) + deltaPoin;
+    const newPoin = Math.max(0, (st.poin || 0) + deltaPoin);
     const { nilaiList: newNilaiList, nilaiRata: newNilaiRata } =
       recomputeNilaiStats(sub.siswaId, { subId, nilai: nilaiBaru });
 
-    const statsUpdate = { poin: newPoin, nilaiList: newNilaiList, nilaiRata: newNilaiRata };
+    // Atomik: submission + stats dalam satu tulisan (dulu dua — nilai bisa berubah tanpa poinnya)
+    const sp = `stats/${sub.siswaId}`;
+    const patch = {
+      [`submissions/${subId}/nilai`]: nilaiBaru,
+      [`submissions/${subId}/poinDapat`]: poinBaru,
+      [`submissions/${subId}/riwayatIntervensi`]: riwayatBaru,
+      [`${sp}/poin`]: newPoin,
+      [`${sp}/nilaiList`]: newNilaiList,
+      [`${sp}/nilaiRata`]: newNilaiRata,
+    };
+    if (deltaPoin !== 0) patch[`${sp}/poinHistory`] = [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "koreksi-nilai", tugasId: sub.tugasId, delta: deltaPoin }];
     // Kalau nilai baru = 0, reset streak (asumsi kecurangan)
-    if (nilaiBaru === 0) statsUpdate.streak = 0;
-
-    await update(ref(db, `stats/${sub.siswaId}`), statsUpdate);
+    if (nilaiBaru === 0) patch[`${sp}/streak`] = 0;
+    await update(ref(db), patch);
 
     return { deltaPoin, poinBaru, nilaiLama, nilaiBaru };
   };
@@ -785,10 +806,21 @@ function useStore() {
     const key = `${tugasId}_${siswaId}`;
     const req = aksesRequests[key];
     if (!req) return;
-    // Update request status
-    await update(ref(db, `aksesRequests/${key}`), { status: "approved", respondedAt: Date.now() });
-    // Buat susulan via existing system
-    await addSusulan(tugasId, siswaId, deadlineBaru, "Permintaan akses disetujui", nilaiMaks);
+    if (!deadlineBaru) throw new Error("Tanggal batas susulan wajib diisi");
+    if (nilaiMaks !== null && (nilaiMaks < 1 || nilaiMaks > 100)) throw new Error("Nilai maksimal harus 1-100");
+    // Atomik: status request + susulan dalam satu tulisan (dulu terpisah — request bisa "disetujui"
+    // tapi susulannya gagal dibuat, siswa tetap terkunci)
+    const now = Date.now();
+    await update(ref(db), {
+      [`aksesRequests/${key}/status`]: "approved",
+      [`aksesRequests/${key}/respondedAt`]: now,
+      [`susulan/${key}/tugasId`]: tugasId,
+      [`susulan/${key}/siswaId`]: siswaId,
+      [`susulan/${key}/deadlineBaru`]: deadlineBaru,
+      [`susulan/${key}/alasan`]: "Permintaan akses disetujui",
+      [`susulan/${key}/nilaiMaks`]: nilaiMaks === null ? null : Number(nilaiMaks),
+      [`susulan/${key}/createdAt`]: now,
+    });
     // Kirim confirmation message
     const guruId = fbGuru?.id || "fata";
     const tid = getThreadId(siswaId, guruId);
@@ -879,8 +911,7 @@ function useStore() {
   //   4. Kalau deadline utama sudah lewat: auto tambah susulan 72 jam untuk siswa ini supaya bisa retake
   //   5. Badge & streak: TIDAK di-revert (badge = milestone, streak berhubungan dgn ontime completion — bukan urusan reset)
   //
-  // Non-atomic (Firebase RTDB gak support multi-path transaction gampang). Kalau salah satu step fail,
-  // ada risk partial state — tapi urutan sudah diatur supaya failure paling harmless dulu (susulan gagal = paling ringan).
+  // Atomik: semua langkah ditulis lewat satu multi-path update — masuk semua atau tidak sama sekali.
   const resetSubmission = async (tugasId, siswaId) => {
     // HATI-HATI: dua namespace ini pakai urutan key yang BERBEDA.
     //   submissions/{siswaId}_{tugasId}   (lihat addSub)
@@ -894,9 +925,7 @@ function useStore() {
     const t = tugas.find(x => x.id === tugasId);
     const s = getStats(siswaId);
 
-    // 1. Delete submission
-    await remove(ref(db, `submissions/${subKey}`));
-
+    // 1+2+3 ditulis dalam SATU multi-path update (dulu terpisah: submission bisa terhapus tanpa poinnya dikurangi)
     // 2. Revert stats
     const poinDapat = Number(sub.poinDapat) || 0;
     const nilaiLama = Number(sub.nilai) || 0;
@@ -915,36 +944,32 @@ function useStore() {
     // STREAK: decrement 1 (min 0) — revert kontribusi attempt 1. Nanti retake akan naikin lagi via updateStats
     // kalau on-time, atau reset ke 0 kalau telat. Net effect: streak reflect "tugas ontime yang benar² terhitung".
     const newStreak = Math.max(0, (s.streak || 0) - 1);
-    await update(ref(db, `stats/${siswaId}`), {
-      poin: newPoin,
-      poinHistory: newHistory,
-      tugasSelesai: Math.max(0, (s.tugasSelesai || 0) - 1),
-      nilaiList: newNilaiList,
-      nilaiRata: newRata,
-      streak: newStreak,
-    });
+    const sp = `stats/${siswaId}`;
+    const patch = {
+      [`submissions/${subKey}`]: null,
+      [`${sp}/poin`]: newPoin,
+      [`${sp}/poinHistory`]: newHistory,
+      [`${sp}/tugasSelesai`]: Math.max(0, (s.tugasSelesai || 0) - 1),
+      [`${sp}/nilaiList`]: newNilaiList,
+      [`${sp}/nilaiRata`]: newRata,
+      [`${sp}/streak`]: newStreak,
+    };
 
     // 3. Kalau deadline utama lewat, auto-buka akses via susulan 72 jam
     let extendedSusulan = false;
-    if (t) {
-      const lewatUtama = fmtDl(t.deadline).tone === "bad";
-      if (lewatUtama) {
-        const dlBaru = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
-        try {
-          await update(ref(db, `susulan/${susulanKey}`), {
-            tugasId, siswaId,
-            deadlineBaru: dlBaru,
-            alasan: "Reset tugas: buka akses retake",
-            nilaiMaks: null, // tidak ada cap — retake full potential
-            createdAt: Date.now(),
-            fromReset: true,
-          });
-          extendedSusulan = true;
-        } catch (e) {
-          console.warn("Reset: gagal auto-buka susulan", e);
-        }
-      }
+    if (t && fmtDl(t.deadline).tone === "bad") {
+      const su = `susulan/${susulanKey}`;
+      Object.assign(patch, {
+        [`${su}/tugasId`]: tugasId, [`${su}/siswaId`]: siswaId,
+        [`${su}/deadlineBaru`]: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+        [`${su}/alasan`]: "Reset tugas: buka akses retake",
+        [`${su}/nilaiMaks`]: null, // tidak ada cap — retake full potential
+        [`${su}/createdAt`]: Date.now(),
+        [`${su}/fromReset`]: true,
+      });
+      extendedSusulan = true;
     }
+    await update(ref(db), patch);
 
     return { poinReverted: poinDapat, extendedSusulan };
   };
@@ -1155,20 +1180,19 @@ function useStore() {
   //   Kuis/Portofolio = 0.1 (10%) — tetap kasih apresiasi tapi gak dominasi leaderboard
   const NILAI_POIN_RATE = { sumatif: 1.0, uts: 1.0, uas: 1.0, kuis: 0.1, portofolio: 0.1 };
 
-  const applyNilaiPoinDelta = async (siswaId, nilaiLama, nilaiBaru, reasonLabel = "nilai-manual", rate = 0.1) => {
+  // Bangun patch poin (path → nilai) tanpa menulis, supaya bisa digabung dengan tulisan nilai dalam satu update.
+  // `antre` = { [siswaId]: { poin, poinHistory } } untuk beberapa delta ke siswa yang sama dalam satu patch.
+  const patchNilaiPoin = (patch, siswaId, nilaiLama, nilaiBaru, reasonLabel = "nilai-manual", rate = 0.1, antre = null) => {
     const num = (v) => typeof v === "number" && !isNaN(v) ? v : 0;
-    const poinLama = Math.round(num(nilaiLama) * rate);
-    const poinBaru = Math.round(num(nilaiBaru) * rate);
-    const delta = poinBaru - poinLama;
-    if (delta === 0) return;
-    const s = getStats(siswaId);
+    const delta = Math.round(num(nilaiBaru) * rate) - Math.round(num(nilaiLama) * rate);
+    if (delta === 0) return patch;
+    const s = (antre && antre[siswaId]) || getStats(siswaId);
     const newPoin = Math.max(0, (s.poin || 0) + delta);
-    const now = Date.now();
-    const newHistory = [
-      ...(s.poinHistory || []),
-      { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: reasonLabel, delta },
-    ];
-    await update(ref(db, `stats/${siswaId}`), { poin: newPoin, poinHistory: newHistory });
+    const newHistory = [...(s.poinHistory || []), { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: Date.now(), reason: reasonLabel, delta }];
+    if (antre) antre[siswaId] = { poin: newPoin, poinHistory: newHistory };
+    patch[`stats/${siswaId}/poin`] = newPoin;
+    patch[`stats/${siswaId}/poinHistory`] = newHistory;
+    return patch;
   };
 
   const updateNilaiKolom = async (siswaId, mapel, jenjang, periode, tipe, kolomKey, nilai) => {
@@ -1180,9 +1204,11 @@ function useStore() {
     // supaya kolom tetap persist/kebaca walau nilainya belum diisi guru.
     const nilaiBaru = nilai === "" || nilai === null ? "" : Number(nilai);
     const updated = { ...rec[tipe], [kolomKey]: nilaiBaru };
-    await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [tipe]: updated, updatedAt: Date.now() });
-    // Apply poin: sumatif = 100% (reward effort ujian), kuis = 10%
-    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0, "nilai-manual", NILAI_POIN_RATE[tipe] || 0.1);
+    const na = `nilaiAkhir/${key}`;
+    // Atomik: nilai + poin satu tulisan. Poin: sumatif = 100% (reward effort ujian), kuis = 10%
+    const patch = { [`${na}/siswaId`]: siswaId, [`${na}/mapel`]: mapel, [`${na}/jenjang`]: jenjang, [`${na}/periode`]: periode, [`${na}/${tipe}`]: updated, [`${na}/updatedAt`]: Date.now() };
+    patchNilaiPoin(patch, siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0, "nilai-manual", NILAI_POIN_RATE[tipe] || 0.1);
+    await update(ref(db), patch);
   };
 
   // Update field manual (uts/uas/portofolio) — 1 angka langsung
@@ -1191,8 +1217,10 @@ function useStore() {
     const rec = getNilaiAkhirRecord(siswaId, mapel, jenjang, periode);
     const nilaiLama = rec[field]; // bisa null, number, undefined
     const nilaiBaru = nilai === "" || nilai === null ? null : Number(nilai);
-    await update(ref(db, `nilaiAkhir/${key}`), { siswaId, mapel, jenjang, periode, [field]: nilaiBaru, updatedAt: Date.now() });
-    await applyNilaiPoinDelta(siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0, "nilai-manual", NILAI_POIN_RATE[field] || 0.1);
+    const na = `nilaiAkhir/${key}`;
+    const patch = { [`${na}/siswaId`]: siswaId, [`${na}/mapel`]: mapel, [`${na}/jenjang`]: jenjang, [`${na}/periode`]: periode, [`${na}/${field}`]: nilaiBaru, [`${na}/updatedAt`]: Date.now() };
+    patchNilaiPoin(patch, siswaId, typeof nilaiLama === "number" ? nilaiLama : 0, typeof nilaiBaru === "number" ? nilaiBaru : 0, "nilai-manual", NILAI_POIN_RATE[field] || 0.1);
+    await update(ref(db), patch);
   };
 
   // Asesmen Lanjutan (setelah STS): hanya untuk melihat perkembangan STS → Lanjutan di Rapor Perkembangan.
@@ -1238,11 +1266,10 @@ function useStore() {
       if (typeof nilaiLama === "number") revertList.push({ siswaId, nilaiLama });
       updates[`nilaiAkhir/${key}/${tipe}/${safeKey}`] = null;
     });
+    // Revoke poin per siswa — digabung ke tulisan yang sama (atomik)
+    const antre = {};
+    revertList.forEach(({ siswaId, nilaiLama }) => patchNilaiPoin(updates, siswaId, nilaiLama, 0, "hapus-kolom-nilai", NILAI_POIN_RATE[tipe] || 0.1, antre));
     await update(ref(db), updates);
-    // Revoke poin per siswa yg punya nilai di kolom ini (sequential biar stats gak race)
-    for (const { siswaId, nilaiLama } of revertList) {
-      await applyNilaiPoinDelta(siswaId, nilaiLama, 0, "hapus-kolom-nilai", NILAI_POIN_RATE[tipe] || 0.1);
-    }
   };
 
   // Ambil daftar semua kolom dinamis (union dari semua siswa) — dipakai buat render header grid
@@ -1305,20 +1332,55 @@ function useStore() {
       }
       if (totalDelta !== 0) poinDeltas[r.siswaId] = (poinDeltas[r.siswaId] || 0) + totalDelta;
     });
-    if (Object.keys(updates).length > 0) await update(ref(db), updates);
-    // Apply akumulasi delta per siswa (1 write per siswa, bukan 1 write per kolom → aman dari race)
+    // Akumulasi delta per siswa digabung ke tulisan yang sama — nilai & poin masuk bersamaan (atomik)
     for (const [siswaId, delta] of Object.entries(poinDeltas)) {
       if (delta === 0) continue;
       const s = getStats(siswaId);
       const newPoin = Math.max(0, (s.poin || 0) + delta);
-      const now = Date.now();
-      const newHistory = [
+      updates[`stats/${siswaId}/poin`] = newPoin;
+      updates[`stats/${siswaId}/poinHistory`] = [
         ...(s.poinHistory || []),
-        { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "bulk-import-nilai", delta },
+        { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: Date.now(), reason: "bulk-import-nilai", delta },
       ];
-      await update(ref(db, `stats/${siswaId}`), { poin: newPoin, poinHistory: newHistory });
     }
+    if (Object.keys(updates).length > 0) await update(ref(db), updates);
     return rows.length;
+  };
+
+  // ─── HITUNG ULANG POIN DARI SUMBER ───
+  // Poin siswa hanya berasal dari 3 sumber: (1) poinDapat tiap submission, (2) poin badge yang dimiliki,
+  // (3) nilai manual periode aktif × rate (NILAI_POIN_RATE). Fungsi ini menjumlahkan ketiganya dan
+  // membandingkan dengan stats.poin. Dipakai untuk memulihkan poin yang hilang akibat bug badge menimpa
+  // poin tugas (sebelum Nov 2026) dan sisa bug soal-hantu. Hanya laporan — guru yang memutuskan.
+  const hitungUlangPoin = () => {
+    const periode = getActivePeriode();
+    const periodeCocok = p => p === periode || p === periode.replace("Semester ", "Tengah Semester ");
+    const r = (v, rate) => (typeof v === "number" && !isNaN(v) ? Math.round(v * rate) : 0);
+    return getAllAccounts().filter(a => a.role !== "guru").map(a => {
+      const st = getStats(a.id);
+      const tugasP = subs.filter(x => x.siswaId === a.id).reduce((n, x) => n + (Number(x.poinDapat) || 0), 0);
+      const badgeP = Object.keys(badgesData[a.id] || {}).reduce((n, b) => n + (ALL_BADGES.find(x => x.id === b)?.poin || 0), 0);
+      let nilaiP = 0;
+      Object.values(nilaiAkhirData || {}).forEach(rec => {
+        if (!rec || rec.siswaId !== a.id || !periodeCocok(rec.periode || "")) return;
+        Object.values(rec.sumatif || {}).forEach(v => { nilaiP += r(v, NILAI_POIN_RATE.sumatif); });
+        Object.values(rec.kuis || {}).forEach(v => { nilaiP += r(v, NILAI_POIN_RATE.kuis); });
+        nilaiP += r(rec.uts, NILAI_POIN_RATE.uts) + r(rec.uas, NILAI_POIN_RATE.uas) + r(rec.portofolio, NILAI_POIN_RATE.portofolio);
+      });
+      const seharusnya = tugasP + badgeP + nilaiP;
+      const tersimpan = st.poin || 0;
+      return { siswaId: a.id, nama: a.nama || a.id, jenjang: a.jenjang, tersimpan, tugas: tugasP, badge: badgeP, nilai: nilaiP, seharusnya, selisih: tersimpan - seharusnya };
+    }).sort((x, y) => Math.abs(y.selisih) - Math.abs(x.selisih));
+  };
+  const samakanPoin = async (siswaId, seharusnya) => {
+    const st = getStats(siswaId);
+    const delta = seharusnya - (st.poin || 0);
+    if (!delta) return 0;
+    await update(ref(db, `stats/${siswaId}`), {
+      poin: seharusnya,
+      poinHistory: [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: seharusnya, ts: Date.now(), reason: "koreksi-audit", delta }],
+    });
+    return delta;
   };
 
   // PHOTOS — one-time fetch, re-fetch after save (hemat bandwidth, jarang berubah)
@@ -1579,25 +1641,29 @@ function useStore() {
     if (current[badgeId]) return; // udah punya, jangan dobel poin
     const badgeDef = ALL_BADGES.find(b => b.id === badgeId);
     const poinBadge = badgeDef?.poin || 0;
-    await update(ref(db, `badges/${sid}`), { [badgeId]: true });
+    // Atomik: badge + poin dalam satu tulisan (dulu dua tulisan — badge bisa masuk tanpa poinnya)
+    const patch = { [`badges/${sid}/${badgeId}`]: true };
     if (poinBadge > 0) {
       const s = getStats(sid);
       const newPoin = (s.poin || 0) + poinBadge;
-      const newHistory = [...(s.poinHistory || []), { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: Date.now() }];
-      await update(ref(db, `stats/${sid}`), { poin: newPoin, poinHistory: newHistory });
+      patch[`stats/${sid}/poin`] = newPoin;
+      patch[`stats/${sid}/poinHistory`] = [...(s.poinHistory || []), { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: Date.now(), reason: "badge", badgeId, delta: poinBadge }];
     }
+    await update(ref(db), patch);
   };
   const removeBadge = async (sid, badgeId) => {
     const current = badgesData[sid] || {};
     if (!current[badgeId]) return; // gak punya badge ini, gak ada apa-apa buat direvert
     const badgeDef = ALL_BADGES.find(b => b.id === badgeId);
     const poinBadge = badgeDef?.poin || 0;
-    await remove(ref(db, `badges/${sid}/${badgeId}`));
+    const patch = { [`badges/${sid}/${badgeId}`]: null };
     if (poinBadge > 0) {
       const s = getStats(sid);
       const newPoin = Math.max(0, (s.poin || 0) - poinBadge); // gak boleh minus
-      await update(ref(db, `stats/${sid}`), { poin: newPoin });
+      patch[`stats/${sid}/poin`] = newPoin;
+      patch[`stats/${sid}/poinHistory`] = [...(s.poinHistory || []), { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: Date.now(), reason: "badge-dicabut", badgeId, delta: -poinBadge }];
     }
+    await update(ref(db), patch);
   };
 
   // IMPORT MASSAL
@@ -1835,7 +1901,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -1914,1299 +1980,6 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-// ─── TUGAS HARI INI POPUP ───
-// Flag session-level: popup cuma muncul 1× setelah login, bukan tiap kali DashboardSiswa re-mount
-let _tugasPopupShownThisSession = false;
-
-function TugasHariIniPopup({ pendingTugas, store, user, navigate, onClose }) {
-  const [loadingAkses, setLoadingAkses] = useState({});
-  const [aksesError, setAksesError] = useState({});
-  if (!pendingTugas.length) return null;
-
-  // Pisahkan: aktif dulu, overdue di bawah
-  const aktifList = pendingTugas.filter(t => {
-    const lewat = fmtDl(t.deadline).tone === "bad";
-    return !lewat || store.isSusulanAktif(t.id, user.id);
-  });
-  const overdueList = pendingTugas.filter(t => {
-    const lewat = fmtDl(t.deadline).tone === "bad";
-    return lewat && !store.isSusulanAktif(t.id, user.id);
-  });
-
-  const handleMintaAkses = async (tugasId, tugasJudul) => {
-    setLoadingAkses(prev => ({ ...prev, [tugasId]: true }));
-    setAksesError(prev => ({ ...prev, [tugasId]: null }));
-    try {
-      await store.requestAkses(tugasId, user.id, user.namaDisplay || user.nama, tugasJudul);
-    } catch (e) {
-      console.error("[MintaAkses] error:", e);
-      setAksesError(prev => ({ ...prev, [tugasId]: "Gagal mengirim permintaan. Coba lagi." }));
-    } finally {
-      setLoadingAkses(prev => ({ ...prev, [tugasId]: false }));
-    }
-  };
-
-  const renderCard = (t, isOverdueCard) => {
-    const dl = fmtDl(t.deadline);
-    const aksReq = store.getAksesRequest(t.id, user.id);
-    const soalCount = t.soal?.length || 0;
-    const poinMax = t.graded === false ? Math.round((t.poinMax || 0) * 0.2) : (t.poinMax || 0);
-    const allSiswa = store.getAllSiswa(t.jenjang);
-    const siswaList = Array.isArray(t.assignedTo) ? allSiswa.filter(s => t.assignedTo.includes(s.id)) : allSiswa;
-    const totalSiswa = siswaList.length;
-    const sudahKerjakan = store.getSubs().filter(s => s.tugasId === t.id).length;
-    const pctDone = totalSiswa > 0 ? Math.min(100, Math.round((sudahKerjakan / totalSiswa) * 100)) : 0;
-    const barColor = pctDone >= 75 ? "var(--accent)" : "var(--bad)";
-    const showMintaAkses = isOverdueCard && (!aksReq || aksReq.status === "rejected");
-    const showPending = isOverdueCard && aksReq?.status === "pending";
-    const isLoading = loadingAkses[t.id];
-    const errMsg = aksesError[t.id];
-    return (
-      <div key={t.id} style={{
-        border: isOverdueCard ? "1.5px solid var(--bad)" : "1.5px solid var(--line)",
-        borderRadius: 14, padding: "14px 16px",
-        background: "var(--surface)"
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: isOverdueCard ? "var(--bad)" : "var(--accent)",
-            background: isOverdueCard ? "rgba(220,53,69,.08)" : "var(--accent-tint)",
-            padding: "3px 8px", borderRadius: 6, letterSpacing: ".03em", textTransform: "uppercase"
-          }}>{isOverdueCard ? "Terlambat" : t.mapel}</span>
-          <span style={{
-            fontSize: 11, fontWeight: 600,
-            color: dl.tone === "bad" ? "var(--bad)" : dl.tone === "warn" ? "var(--warn)" : "var(--ink-3)",
-            display: "flex", alignItems: "center", gap: 4
-          }}><I n="clock" s={12} />{dl.label}</span>
-        </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.4 }}>{t.judul}</div>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="fileText" s={12} />{soalCount} soal</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><I n="target" s={12} />+{poinMax} pt</span>
-        </div>
-        {totalSiswa > 0 && <div style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sudah mengerjakan</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{sudahKerjakan}/{totalSiswa}</span>
-          </div>
-          <div style={{ height: 6, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-            <div style={{
-              height: "100%", borderRadius: 99, transition: "width .4s",
-              width: `${pctDone}%`,
-              background: barColor
-            }} />
-          </div>
-        </div>}
-        {/* Button */}
-        {showMintaAkses ? (
-          <>
-            <button onClick={() => handleMintaAkses(t.id, t.judul)} disabled={isLoading} style={{
-              width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-              background: isLoading ? "var(--surface-alt)" : "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)",
-              color: isLoading ? "var(--ink-3)" : "#fff", fontWeight: 700, fontSize: 14,
-              cursor: isLoading ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              boxShadow: isLoading ? "none" : "0 2px 8px rgba(192,57,43,.3)"
-            }}>{isLoading ? "Mengirim..." : <>Minta Akses <I n="send" s={14} /></>}</button>
-            {errMsg && <div style={{ fontSize: 11, color: "var(--bad)", marginTop: 6, textAlign: "center" }}>{errMsg}</div>}
-          </>
-        ) : showPending ? (
-          <button disabled style={{
-            width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-            background: "var(--surface-alt)", color: "var(--ink-3)",
-            fontWeight: 700, fontSize: 14, cursor: "not-allowed",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6
-          }}><I n="clock" s={14} /> Menunggu Persetujuan...</button>
-        ) : (
-          <button onClick={() => { onClose(); navigate("tugas-detail", { tugasId: t.id }); }} style={{
-            width: "100%", padding: "11px 0", borderRadius: 12, border: "none",
-            background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)",
-            color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            boxShadow: "0 2px 8px rgba(13,107,122,.3)"
-          }}>Kerjakan <span style={{ fontSize: 16 }}>→</span></button>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 250 }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: "var(--surface)", borderRadius: 20, width: "100%", maxWidth: 400,
-        boxShadow: "0 20px 60px rgba(0,0,0,.25)", overflow: "hidden", maxHeight: "85vh", display: "flex", flexDirection: "column"
-      }}>
-        {/* Header — teal gradient, slim */}
-        <div style={{
-          background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)",
-          padding: "12px 16px", position: "relative", borderRadius: "20px 20px 0 0"
-        }}>
-          <button onClick={onClose} style={{
-            position: "absolute", top: 10, right: 12, background: "rgba(255,255,255,.18)",
-            border: "none", borderRadius: 99, width: 28, height: 28, display: "grid", placeItems: "center",
-            color: "#fff", cursor: "pointer", backdropFilter: "blur(4px)"
-          }}><I n="x" s={14} /></button>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>Tugas Belum Dikerjakan</div>
-            <span style={{
-              fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "#fff",
-              borderRadius: 99, minWidth: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px"
-            }}>{pendingTugas.length}</span>
-          </div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginTop: 2 }}>Ada {pendingTugas.length} tugas yang belum kamu kerjakan</div>
-        </div>
-        {/* Tugas list — aktif dulu, lalu overdue di bawah */}
-        <div style={{ padding: "10px 14px 14px", overflowY: "auto", flex: 1 }}>
-          {/* Tugas aktif (belum lewat deadline) */}
-          {aktifList.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {aktifList.map(t => renderCard(t, false))}
-            </div>
-          )}
-          {/* Separator */}
-          {aktifList.length > 0 && overdueList.length > 0 && (
-            <div style={{
-              display: "flex", alignItems: "center", gap: 10, margin: "16px 0 12px",
-              color: "var(--ink-4)", fontSize: 11, fontWeight: 600
-            }}>
-              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-              Lewat Deadline
-              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-            </div>
-          )}
-          {/* Tugas overdue */}
-          {overdueList.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {overdueList.map(t => renderCard(t, true))}
-            </div>
-          )}
-        </div>
-        {/* Footer hint */}
-        <div style={{ padding: "8px 14px 12px", textAlign: "center", fontSize: 11, color: "var(--ink-4)" }}>
-          Kamu bisa menutup dan mengerjakan nanti
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Parse deadline → end-of-day lokal (date-only "2026-10-19" → 23:59:59 WIB, bukan UTC midnight)
-function deadlineEnd(dl) {
-  if (!dl) return 0;
-  if (typeof dl === "string" && !dl.includes("T")) {
-    const [y, m, day] = dl.split("-").map(Number);
-    return new Date(y, m - 1, day, 23, 59, 59, 999).getTime();
-  }
-  return new Date(dl).getTime();
-}
-
-// Countdown chip merah untuk tugas aktif — "Xj Xm lagi" (shared: Dashboard, DaftarTugas, DetailTugas)
-function DeadlineChip({ deadline }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(iv); }, []);
-  const target = deadlineEnd(deadline);
-  const diff = target - now;
-  if (diff <= 0) return <span className="chip chip-bad">Lewat</span>;
-  const hari = Math.floor(diff / 86400000);
-  const jam = Math.floor((diff % 86400000) / 3600000);
-  const menit = Math.floor((diff % 3600000) / 60000);
-  const label = hari > 0 ? `${hari}h ${jam}j lagi` : jam > 0 ? `${jam}j ${menit}m lagi` : `${menit}m lagi`;
-  return <span className="chip chip-bad" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{label}</span>;
-}
-
-// ─── DASHBOARD SISWA ───
-function DashboardSiswa({ user, store, navigate }) {
-  const [showMission, setShowMission] = useState(false);
-  const stats = store.getStats(user.id);
-  // Filter sama seperti DaftarTugas: tugas personal (assignedTo array) hanya untuk siswa yang di-assign.
-  // Tanpa ini, "Latihan Khusus" milik siswa lain bocor ke Beranda semua orang — dan yang lebih parah,
-  // ikut masuk hitungan tugasLewat sehingga memicu reset streak siswa yang bahkan tidak ditugasi.
-  const allTugas = store.getTugas().filter(t => {
-    if (t.jenjang !== user.jenjang || t.status !== "aktif") return false;
-    if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(user.id)) return false;
-    return true;
-  });
-  const byNewest = (a, b) => {
-    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return tb - ta;
-  };
-  const tugas = allTugas.filter(t => fmtDl(t.deadline).tone !== "bad").sort(byNewest); // belum lewat deadline
-  // Tugas terjadwal — akan datang dengan countdown
-  const akanDatangDash = store.getTugas().filter(t => {
-    if (t.jenjang !== user.jenjang || t.status !== "scheduled" || !t.scheduledAt) return false;
-    if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(user.id)) return false;
-    return true;
-  }).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
-  // Tugas yang benar-benar "hangus": lewat deadline, belum dikerjakan, DAN gak punya window susulan
-  // personal yang masih aktif. Siswa yang masih punya jatah susulan (mis. hasil reset dari guru)
-  // belum boleh divonis — konsisten dengan perlakuan di getTugasAstrolabAvg.
-  const tugasLewat = allTugas.filter(t =>
-    fmtDl(t.deadline).tone === "bad" &&
-    !store.hasSub(user.id, t.id) &&
-    !store.isSusulanAktif(t.id, user.id)
-  );
-  const lb = store.getLeaderboard(user.jenjang);
-  const myRank = lb.find(s => s.id === user.id);
-
-  // Reset streak kalau siswa lewatin deadline tanpa submit. Trigger sekali per mount pas data ready.
-  // Dedupe per-tugas ada di store (stats.streakResetFor) — lihat resetStreakIfMissed.
-  const hasCheckedStreak = useRef(false);
-  const missedIds = tugasLewat.map(t => t.id).join(",");
-  useEffect(() => {
-    if (hasCheckedStreak.current) return;
-    // Tunggu sampai data loaded (allTugas terisi atau confirmed empty)
-    if (store.loading) return;
-    if (!missedIds) return;
-    hasCheckedStreak.current = true;
-    store.resetStreakIfMissed(user.id, missedIds.split(","));
-  }, [missedIds, store.loading]);
-
-  // Card "Akan Datang" — countdown warna warning, "dalam Xj Xm"
-  function DashCountdownCard({ t }) {
-    const [now, setNow] = useState(Date.now());
-    useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(iv); }, []);
-    const target = new Date(t.scheduledAt).getTime();
-    const diff = Math.max(0, target - now);
-    const jam = Math.floor(diff / 3600000);
-    const menit = Math.floor((diff % 3600000) / 60000);
-    const detik = Math.floor((diff % 60000) / 1000);
-    const countdown = jam > 0 ? `dalam ${jam}j ${menit}m` : menit > 0 ? `dalam ${menit}m ${detik}d` : `dalam ${detik}d`;
-    return (
-      <Card style={{ padding: "14px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: "var(--r-sm)", background: "var(--warn-bg)", display: "grid", placeItems: "center", color: "var(--warn)", flexShrink: 0 }}>
-            <I n="clock" s={18} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", lineHeight: 1.35 }}>{t.judul}</div>
-            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel} · {t.soal?.length || 0} soal</div>
-          </div>
-          <span className="chip chip-warn" style={{ fontFamily: "var(--mono)", fontWeight: 700, flexShrink: 0 }}>{countdown}</span>
-        </div>
-      </Card>
-    );
-  }
-
-  // Dynamic greeting by waktu
-  const hour = new Date().getHours();
-  const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
-
-  // ── Tugas Hari Ini Popup — hanya muncul sekali per session login ──
-  // Include: tugas deadline belum lewat + tugas susulan aktif + tugas perorangan (assignedTo)
-  const pendingTugas = allTugas.filter(t => {
-    if (store.hasSub(user.id, t.id)) return false; // sudah dikerjakan
-    const lewat = fmtDl(t.deadline).tone === "bad";
-    if (!lewat) return true; // belum lewat → tampil
-    if (store.isSusulanAktif(t.id, user.id)) return true; // punya susulan aktif → tampil
-    // Lewat deadline: tampilkan kecuali sudah ditolak aksesnya
-    const aksReq = store.getAksesRequest(t.id, user.id);
-    if (aksReq && aksReq.status === "rejected") return false; // ditolak → hilang dari popup
-    return true; // belum minta / pending / approved → tampil
-  });
-  const [showTugasPopup, setShowTugasPopup] = useState(false);
-  const tugasPopupTriggered = useRef(false);
-  useEffect(() => {
-    if (tugasPopupTriggered.current || _tugasPopupShownThisSession) return;
-    if (store.loading) return; // tunggu data loaded
-    if (pendingTugas.length > 0) { tugasPopupTriggered.current = true; setShowTugasPopup(true); }
-  }, [store.loading, pendingTugas.length]);
-  const closeTugasPopup = () => { _tugasPopupShownThisSession = true; setShowTugasPopup(false); };
-
-  const prog = getLevelProgress(stats.poin || 0);
-  const lv = getLevel(stats.poin || 0);
-
-  return <>
-    <div className="page">
-      {/* Greeting */}
-      <div style={{ paddingTop: 14, paddingBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 2 }}>{greeting}!</div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", margin: 0, lineHeight: 1.2 }}>Halo, {user.namaDisplay}</h1>
-        </div>
-        <span style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-tint)", padding: "4px 10px", borderRadius: 99, fontWeight: 600, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{store.getActivePeriode()}</span>
-      </div>
-
-      {/* Banner Mission Mode — INDIGO + rocket, sengaja beda dari kartu status (teal) di bawah */}
-      {store.isMissionActive(user.jenjang) && (
-        <button onClick={() => setShowMission(true)} style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", marginBottom: 14, border: `1px solid ${MISSION_THEME.ring}`, borderRadius: "var(--r)", cursor: "pointer", background: MISSION_THEME.grad, color: "#fff", boxShadow: "0 6px 18px rgba(8,145,178,.3)" }}>
-          <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="rocket" s={22} /></div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: ".03em" }}>MISSION MODE AKTIF</div>
-            <div style={{ fontSize: 11.5, opacity: .92 }}>Ketuk untuk buka misi hari ini</div>
-          </div>
-          <span style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.2)", padding: "5px 11px", borderRadius: 99, flexShrink: 0 }}>Buka</span>
-        </button>
-      )}
-      {showMission && <MissionSiswaModal user={user} store={store} navigate={navigate} onClose={() => setShowMission(false)} />}
-
-      {/* Status Card: Ranking + Poin + Level + Streak — satu card untuk semua */}
-      <div className="ds-status">
-        <div className="ds-status-hdr">
-          <div>
-            <div className="ds-rank-num">#{myRank?.rank || "—"}</div>
-            <div className="ds-rank-sub">Ranking · Kelas {user.jenjang}</div>
-          </div>
-          <div className="ds-poin">
-            <div className="ds-poin-num">{stats.poin.toLocaleString("id-ID")}</div>
-            <div className="ds-poin-label">Total Poin</div>
-          </div>
-        </div>
-        <div className="ds-status-body">
-          <div className="ds-level-row">
-            <TierIcon tierId={lv.tierId} size={32} color={lv.color} />
-            <div className="ds-level-info">
-              <div className="ds-level-top">
-                <span style={{ fontSize: 12, fontWeight: 700, color: lv.color }}>{lv.name}</span>
-                {prog.next
-                  ? <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{prog.needed} poin lagi → {prog.next.name}</span>
-                  : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>LEVEL MAKS</span>}
-              </div>
-              <div className="ds-level-bar">
-                <div className="ds-level-fill" style={{ width: `${prog.pct}%`, background: lv.color }} />
-              </div>
-            </div>
-            {(stats.streak || 0) > 0 && (
-              <div className="ds-streak">
-                <div>
-                  <div className="ds-streak-num"><I n="flame" s={14} />{stats.streak}</div>
-                  <div className="ds-streak-label">streak</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Stats — hanya data yang belum ada di status card */}
-      <div className="ds-stats">
-        <div className="ds-stat">
-          <div className="ds-stat-icon score"><I n="chartBar" s={16} /></div>
-          <div>
-            <div className="ds-stat-val">{stats.nilaiRata || "—"}</div>
-            <div className="ds-stat-label">Nilai rata-rata</div>
-          </div>
-        </div>
-        <div className="ds-stat">
-          <div className="ds-stat-icon tasks"><I n="checkCircle" s={16} /></div>
-          <div>
-            <div className="ds-stat-val">{stats.tugasSelesai}</div>
-            <div className="ds-stat-label">Tugas selesai</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tugas Aktif — dengan countdown merah */}
-      <div className="sh"><h2>Tugas aktif</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("tugas")}>Semua <I n="chevR" s={12} /></button></div>
-      {tugas.length === 0 ? <div className="empty">Belum ada tugas aktif dari guru.</div> :
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-          {tugas.slice(0, 3).map(t => {
-            const dl = fmtDl(t.deadline);
-            const done = store.hasSub(user.id, t.id);
-            const poinMax = t.graded === false ? Math.round((t.poinMax || 0) * 0.2) : (t.poinMax || 0);
-            return (
-              <button key={t.id} onClick={() => navigate("tugas-detail", { tugasId: t.id })} style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-                <Card style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: "var(--r-sm)", background: done ? "var(--good-bg)" : "var(--accent-tint)", display: "grid", placeItems: "center", color: done ? "var(--good)" : "var(--accent)", flexShrink: 0 }}>
-                      <I n={done ? "check" : "book"} s={18} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: done ? "var(--ink-3)" : "var(--ink)" }}>{t.judul}</div>
-                      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{t.mapel}{!done && t.soal?.length ? ` · ${t.soal.length} soal` : ""}{!done && poinMax ? ` · +${poinMax} pt` : ""}</div>
-                    </div>
-                    {done ? <span className="chip chip-good">Selesai</span> : !done && t.deadline ? <DeadlineChip deadline={t.deadline} /> : null}
-                  </div>
-                </Card>
-              </button>
-            );
-          })}
-        </div>}
-
-      {/* Akan Datang — tugas terjadwal, countdown warna warning */}
-      {akanDatangDash.length > 0 && <>
-        <div className="sh"><h2>Akan Datang</h2></div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-          {akanDatangDash.slice(0, 2).map(t => <DashCountdownCard key={t.id} t={t} />)}
-        </div>
-      </>}
-
-      {/* Top 3 Leaderboard */}
-      <div className="sh"><h2>Top 3 Kelas {user.jenjang}</h2><button className="btn btn-soft btn-sm" onClick={() => navigate("leaderboard")}>Semua <I n="chevR" s={12} /></button></div>
-      <Card pad="none" style={{ overflow: "hidden", marginBottom: 20 }}>
-        {lb.length === 0 ? <div className="empty">Belum ada ranking. Kerjakan tugas dulu!</div> :
-          lb.slice(0, 3).map(s => (
-            <div key={s.id} className="lb-row" style={{ gridTemplateColumns: "28px 34px 1fr auto" }}>
-              <div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : "top3"}`}>{s.rank}</div>
-              <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
-              <div>
-                <div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <span>{s.nama}{s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span>
-                  <LevelBadge poin={s.poin || 0} size="xs" showName={false} />
-                </div>
-                <div className="lb-meta">{s.kelas}</div>
-              </div>
-              <div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div>
-            </div>
-          ))}
-      </Card>
-    </div>
-    {/* Tugas Hari Ini Popup */}
-    {showTugasPopup && pendingTugas.length > 0 && (
-      <TugasHariIniPopup pendingTugas={pendingTugas} store={store} user={user} navigate={navigate} onClose={closeTugasPopup} />
-    )}
-  </>;
-}
-
-// ─── LEADERBOARD ───
-function RankMovement({ move }) {
-  if (move === null || move === undefined) return null;
-  const up = move > 0;
-  const same = move === 0;
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
-      color: same ? "var(--ink-3)" : up ? "var(--good)" : "var(--bad)",
-      display: "inline-flex", alignItems: "center", gap: 1, marginLeft: 4
-    }}>
-      {same ? "=" : up ? "▲" : "▼"}{same ? "" : Math.abs(move)}
-    </span>
-  );
-}
-
-function LeaderboardScreen({ user, store }) {
-  const isGuru = user.role === "guru";
-  const [tab, setTab] = useState(isGuru ? "VII" : user.jenjang);
-  const lb = store.getLeaderboard(tab);
-  const myRow = lb.find(s => s.id === user.id);
-  const myInTop = myRow && myRow.rank <= 10;
-  const snapshot = store.getRankSnapshot(tab);
-  const hasSnapshot = Object.keys(snapshot).filter(k => k !== "_savedAt").length > 0;
-
-  // Prestasi minggu ini — 5 nominasi dengan metrik BERBEDA
-  const subsAll = store.getSubs();
-  const oneWeekAgo = Date.now() - 7 * 24 * 3600000;
-
-  // 1. Top Performer — poin tertinggi
-  const topPerformer = [...lb].sort((a, b) => (b.poin || 0) - (a.poin || 0))[0];
-
-  // 2. Comeback King — peningkatan nilai paling drastis (nilai terakhir vs sebelumnya)
-  let comebackKing = null, maxJump = 0;
-  lb.forEach(s => {
-    const sSubs = subsAll.filter(x => x.siswaId === s.id && x.submittedAt).sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
-    if (sSubs.length >= 2) {
-      const jump = sSubs[sSubs.length - 1].nilai - sSubs[sSubs.length - 2].nilai;
-      if (jump > maxJump) { maxJump = jump; comebackKing = { ...s, jump }; }
-    }
-  });
-
-  // 3. Perfectionist — paling banyak nilai 100
-  let perfectionist = null, maxPerfect = 0;
-  lb.forEach(s => {
-    const perfectCount = subsAll.filter(x => x.siswaId === s.id && x.nilai === 100).length;
-    if (perfectCount > maxPerfect) { maxPerfect = perfectCount; perfectionist = { ...s, perfectCount }; }
-  });
-
-  // 4. Speed Runner — rata-rata submit tercepat (relatif terhadap deadline)
-  let speedRunner = null, bestSpeed = Infinity;
-  lb.forEach(s => {
-    const sSubs = subsAll.filter(x => x.siswaId === s.id && x.submittedAt && x.ontime);
-    if (sSubs.length >= 2) {
-      // Pakai jumlah ontime sebagai proxy speed (lebih banyak ontime = lebih cepat)
-      const ontimeRate = sSubs.length;
-      if (-ontimeRate < bestSpeed) { bestSpeed = -ontimeRate; speedRunner = { ...s, ontimeCount: sSubs.length }; }
-    }
-  });
-
-  // 5. Most Improved — peningkatan rata-rata nilai (paruh kedua vs paruh pertama subs)
-  let mostImproved = null, maxImprove = 0;
-  lb.forEach(s => {
-    const sSubs = subsAll.filter(x => x.siswaId === s.id && x.submittedAt).sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
-    if (sSubs.length >= 4) {
-      const half = Math.floor(sSubs.length / 2);
-      const firstAvg = sSubs.slice(0, half).reduce((a, b) => a + b.nilai, 0) / half;
-      const secondAvg = sSubs.slice(half).reduce((a, b) => a + b.nilai, 0) / (sSubs.length - half);
-      const improve = Math.round(secondAvg - firstAvg);
-      if (improve > maxImprove) { maxImprove = improve; mostImproved = { ...s, improve }; }
-    }
-  });
-
-  const nominasi = [
-    topPerformer && { label: "TOP PERFORMER", icon: "trophy", color: "#b45309", bg: "#fef3c7", siswa: topPerformer, sub: `${topPerformer.poin?.toLocaleString("id-ID") || 0} poin` },
-    comebackKing && { label: "COMEBACK KING", icon: "flame", color: "#dc2626", bg: "#fef2f2", siswa: comebackKing, sub: `Naik +${comebackKing.jump} poin nilai` },
-    perfectionist && maxPerfect > 0 && { label: "PERFECTIONIST", icon: "target", color: "#d97706", bg: "#fffbeb", siswa: perfectionist, sub: `${perfectionist.perfectCount}x nilai 100` },
-    speedRunner && { label: "SPEED RUNNER", icon: "zap", color: "#7c3aed", bg: "#f5f3ff", siswa: speedRunner, sub: `${speedRunner.ontimeCount}x submit tepat waktu` },
-    mostImproved && maxImprove > 0 && { label: "MOST IMPROVED", icon: "trending", color: "#16a34a", bg: "#f0fdf4", siswa: mostImproved, sub: `Rata-rata naik +${mostImproved.improve}` },
-  ].filter(Boolean);
-
-  return <>
-    <div className="page">
-      <div className="dt"><div><h1>Leaderboard</h1><p>Ranking poin akumulatif · semester ini</p></div></div>
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={`tab ${tab === "VII" ? "active" : ""}`} onClick={() => setTab("VII")}>Kelas VII</button>
-        <button className={`tab ${tab === "VIII" ? "active" : ""}`} onClick={() => setTab("VIII")}>Kelas VIII</button>
-      </div>
-      {isGuru && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        <button className="btn btn-soft btn-sm" onClick={async () => { await store.saveRankSnapshot(tab); }} style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
-          <I n="refresh" s={12} /> Simpan Snapshot Ranking
-        </button>
-      </div>}
-      {hasSnapshot && snapshot._savedAt && <div style={{ fontSize: 10, color: "var(--ink-4)", textAlign: "right", marginBottom: 8, marginTop: -4 }}>Perubahan dari {new Date(snapshot._savedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</div>}
-
-      {lb.length === 0 ? <Card><div className="empty empty-box"><I n="trophy" s={32} /><h3>Belum ada ranking</h3><p>Ranking muncul setelah siswa menyelesaikan tugas pertama.</p></div></Card> : <>
-
-        {/* Podium compact */}
-        {lb.length >= 3 && <Card style={{ marginBottom: 12, padding: "20px 16px 0", overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 6 }}>
-            {[lb[1], lb[0], lb[2]].map((s, idx) => {
-              const place = [2, 1, 3][idx];
-              const isFirst = place === 1;
-              const podH = [52, 72, 40][idx];
-              const podBg = isFirst ? "#fbbf24" : place === 2 ? "#94a3b8" : "#cd7f32";
-              const podTextCol = isFirst ? "#78350f" : "#fff";
-              const confettiIntensity = place === 1 ? "high" : place === 2 ? "medium" : "low";
-              return (
-                <div key={s.id} style={{ flex: 1, maxWidth: 100, textAlign: "center", minWidth: 0, position: "relative" }}>
-                  <ConfettiRain intensity={confettiIntensity} />
-                  <div style={{ position: "relative", zIndex: 2 }}>
-                    {isFirst
-                      ? <CelebrationAvatar userId={s.id} name={s.nama} size="lg" store={store} />
-                      : <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
-                    }
-                    <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingInline: 4 }}>{getFirstName(s.nama)}</div>
-                    <div className="stat-num" style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.poin.toLocaleString("id-ID")} pt{hasSnapshot && <RankMovement move={store.getRankMovement(tab, s.id)} />}</div>
-                    <div className={isFirst ? "podium-1" : ""} style={{
-                      height: podH,
-                      background: podBg,
-                      borderTopLeftRadius: 6,
-                      borderTopRightRadius: 6,
-                      display: "grid",
-                      placeItems: "center",
-                      fontFamily: "var(--mono)",
-                      fontSize: isFirst ? 18 : 14,
-                      fontWeight: 800,
-                      color: podTextCol,
-                    }}>
-                      {place}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>}
-
-        {/* Top 10 + Prestasi minggu ini */}
-        <div className="g2" style={{ alignItems: "start" }}>
-          {/* Top 10 */}
-          <Card pad="none" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-soft)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>Top 10 · Kelas {tab}</div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{lb.length} siswa</div>
-            </div>
-            {lb.slice(0, 10).map(s => {
-              const move = hasSnapshot ? store.getRankMovement(tab, s.id) : null;
-              return (
-              <div key={s.id} className={`lb-row ${!isGuru && s.id === user.id ? "me" : ""}`}>
-                <div className={`lb-rank ${s.rank === 1 ? "top1" : s.rank === 2 ? "top2" : s.rank === 3 ? "top3" : ""}`}>{s.rank}</div>
-                <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
-                <div style={{ minWidth: 0 }}>
-                  <div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span>{s.nama}{!isGuru && s.id === user.id && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span>
-                    <LevelBadge poin={s.poin || 0} size="xs" showName={false} />
-                    <RankMovement move={move} />
-                  </div>
-                  <div className="lb-meta">
-                    {s.kelas}
-                    {(s.streak || 0) >= 3 && <span className="streak-pill" style={{ marginLeft: 4 }}><FlameAnimated size={14} streak={s.streak} /> {s.streak}x</span>}
-                  </div>
-                </div>
-                <div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div>
-              </div>
-              );
-            })}
-            {!isGuru && !myInTop && myRow && (() => {
-              const myIdx = lb.findIndex(s => s.id === user.id);
-              const start = Math.max(0, myIdx - 2);
-              const end = Math.min(lb.length, myIdx + 3);
-              const neighbours = lb.slice(start, end);
-              return <>
-                <div className="divider">· · ·</div>
-                <div style={{ fontSize: 10, color: "var(--ink-3)", padding: "4px 14px 2px", fontWeight: 600, letterSpacing: ".03em" }}>Ranking di sekitarmu</div>
-                {neighbours.map(s => {
-                  const isMe = s.id === user.id;
-                  const move = hasSnapshot ? store.getRankMovement(tab, s.id) : null;
-                  return (
-                    <div key={s.id} className={`lb-row ${isMe ? "me" : ""}`}>
-                      <div className="lb-rank">{s.rank}</div>
-                      <UserAvatar userId={s.id} name={s.nama} size="md" store={store} />
-                      <div style={{ minWidth: 0 }}>
-                        <div className="lb-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <span>{s.nama}{isMe && <span style={{ color: "var(--accent)", fontWeight: 600 }}> · kamu</span>}</span>
-                          <LevelBadge poin={s.poin || 0} size="xs" showName={false} />
-                          <RankMovement move={move} />
-                        </div>
-                        <div className="lb-meta">{s.kelas}</div>
-                      </div>
-                      <div className="lb-pts">{s.poin.toLocaleString("id-ID")}</div>
-                    </div>
-                  );
-                })}
-              </>;
-            })()}
-          </Card>
-
-          {/* Prestasi minggu ini */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Card>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Prestasi minggu ini</div>
-              {nominasi.length === 0 ? (
-                <div style={{ fontSize: 12, color: "var(--ink-3)", padding: "8px 0" }}>Nominasi muncul setelah siswa mengerjakan beberapa tugas.</div>
-              ) : nominasi.map((item, i) => (
-                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < nominasi.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 9, background: item.bg, color: item.color, display: "grid", placeItems: "center", flexShrink: 0 }}>
-                    <I n={item.icon} s={15} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: item.color, letterSpacing: ".08em", textTransform: "uppercase" }}>{item.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.siswa?.nama ? getFirstName(item.siswa.nama) : "—"}</div>
-                    <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{item.sub}</div>
-                  </div>
-                  {item.siswa && <UserAvatar userId={item.siswa.id} name={item.siswa.nama} size="sm" store={store} />}
-                </div>
-              ))}
-            </Card>
-            {!isGuru && <Card style={{ background: "linear-gradient(135deg, var(--accent-soft), #eaf4f3)", border: "1px solid var(--accent-soft)" }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="zap" s={15} /></div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-2)", marginBottom: 4 }}>Namamu bisa ada di sini!</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>Setiap tugas yang kamu kerjain tepat waktu = poin + streak. Konsisten ngerjain = namamu naik terus di ranking. Mulai dari sekarang!</div>
-                </div>
-              </div>
-            </Card>}
-          </div>
-        </div>
-      </>}
-    </div>
-  </>;
-}
-
-// ─── DAFTAR TUGAS (SISWA) ───
-function DaftarTugas({ user, store, navigate }) {
-  const isVII = user.jenjang === "VII";
-  const [mapel, setMapel] = useState("IPA");
-  const [showArsip, setShowArsip] = useState(false);
-  const [showAllDone, setShowAllDone] = useState(false);
-
-  // Filter: (1) mapel & jenjang match, (2) kalau tugas personal (assignedTo array), siswa harus di-assign
-  // (3) exclude scheduled tasks dari daftar utama — tampilkan terpisah di "Akan Datang"
-  const semuaRaw = store.getTugas().filter(t => {
-    if (t.jenjang !== user.jenjang || t.mapel !== mapel) return false;
-    if (Array.isArray(t.assignedTo) && !t.assignedTo.includes(user.id)) return false;
-    return true;
-  });
-  const semua = semuaRaw.filter(t => t.status !== "scheduled");
-  const akanDatang = semuaRaw.filter(t => t.status === "scheduled" && t.scheduledAt).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
-  // Sort by newest first (createdAt desc)
-  const byNewest = (a, b) => {
-    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return tb - ta;
-  };
-
-  // Split: belum (belum dikerjakan, deadline ok), selesai, personal (latihan khusus), arsip (lewat & belum)
-  const belum = semua.filter(t => {
-    const dl = fmtDl(t.deadline);
-    const done = store.hasSub(user.id, t.id);
-    return !done && dl.tone !== "bad" && !Array.isArray(t.assignedTo);
-  }).sort(byNewest);
-
-  const selesai = semua.filter(t => store.hasSub(user.id, t.id) && !Array.isArray(t.assignedTo)).sort(byNewest);
-
-  const personal = semua.filter(t => Array.isArray(t.assignedTo)).sort(byNewest);
-
-  const arsip = semua.filter(t => {
-    const dl = fmtDl(t.deadline);
-    const done = store.hasSub(user.id, t.id);
-    return !done && dl.tone === "bad";
-  }).sort(byNewest);
-
-  // Susulan tasks — belum dikerjakan, deadline lewat tapi punya susulan aktif
-  const susulanList = semua.filter(t => {
-    const dl = fmtDl(t.deadline);
-    const done = store.hasSub(user.id, t.id);
-    return !done && dl.tone === "bad" && store.isSusulanAktif(t.id, user.id) && !Array.isArray(t.assignedTo);
-  }).sort(byNewest);
-
-  // Progress stats
-  const totalTugas = semua.filter(t => !Array.isArray(t.assignedTo)).length;
-  const totalSelesai = selesai.length;
-  const nilaiList = selesai.map(t => { const sub = store.getSubBy(user.id, t.id); return sub?.nilai || 0; });
-  const nilaiRata = nilaiList.length > 0 ? Math.round(nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length) : 0;
-  const circumference = 2 * Math.PI * 22; // r=22
-  const progressOffset = totalTugas > 0 ? circumference - (totalSelesai / totalTugas) * circumference : circumference;
-
-  // Countdown card — tugas terjadwal yang belum aktif
-  function CountdownCard({ t }) {
-    const [now, setNow] = useState(Date.now());
-    useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(iv); }, []);
-    const target = new Date(t.scheduledAt).getTime();
-    const diff = Math.max(0, target - now);
-    const jam = Math.floor(diff / 3600000);
-    const menit = Math.floor((diff % 3600000) / 60000);
-    const detik = Math.floor((diff % 60000) / 1000);
-    const countdown = jam > 0 ? `dalam ${jam}j ${menit}m ${detik}d` : menit > 0 ? `dalam ${menit}m ${detik}d` : `dalam ${detik}d`;
-    return (
-      <Card style={{ borderLeft: "3px solid var(--warn)" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: "var(--r-sm)", flexShrink: 0, display: "grid", placeItems: "center",
-            background: "var(--warn-bg)", color: "var(--warn)" }}>
-            <I n="clock" s={18} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{t.judul}</div>
-            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              <span className="chip chip-warn" style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{countdown}</span>
-              <span className="chip">{new Date(t.scheduledAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-              <span className="chip">{t.soal?.length || 0} soal</span>
-            </div>
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
-  // Active task card — for belum dikerjakan & susulan
-  function ActiveCard({ t }) {
-    const dl = fmtDl(t.deadline);
-    const isPersonal = Array.isArray(t.assignedTo);
-    const susulanAktif = store.isSusulanAktif(t.id, user.id);
-    return (
-      <button onClick={() => navigate("tugas-detail", { tugasId: t.id })}
-        style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none" }}>
-        <Card style={{ borderLeft: isPersonal ? "3px solid var(--accent-2)" : susulanAktif ? "3px solid var(--warn)" : "none" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ width: 42, height: 42, borderRadius: "var(--r-sm)", flexShrink: 0, display: "grid", placeItems: "center",
-              background: isPersonal ? "var(--accent-tint)" : susulanAktif ? "var(--warn-bg)" : "var(--accent-soft)",
-              color: isPersonal ? "var(--accent-2)" : susulanAktif ? "var(--warn)" : "var(--accent-2)" }}>
-              <I n={isPersonal ? "star" : "book"} s={18} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{t.judul}</div>
-              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                {susulanAktif && <span className="chip chip-warn"><I n="refresh" s={10} /> Susulan</span>}
-                {isPersonal && <span className="chip chip-accent" style={{ fontSize: 10 }}>Latihan Khusus</span>}
-                <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
-                <span className="chip">+{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt</span>
-                <span className="chip">{t.soal?.length || 0} soal</span>
-              </div>
-            </div>
-            {t.deadline && dl.tone !== "bad" ? <DeadlineChip deadline={t.deadline} /> : <I n="chevR" s={16} style={{ color: "var(--ink-3)", marginTop: 12, flexShrink: 0 }} />}
-          </div>
-        </Card>
-      </button>
-    );
-  }
-
-  // Done rows visible — default 3, expandable
-  const DONE_LIMIT = 3;
-  const visibleDone = showAllDone ? selesai : selesai.slice(0, DONE_LIMIT);
-
-  return <>
-    <div className="page">
-      <div className="dt"><div><h1>Tugas {mapel}</h1><p>Kelas {user.jenjang}</p></div></div>
-
-      {isVII && (
-        <div className="tabs" style={{ marginBottom: 14 }}>
-          <button className={`tab ${mapel === "IPA" ? "active" : ""}`} onClick={() => setMapel("IPA")}><MapelIcon mapel="IPA" size={13} /> IPA</button>
-          <button className={`tab ${mapel === "Informatika" ? "active" : ""}`} onClick={() => setMapel("Informatika")}><MapelIcon mapel="Informatika" size={13} /> Informatika</button>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {semua.length === 0
-        ? <Card><div className="empty empty-box">
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", marginBottom: 8 }}><MapelIcon mapel={mapel} size={28} /></div>
-            <h3>Belum ada tugas {mapel}</h3>
-            <p>Tugas akan muncul di sini setelah guru membuat tugas untuk kelasmu.</p>
-          </div></Card>
-        : <>
-          {/* Progress Summary */}
-          {totalTugas > 0 && (
-            <div className="dt-progress">
-              <div className="dt-ring">
-                <svg width="52" height="52" viewBox="0 0 52 52">
-                  <circle cx="26" cy="26" r="22" fill="none" stroke="var(--line)" strokeWidth="5" />
-                  <circle cx="26" cy="26" r="22" fill="none" stroke={totalSelesai === totalTugas ? "var(--good)" : "var(--accent)"} strokeWidth="5"
-                    strokeDasharray={circumference} strokeDashoffset={progressOffset} strokeLinecap="round" />
-                </svg>
-                <div className="dt-ring-text" style={`${totalSelesai}/${totalTugas}`.length > 4 ? { fontSize: 12 } : undefined}>{totalSelesai}/{totalTugas}</div>
-              </div>
-              <div className="dt-prog-info">
-                <div className="dt-prog-title">{totalSelesai} dari {totalTugas} tugas selesai</div>
-                {nilaiRata > 0 && <div className="dt-prog-sub">Nilai rata-rata: <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--accent)" }}>{nilaiRata}</span></div>}
-              </div>
-            </div>
-          )}
-
-          {/* Akan Datang — tugas terjadwal dengan countdown */}
-          {akanDatang.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div className="dt-sh">
-                <span className="dt-sh-title">Akan Datang</span>
-                <span className="dt-sh-count">{akanDatang.length} tugas</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {akanDatang.map(t => <CountdownCard key={t.id} t={t} />)}
-              </div>
-            </div>
-          )}
-
-          {/* Belum dikerjakan */}
-          {(belum.length > 0 || susulanList.length > 0) && (
-            <div style={{ marginBottom: 16 }}>
-              <div className="dt-sh">
-                <span className="dt-sh-title">Belum Dikerjakan</span>
-                <span className="dt-sh-count">{belum.length + susulanList.length} tugas</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {susulanList.map(t => <ActiveCard key={t.id} t={t} />)}
-                {belum.map(t => <ActiveCard key={t.id} t={t} />)}
-              </div>
-            </div>
-          )}
-
-          {/* Latihan Khusus (personal tasks) */}
-          {personal.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div className="dt-sh">
-                <span className="dt-sh-title">Latihan Khusus</span>
-                <span className="dt-sh-count">{personal.length} tugas</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {personal.map(t => {
-                  const done = store.hasSub(user.id, t.id);
-                  if (done) {
-                    const sub = store.getSubBy(user.id, t.id);
-                    return (
-                      <button key={t.id} onClick={() => navigate("tugas-detail", { tugasId: t.id })}
-                        style={{ textAlign: "left", display: "block", width: "100%", background: "none", border: "none" }}>
-                        <div className="dt-done-list" style={{ borderLeft: "3px solid var(--accent-2)" }}>
-                          <div className="dt-done-row">
-                            <div className="dt-done-check"><I n="check" s={12} /></div>
-                            <div className="dt-done-info">
-                              <div className="dt-done-title">{t.judul}</div>
-                              <div className="dt-done-sub">Latihan Khusus · {t.soal?.length || 0} soal</div>
-                            </div>
-                            <div className="dt-done-score">{sub?.nilai || "—"}</div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  }
-                  return <ActiveCard key={t.id} t={t} />;
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Selesai — compact rows */}
-          {selesai.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div className="dt-sh">
-                <span className="dt-sh-title">Selesai</span>
-                <span className="dt-sh-count">{selesai.length} tugas</span>
-              </div>
-              <div className="dt-done-list">
-                {visibleDone.map(t => {
-                  const sub = store.getSubBy(user.id, t.id);
-                  return (
-                    <div key={t.id} className="dt-done-row" onClick={() => navigate("tugas-detail", { tugasId: t.id })}>
-                      <div className="dt-done-check"><I n="check" s={12} /></div>
-                      <div className="dt-done-info">
-                        <div className="dt-done-title">{t.judul}</div>
-                        <div className="dt-done-sub">{t.soal?.length || 0} soal · +{sub?.poinDapat || 0} poin</div>
-                      </div>
-                      <div className="dt-done-score">{sub?.nilai || "—"}</div>
-                    </div>
-                  );
-                })}
-                {selesai.length > DONE_LIMIT && !showAllDone && (
-                  <div className="dt-show-more" onClick={() => setShowAllDone(true)}>
-                    <I n="chevD" s={12} /> Lihat semua ({selesai.length} tugas)
-                  </div>
-                )}
-                {showAllDone && selesai.length > DONE_LIMIT && (
-                  <div className="dt-show-more" onClick={() => setShowAllDone(false)}>
-                    <I n="chevU" s={12} /> Tutup
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Arsip — lewat deadline, collapsible */}
-          {arsip.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <button onClick={() => setShowArsip(s => !s)}
-                style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "8px 0", width: "100%", fontFamily: "var(--font)" }}>
-                <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
-                  <I n="clock" s={12} /> Lewat Deadline ({arsip.length})
-                </span>
-                <I n={showArsip ? "chevD" : "chevR"} s={12} style={{ color: "var(--ink-3)" }} />
-                <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-              </button>
-              {showArsip && (
-                <div className="dt-done-list" style={{ opacity: 0.65 }}>
-                  {arsip.map(t => (
-                    <div key={t.id} className="dt-arsip-row" onClick={() => navigate("tugas-detail", { tugasId: t.id })} style={{ cursor: "pointer" }}>
-                      <div className="dt-arsip-icon"><I n="x" s={10} /></div>
-                      <div className="dt-done-info">
-                        <div className="dt-done-title">{t.judul}</div>
-                        <div className="dt-done-sub" style={{ color: "var(--bad)" }}>Deadline terlewat · {t.soal?.length || 0} soal</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      }
-    </div>
-  </>;
-}
-
-// ─── DETAIL TUGAS ───
-function DetailTugas({ user, store, tugasId, navigate }) {
-  const t = store.getTugas().find(x => x.id === tugasId);
-  if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
-  const dl = fmtDl(t.deadline);
-  const done = store.hasSub(user.id, t.id);
-  const sub = store.getSubBy(user.id, t.id);
-  const lewat = dl.tone === "bad";
-  const susulan = store.getSusulan(t.id, user.id);
-  const susulanAktif = store.isSusulanAktif(t.id, user.id);
-  // Cek apakah periode tugas sudah ditutup
-  const periodeTutup = t.periode && store.isSemesterClosed(t.periode);
-  // Bisa kerjakan kalau: normal (belum lewat), ATAU lewat tapi punya susulan personal yang masih aktif, DAN periode belum ditutup
-  const bisa = !done && t.status === "aktif" && t.soal?.length > 0 && (!lewat || susulanAktif) && !periodeTutup;
-
-  // ── Social Proof: hitung progres kelas ──
-  const _spAllSiswa = store.getAllSiswa(t.jenjang);
-  const _spSiswaList = Array.isArray(t.assignedTo) ? _spAllSiswa.filter(s => t.assignedTo.includes(s.id)) : _spAllSiswa;
-  const _spTotal = _spSiswaList.length;
-  const _spDone = _spTotal > 1 ? store.getSubs().filter(s => s.tugasId === t.id).length : 0;
-  const _spPct = _spTotal > 1 ? Math.round((_spDone / _spTotal) * 100) : 0;
-
-  return <>
-    <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas")}><I n="chevL" s={18} /></button><div className="topbar-title">Detail Tugas</div><div style={{ width: 36 }} /></div>
-    <div className="page">
-      <div className="dt"><div><h1>{t.judul}</h1><p>{t.mapel}</p></div></div>
-
-      {/* Banner periode ditutup */}
-      {periodeTutup && !done && (
-        <Card pad="md" style={{ marginBottom: 12, background: "#fef3c7", border: "1.5px solid #f59e0b" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f59e0b", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="lock" s={16} /></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: "#92400e", fontSize: 13 }}>Periode sudah ditutup</div>
-              <div style={{ fontSize: 11, color: "#78350f", marginTop: 2, lineHeight: 1.5 }}>Tugas dari {t.periode} tidak bisa dikerjakan lagi karena semesternya sudah ditutup oleh guru.</div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Banner Latihan Khusus — cuma muncul untuk tugas personal */}
-      {Array.isArray(t.assignedTo) && (
-        <Card pad="md" style={{ marginBottom: 12, background: "var(--accent-tint)", border: "1.5px solid var(--accent)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-2)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="star" s={16} /></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>✨ Latihan Khusus untukmu</div>
-              <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2, lineHeight: 1.5 }}>Tugas ini dibuat khusus untukmu oleh guru — tetap kerjakan dengan serius, tetap dapat poin & badge!</div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Banner susulan aktif — cuma keliatan untuk siswa yang dikasih akses ini */}
-      {!done && susulanAktif && (
-        <Card pad="md" style={{ marginBottom: 12, background: "var(--accent-tint)", border: "1.5px solid var(--accent)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="clock" s={16} /></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: "var(--accent-2)", fontSize: 13 }}>Kamu dapat kesempatan susulan!</div>
-              <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>Batas waktu baru: {new Date(susulan.deadlineBaru).toLocaleDateString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</div>
-              {typeof susulan.nilaiMaks === "number" && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>⚠ Nilai untuk tugas ini dibatasi maksimal <b>{susulan.nilaiMaks}</b>, meski semua jawaban benar.</div>}
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <Card pad="lg" style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>{t.mapel}</div>
-        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", marginBottom: 12 }}>{t.judul}</div>
-        {t.deskripsi && <p style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.65, marginBottom: 14 }}>{t.deskripsi}</p>}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span className={`chip ${dl.tone ? "chip-" + dl.tone : ""}`}><I n="clock" s={10} />{dl.label}</span>
-          <span className="chip"><I n="target" s={10} />+{t.graded === false ? Math.round(t.poinMax * 0.2) : t.poinMax} pt maks</span>
-          <span className="chip">{t.soal?.length || 0} soal</span>
-          {!done && !lewat && t.deadline && <DeadlineChip deadline={t.deadline} />}
-          {lewat && !done && !susulanAktif && <span className="chip chip-bad">Ditutup</span>}
-          {lewat && !done && susulanAktif && <span className="chip" style={{ background: "var(--accent-tint)", color: "var(--accent-2)" }}>Susulan Aktif</span>}
-        </div>
-      </Card>
-
-      {/* Social Proof — progres kelas (hanya untuk yang belum kerjakan) */}
-      {!done && _spTotal > 1 && _spPct > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: "var(--surface-alt)", borderRadius: 12, border: "1px solid var(--line-soft)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-3)" }}>
-              <I n="users" s={12} />
-              <span>Progres Kelas</span>
-            </div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: _spPct >= 60 ? "var(--good)" : "var(--ink-2)" }}>{_spDone}/{_spTotal}</span>
-          </div>
-          <div style={{ height: 6, borderRadius: 99, background: "var(--line-soft)", overflow: "hidden" }}>
-            <div style={{ height: "100%", borderRadius: 99, background: _spPct >= 80 ? "var(--good)" : _spPct >= 60 ? "#60a5fa" : "var(--accent)", width: `${Math.max(_spPct, 3)}%`, transition: "width .5s" }} />
-          </div>
-          {_spPct >= 80 && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.4 }}>Hampir semua sudah menyelesaikan tugas ini</div>}
-          {_spPct >= 60 && _spPct < 80 && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.4 }}>Sebagian besar kelas sudah selesai</div>}
-          {_spPct >= 30 && _spPct < 60 && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.4 }}>Sebagian teman sekelasmu sudah mengerjakan</div>}
-        </div>
-      )}
-
-      {/* Sudah dikerjakan */}
-      {done && sub && (
-        <Card pad="lg" style={{ marginBottom: 12, background: "var(--good-bg)", border: "1px solid #86efac" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: "var(--good)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={24} /></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: "var(--good)" }}>Sudah dikerjakan!</div>
-              <div style={{ fontSize: 13, marginTop: 2 }}>Nilai: <strong>{sub.nilai}</strong> · Poin: <strong>+{sub.poinDapat}</strong></div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</div>
-            </div>
-          </div>
-          {/* Review jawaban hanya setelah deadline lewat */}
-          {lewat && (
-            <button className="btn btn-outline btn-full btn-sm" style={{ marginTop: 12 }} onClick={() => navigate("review-tugas", { tugasId: t.id })}>
-              <I n="book" s={14} /> Lihat Jawaban & Pembahasan
-            </button>
-          )}
-          {!lewat && (
-            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 10, textAlign: "center", fontStyle: "italic" }}>Review jawaban tersedia setelah deadline berakhir</div>
-          )}
-        </Card>
-      )}
-
-      {/* Tombol kerjakan */}
-      {bisa && (
-        <button className="btn btn-primary btn-full btn-lg" onClick={() => navigate("kerjakan", { tugasId: t.id })}>
-          <I n="book" s={16} /> Mulai Kerjakan
-        </button>
-      )}
-
-      {/* Terkunci — lewat deadline */}
-      {!bisa && !done && lewat && (
-        <div style={{ background: "var(--surface-alt)", border: "1.5px solid var(--line)", borderRadius: 14, padding: "20px 16px", textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: "var(--bad-bg)", color: "var(--bad)", display: "grid", placeItems: "center", margin: "0 auto 12px" }}>
-            <I n="clock" s={22} />
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-2)" }}>Tugas Sudah Ditutup</div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.6 }}>
-            Deadline tugas ini sudah lewat.<br />Kamu tidak bisa lagi mengerjakan tugas ini.
-          </div>
-        </div>
-      )}
-
-      {!bisa && !done && !lewat && (
-        <div style={{ textAlign: "center", padding: 16, color: "var(--ink-3)", fontSize: 13 }}>
-          {t.soal?.length === 0 ? "Soal belum tersedia" : "Tugas tidak aktif"}
-        </div>
-      )}
-    </div>
-  </>;
-}
-
-// ─── REVIEW TUGAS (siswa lihat jawaban setelah expired) ───
-function ReviewTugas({ user, store, tugasId, navigate }) {
-  const t = store.getTugas().find(x => x.id === tugasId);
-  if (!t) return <div className="empty">Tugas tidak ditemukan.</div>;
-  const sub = store.getSubBy(user.id, t.id);
-  if (!sub) return <div className="empty">Kamu belum mengerjakan tugas ini.</div>;
-
-  // Bangun map jawaban siswa — soalId (stabil) diutamakan, origIdx sebagai fallback untuk
-  // submission lama yang belum punya soalId (sebelum fix ini dibuat).
-  const resultByIdx = {};
-  const resultById = {};
-  (sub.soalResults || []).forEach(r => { resultByIdx[r.origIdx] = r; if (r.soalId) resultById[r.soalId] = r; });
-
-  return <>
-    <div className="topbar"><button className="topbar-back" onClick={() => navigate("tugas-detail", { tugasId: t.id })}><I n="chevL" s={18} /></button><div className="topbar-title">Review Jawaban</div><div style={{ width: 36 }} /></div>
-    <div className="page">
-      <div className="dt"><div><h1>{t.judul}</h1><p>{t.mapel} · Review jawaban</p></div></div>
-
-      {/* Skor ringkas */}
-      <Card pad="lg" style={{ marginBottom: 14, textAlign: "center" }}>
-        <div style={{ fontSize: 36, fontWeight: 900, color: sub.nilai >= 80 ? "var(--good)" : sub.nilai >= 60 ? "var(--warn)" : "var(--bad)", fontFamily: "var(--mono)" }}>{sub.nilai}</div>
-        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{sub.correctCount} dari {sub.total} benar · +{sub.poinDapat} poin</div>
-      </Card>
-
-      {/* Per soal */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {(t.soal || []).map((soal, idx) => {
-          const r = resultById[soal.id] || resultByIdx[idx];
-          const isEssay = soal.type === "essay";
-          const isRefleksi = soal.type === "refleksi";
-          const isManual = isEssay || isRefleksi;
-          const isCorrect = isManual ? (r?.statusNilai === "dinilai" && (r?.nilaiEssay || 0) >= 60) : r?.correct === true;
-          const studentAns = isEssay ? r?.jawabanEssay : (r ? undefined : undefined);
-
-          return (
-            <Card key={idx} pad="md" style={{ borderLeft: `4px solid ${isManual && r?.statusNilai !== "dinilai" ? "var(--warn)" : isCorrect ? "var(--good)" : "var(--bad)"}` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>SOAL {idx + 1}</span>
-                {isManual
-                  ? (r?.statusNilai === "dinilai"
-                      ? <span className="chip" style={{ fontSize: 10, background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", color: isCorrect ? "var(--good)" : "var(--bad)" }}>{isRefleksi ? "Refleksi" : "Essay"} · {r.nilaiEssay}/100</span>
-                      : <span className="chip" style={{ fontSize: 10, background: "#fef3c7", color: "#92400e" }}>Belum dinilai</span>)
-                  : <span className="chip" style={{ fontSize: 10, background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", color: isCorrect ? "var(--good)" : "var(--bad)" }}>{isCorrect ? "✓ Benar" : "✗ Salah"}</span>
-                }
-              </div>
-
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, lineHeight: 1.5 }}>{soal.pertanyaan}</div>
-              {soal.gambar && <img src={soal.gambar} alt="" style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, marginBottom: 10, border: "1px solid var(--line)" }} />}
-
-              {/* PG / TF / Excel: tampilkan opsi dengan tanda benar/salah + pilihan siswa */}
-              {(soal.type === "pg" || soal.type === "tf" || soal.type === "excel") && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {(soal.type === "tf" ? ["Benar", "Salah"] : soal.opsi || []).map((opt, i) => {
-                    const isKey = soal.jawaban === i;
-                    const isPicked = r?.pickedAnswer === i;
-                    return (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8,
-                        background: isKey ? "var(--good-bg)" : isPicked ? "var(--bad-bg)" : "var(--surface-alt)",
-                        border: `1px solid ${isKey ? "#86efac" : isPicked ? "#fca5a5" : "var(--line)"}`,
-                      }}>
-                        <div style={{ width: 22, height: 22, borderRadius: 5, background: isKey ? "var(--good)" : isPicked ? "var(--bad)" : "var(--surface)", color: (isKey || isPicked) ? "#fff" : "var(--ink-3)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{String.fromCharCode(65 + i)}</div>
-                        <span style={{ flex: 1, fontSize: 13 }}>{opt}</span>
-                        {isKey && <span style={{ fontSize: 10, color: "var(--good)", fontWeight: 700 }}>KUNCI</span>}
-                        {isPicked && !isKey && <span style={{ fontSize: 10, color: "var(--bad)", fontWeight: 700 }}>PILIHANMU</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Essay: tampilkan jawaban siswa + komentar guru */}
-              {isEssay && (
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginBottom: 4 }}>Jawaban kamu:</div>
-                  <div style={{ padding: "10px 12px", background: "var(--surface-alt)", borderRadius: 8, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                    {r?.jawabanEssay || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>(tidak menjawab)</span>}
-                  </div>
-                  {r?.komentarGuru && (
-                    <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--accent-tint)", borderRadius: 8, fontSize: 12 }}>
-                      <b style={{ color: "var(--accent-2)" }}>Komentar guru:</b> {r.komentarGuru}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Kompleks & Pasang: tampilkan kunci */}
-              {soal.type === "komplex" && (
-                <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
-                  <b>Kunci jawaban:</b> {(soal.jawaban || []).map(i => String.fromCharCode(65 + i)).join(", ")}
-                </div>
-              )}
-              {soal.type === "pasang" && (
-                <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
-                  <b>Pasangan benar:</b>
-                  <div style={{ marginTop: 4 }}>
-                    {(soal.kiri || []).map((k, ki) => (
-                      <div key={ki} style={{ fontSize: 12 }}>{k} → {soal.kanan?.[(soal.jawaban || [])[ki]] ?? "—"}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Pseudocode Trace: kode + jawaban siswa vs kunci */}
-              {soal.type === "pseudocode" && (
-                <div>
-                  <pre style={{ background: "#1e293b", color: "#e2e8f0", padding: "10px 12px", borderRadius: 8, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.55, overflowX: "auto", marginBottom: 8 }}>{soal.kode}</pre>
-                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginBottom: 4 }}>Jawaban kamu:</div>
-                  <div style={{ padding: "8px 12px", background: isCorrect ? "var(--good-bg)" : "var(--bad-bg)", borderRadius: 8, fontSize: 13, fontFamily: "var(--mono)", marginBottom: 6, whiteSpace: "pre-wrap" }}>
-                    {r?.pickedText || <span style={{ fontStyle: "italic", color: "var(--ink-3)" }}>(kosong)</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
-                    <b>Output benar:</b> <span style={{ fontFamily: "var(--mono)" }}>{soal.jawabanBenar}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Debug Challenge: kode + jawaban siswa vs kunci */}
-              {soal.type === "debug" && (
-                <div>
-                  <div style={{ background: "#1e293b", color: "#e2e8f0", padding: "10px 0", borderRadius: 8, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6, overflowX: "auto", marginBottom: 8 }}>
-                    {(soal.kodeBuggy || "").split("\n").map((line, i) => (
-                      <div key={i} style={{ display: "flex", padding: "0 12px", background: (i + 1) === soal.barisBug ? "rgba(220,38,38,0.18)" : "transparent" }}>
-                        <span style={{ color: "#64748b", minWidth: 24, textAlign: "right", marginRight: 12 }}>{i + 1}</span>
-                        <span style={{ whiteSpace: "pre" }}>{line || " "}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginBottom: 4 }}>Jawaban kamu:</div>
-                  <div style={{ padding: "6px 12px", background: "var(--surface-alt)", borderRadius: 8, fontSize: 12, marginBottom: 6 }}>
-                    Baris: <b>{r?.pickedDebug?.baris ?? "—"}</b> · Perbaikan: <span style={{ fontFamily: "var(--mono)" }}>{r?.pickedDebug?.perbaikan || "(kosong)"}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--ink-2)" }}>
-                    <b>Baris bug:</b> {soal.barisBug} · <b>Perbaikan benar:</b> <span style={{ fontFamily: "var(--mono)" }}>{soal.perbaikanBenar}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Refleksi Terstruktur: 4 kolom siswa + panduan penilaian guru */}
-              {soal.type === "refleksi" && (
-                <div>
-                  {["k1", "k2", "k3", "k4"].map((key, i) => {
-                    const label = soal[`labelKolom${i + 1}`] || ["Prediksi saya", "Yang saya observasi", "Yang salah/bug", "Pelajaran yang saya ambil"][i];
-                    const val = r?.jawabanRefleksi?.[key] || "";
-                    return (
-                      <div key={key} style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-2)", marginBottom: 2 }}>{i + 1}. {label}</div>
-                        <div style={{ padding: "6px 10px", background: "var(--surface-alt)", borderRadius: 6, fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                          {val || <span style={{ fontStyle: "italic", color: "var(--ink-3)" }}>(kosong)</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {r?.komentarGuru && (
-                    <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--accent-tint)", borderRadius: 8, fontSize: 12 }}>
-                      <b style={{ color: "var(--accent-2)" }}>Komentar guru:</b> {r.komentarGuru}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Pembahasan (kalau guru isi) — muncul untuk semua tipe soal */}
-              {soal.pembahasan && soal.pembahasan.trim() && (
-                <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--accent-tint)", borderRadius: 8, borderLeft: "3px solid var(--accent-2)" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-2)", letterSpacing: ".08em", marginBottom: 4, textTransform: "uppercase" }}>Pembahasan</div>
-                  <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ink-1)", whiteSpace: "pre-wrap" }}>{soal.pembahasan}</div>
-                </div>
-              )}
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  </>;
-}
 
 // ─── QUIZ ENGINE ───
 // ─── EXCEL SANDBOX PLAYER (siswa view) ───
@@ -3504,11 +2277,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       // lalu siswa klik ulang → poin & streak dobel terus. Sekarang semua masuk atau tidak sama sekali.
       await withTimeout(store.kumpulkanTugas(
         { siswaId: user.id, tugasId: t.id, nilai, poinDapat: totalPoin, correctCount, total: totalButir, ontime, soalResults, hasEssay },
-        { perfect: nilai === 100 }
-      ));
-      // Award badges (best-effort, gak fatal kalau gagal/timeout — siswa udah submit sukses)
-      await Promise.all(newBadges.map(bid =>
-        withTimeout(store.awardBadge(user.id, bid), 5000).catch(() => {})
+        { perfect: nilai === 100, badges: newBadges }
       ));
       try { localStorage.removeItem(SAVE_KEY); } catch {}
       setResult({ nilai, poinDapat: totalPoin, correctCount, ontime, newStreak: ontime ? prevStreak + 1 : 0, newBadges });
@@ -3821,259 +2590,6 @@ function LaporModal({ user, store, onClose }) {
   );
 }
 
-function ProfilSiswa({ user, store, navigate }) {
-  const stats = store.getStats(user.id);
-  const lb = store.getLeaderboard(user.jenjang);
-  const myRank = lb.find(s => s.id === user.id);
-  const subs = store.getSubs().filter(s => s.siswaId === user.id);
-  const myBadges = store.getBadges(user.id);
-  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
-  const [showLapor, setShowLapor] = useState(false);
-  const photo = store.getPhoto(user.uid || user.id);
-
-  // Feature flag fitur Lapor: aktif untuk siswa VII saja (kelas wali Fata).
-  // ASUMSI: semua siswa jenjang "VII" di sistem adalah VII-3.
-  const laporEnabled = user.jenjang === "VII";
-
-  const PRESETS = [
-    "#0d6b7a","#1e40af","#7c3aed","#b45309","#0f766e",
-    "#c2410c","#be185d","#065f46","#1e3a5f","#4a1d96"
-  ];
-
-  function handleUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert("Foto maksimal 5MB"); return; }
-    const reader = new FileReader();
-    reader.onload = async ev => {
-      const b64 = ev.target.result;
-      try {
-        await withTimeout(store.savePhoto(user.uid || user.id, b64));
-        setShowPhotoPicker(false);
-      } catch (e) {
-        alert("Gagal menyimpan foto: " + (e?.message || "coba lagi"));
-      }
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function setPresetAvatar(color) {
-    const initials = user.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${color}"/><text x="100" y="130" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-weight="700" font-size="80" fill="white">${initials}</text></svg>`;
-    const b64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-    withTimeout(store.savePhoto(user.uid || user.id, b64)).catch(e => alert("Gagal menyimpan avatar: " + (e?.message || "coba lagi")));
-    setShowPhotoPicker(false);
-  }
-
-  return <>
-    {showPhotoPicker && (
-      <div className="modal-overlay" onClick={() => setShowPhotoPicker(false)}>
-        <div className="modal" onClick={e => e.stopPropagation()}>
-          <h3>Ganti Foto Profil</h3>
-          <p>Pilih avatar atau upload foto dari device.</p>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginTop: 14, marginBottom: 6 }}>AVATAR WARNA</div>
-          <div className="avatar-grid">
-            {PRESETS.map(c => {
-              const initials = user.nama.trim().split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
-              return (
-                <button key={c} className="avatar-opt" onClick={() => setPresetAvatar(c)} style={{ background: c }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "var(--font)" }}>{initials}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginTop: 12, marginBottom: 8 }}>UPLOAD FOTO</div>
-          <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: "1.5px dashed var(--line)", borderRadius: "var(--r-sm)", cursor: "pointer", fontSize: 13, color: "var(--ink-2)" }}>
-            <I n="user" s={18} /> Pilih foto dari device (maks 5MB)
-            <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleUpload} />
-          </label>
-          {photo && (
-            <button className="btn btn-ghost btn-sm btn-full" style={{ marginTop: 10, color: "var(--bad)" }} onClick={() => { withTimeout(store.savePhoto(user.uid || user.id, null)).catch(e => alert("Gagal menghapus foto: " + (e?.message || "coba lagi"))); setShowPhotoPicker(false); }}>
-              Hapus foto profil
-            </button>
-          )}
-        </div>
-      </div>
-    )}
-
-    <div className="page" style={{ paddingTop: 0 }}>
-      {/* ─── Compact Profile Hero ─── */}
-      <div className="ps-hero">
-        <div style={{ position: "relative", display: "inline-block" }}>
-          <Avatar name={user.nama} size="xl" photo={photo} />
-          <button onClick={() => setShowPhotoPicker(true)} style={{ position: "absolute", bottom: 0, right: -2, width: 24, height: 24, borderRadius: "50%", background: "var(--accent)", color: "#fff", border: "2px solid var(--surface)", cursor: "pointer", display: "grid", placeItems: "center" }}>
-            <I n="edit" s={11} />
-          </button>
-        </div>
-        <div className="ps-name">{user.nama}</div>
-        <div className="ps-class">Kelas {user.jenjang}{user.noAbsen ? ` · No. Absen ${user.noAbsen}` : ""}</div>
-      </div>
-
-      {/* ─── Ranking + Streak Row ─── */}
-      <div className="ps-lr-row">
-        <div className="ps-lr-card">
-          <div className="ps-lr-val" style={{ color: "var(--accent)" }}>{myRank ? `#${myRank.rank}` : "—"}</div>
-          <div className="ps-lr-label">Ranking Kelas</div>
-        </div>
-        <div className="ps-lr-card">
-          <div className="ps-lr-val" style={{ color: (stats.streak || 0) > 0 ? "var(--bad)" : "var(--ink-4)" }}>
-            {(stats.streak || 0) > 0 && <I n="flame" s={16} />} {stats.streak || 0}
-          </div>
-          <div className="ps-lr-label">Hari Streak</div>
-        </div>
-      </div>
-
-      {/* ─── Level Progress Inline ─── */}
-      {(() => {
-        const lv = getLevel(stats.poin);
-        const prog = getLevelProgress(stats.poin);
-        return (
-          <div className="ps-level">
-            <div className="ps-lv-icon" style={{ background: lv.bg }}>
-              <TierIcon tierId={lv.tierId} size={24} color={lv.color} />
-            </div>
-            <div className="ps-lv-info">
-              <div className="ps-lv-top">
-                <span className="ps-lv-name" style={{ color: lv.color }}>{lv.name}</span>
-                <span className="ps-lv-xp">{stats.poin}{prog.next ? ` / ${lv.max + 1}` : ""} poin</span>
-              </div>
-              <div className="ps-lv-bar">
-                <div className="ps-lv-fill" style={{ width: `${prog.pct}%`, background: `linear-gradient(90deg, ${lv.color}, ${lv.accent || lv.color})` }} />
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ─── Stats Grid ─── */}
-      <div className="ps-stats">
-        <div className="ps-stat">
-          <div className="ps-stat-val" style={{ color: "var(--accent)" }}>{stats.poin.toLocaleString("id-ID")}</div>
-          <div className="ps-stat-label">Total Poin</div>
-        </div>
-        <div className="ps-stat">
-          <div className="ps-stat-val" style={{ color: "var(--good)" }}>{stats.nilaiRata || "—"}</div>
-          <div className="ps-stat-label">Rata-rata</div>
-        </div>
-        <div className="ps-stat">
-          <div className="ps-stat-val" style={{ color: "#1d4ed8" }}>{stats.tugasSelesai}</div>
-          <div className="ps-stat-label">Tugas Selesai</div>
-        </div>
-      </div>
-
-      {/* ═══ CTA RAPOR PERKEMBANGAN ═══ */}
-      <button onClick={() => navigate("rapor")} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "0 16px", cursor: "pointer", marginBottom: 14 }}>
-        <Card pad="none" style={{ overflow: "hidden", background: "linear-gradient(135deg, #0a525c 0%, #09637E 50%, #088395 100%)", color: "#fff" }}>
-          <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.15)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <I n="award" s={20} style={{ color: "#fff" }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>Rapor Perkembangan</div>
-              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>Lihat perjalanan belajarmu</div>
-            </div>
-            <I n="chevR" s={16} style={{ color: "rgba(255,255,255,0.6)", flexShrink: 0 }} />
-          </div>
-        </Card>
-      </button>
-
-      {/* ─── Badge Koleksi — 4-column grid ─── */}
-      <div style={{ padding: "0 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Badge Koleksi</span>
-          <span style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500 }}>{myBadges.length} dari {ALL_BADGES.length}</span>
-        </div>
-      </div>
-      <div className="ps-badge-grid">
-        {myBadges.map(id => {
-          const b = ALL_BADGES.find(x => x.id === id);
-          if (!b) return null;
-          return (
-            <div key={id} className="ps-badge-cell">
-              <BadgeIcon type={b.icon} rim={b.rim} size={42} />
-              <span className="ps-badge-name" style={{ color: b.color }}>{b.name}</span>
-            </div>
-          );
-        })}
-        {/* Locked slots to fill grid — show next unearned badges */}
-        {ALL_BADGES.filter(b => !myBadges.includes(b.id)).slice(0, Math.max(0, (4 - (myBadges.length % 4)) % 4)).map(b => (
-          <div key={b.id} className="ps-badge-cell locked">
-            <BadgeIcon type={b.icon} rim={b.rim} size={42} />
-            <span className="ps-badge-name" style={{ color: "var(--ink-4)" }}>{b.name}</span>
-          </div>
-        ))}
-        {myBadges.length === 0 && (
-          <div style={{ gridColumn: "1 / -1", padding: "12px 0", fontSize: 12, color: "var(--ink-4)", textAlign: "center" }}>
-            Belum ada badge. Terus kerjakan tugas!
-          </div>
-        )}
-      </div>
-
-      {/* ─── Poin Chart ─── */}
-      {stats.poinHistory?.length > 0 && (
-        <div style={{ padding: "0 16px", marginBottom: 14 }}>
-          <Card><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Perjalanan poin</div><PoinChart data={stats.poinHistory} /></Card>
-        </div>
-      )}
-
-      {/* ─── Riwayat Pengerjaan ─── */}
-      <div style={{ padding: "0 16px" }}>
-        <div className="sh"><h2>Riwayat pengerjaan</h2></div>
-        {subs.length === 0 ? <Card><div className="empty">Belum ada tugas yang dikerjakan.</div></Card> :
-          <Card pad="none" style={{ overflow: "hidden" }}><div style={{ padding: "4px 16px" }}>{subs.slice().reverse().map(s => {
-            const t = store.getTugas().find(x => x.id === s.tugasId);
-            const intervensi = s.riwayatIntervensi || [];
-            const lastIntervensi = intervensi.length > 0 ? intervensi[intervensi.length - 1] : null;
-            return (
-              <div key={s.id} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent-2)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="check" s={16} /></div>
-                  <div className="row-main">
-                    <div className="row-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      {t?.judul || "Tugas dihapus"}
-                      {lastIntervensi && <span className="chip" style={{ fontSize: 9, background: "var(--accent-tint)", color: "var(--accent-2)", padding: "1px 6px", fontWeight: 700 }}>Diperbarui guru</span>}
-                    </div>
-                    <div className="row-sub">{new Date(s.submittedAt).toLocaleDateString("id-ID")} · nilai {s.nilai}</div>
-                  </div>
-                  <div className="stat-num" style={{ fontSize: 14, fontWeight: 600, color: "var(--good)" }}>+{s.poinDapat}</div>
-                </div>
-                {lastIntervensi && (
-                  <div style={{ marginLeft: 48, padding: "6px 10px", background: "var(--accent-tint)", borderRadius: 6, fontSize: 11, lineHeight: 1.55 }}>
-                    <div style={{ color: "var(--accent-2)", fontWeight: 600 }}>
-                      Nilai diubah: {lastIntervensi.nilaiSebelum} → {lastIntervensi.nilaiSetelah}
-                    </div>
-                    <div style={{ color: "var(--ink-2)", marginTop: 2 }}>
-                      <b>Alasan:</b> {lastIntervensi.alasan}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}</div></Card>}
-      </div>
-
-      {/* Fitur Lapor Kejadian — cuma untuk siswa VII (kelas wali) */}
-      {laporEnabled && (
-        <div style={{ padding: "0 16px", marginTop: 14 }}>
-          <Card style={{ background: "linear-gradient(135deg, var(--accent-tint) 0%, var(--surface) 60%)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--bad-bg)", color: "var(--bad)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <I n="flag" s={16} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Lapor Kejadian</div>
-                <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1, lineHeight: 1.4 }}>Laporkan kejadian di kelas secara anonim</div>
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowLapor(true)} style={{ flexShrink: 0 }}>Lapor</button>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {showLapor && <LaporModal user={user} store={store} onClose={() => setShowLapor(false)} />}
-    </div>
-  </>;
-}
 
 // ─── QUESTION BUILDER ───
 const QTYPES = [
@@ -4341,6 +2857,9 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
   const [soal, setSoal] = useState(existing?.soal || []);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState("");
+  // Peringatan ubah soal setelah ada siswa yang mengumpulkan (nilai mereka tidak dinilai ulang otomatis)
+  const jumlahTerkumpul = editId ? store.getSubs().filter(x => x.tugasId === editId).length : 0;
+  const [konfirmUbahSoal, setKonfirmUbahSoal] = useState(false);
   const [showBank, setShowBank] = useState(false);
   const [siswaPicker, setSiswaPicker] = useState(""); // search filter di picker
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -4467,6 +2986,13 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
       const terjadwal = !!form.scheduledAt && new Date(form.scheduledAt).getTime() > Date.now();
       const sudahDikerjakan = store.getSubs().filter(x => x.tugasId === editId).length;
       if (terjadwal && existing?.status !== "scheduled" && sudahDikerjakan > 0) { setErr(`Tugas ini sudah dikerjakan ${sudahDikerjakan} siswa, jadi tidak bisa dijadwalkan ulang. Kosongkan jadwal publish.`); return; }
+      // Soal ditambah/dihapus/diurutkan ulang padahal sudah ada yang mengumpulkan → minta konfirmasi sekali
+      if (sudahDikerjakan > 0 && !konfirmUbahSoal && sidikSoal(soal) !== sidikSoal(existing?.soal)) {
+        setKonfirmUbahSoal(true);
+        setErr(`Susunan soal berubah, padahal ${sudahDikerjakan} siswa sudah mengumpulkan. Nilai mereka tetap dari soal lama. Klik Simpan sekali lagi untuk tetap menyimpan.`);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       data.status = terjadwal ? "scheduled" : "aktif";
       data.scheduledAt = terjadwal ? form.scheduledAt : null;
       store.updateTugas(editId, data);
@@ -4503,6 +3029,14 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
     </div>
 
     <div className="page">
+      {jumlahTerkumpul > 0 && (
+        <div role="note" style={{ marginBottom: 14, padding: "12px 14px", borderRadius: "var(--r-sm)", background: "var(--warn-bg)", border: "1px solid var(--line)", fontSize: 13, lineHeight: 1.5 }}>
+          <b>{jumlahTerkumpul} siswa sudah mengumpulkan tugas ini.</b> Mengubah soal atau kunci jawaban tidak menilai ulang mereka. Kalau ada siswa yang perlu dinilai ulang, reset tugas siswa itu supaya dia mengerjakan lagi. Siswa yang sedang mengerjakan akan otomatis diminta mulai ulang dengan soal terbaru.
+        </div>
+      )}
+      {konfirmUbahSoal && err && (
+        <div role="alert" style={{ marginBottom: 14, padding: "10px 14px", borderRadius: "var(--r-sm)", background: "var(--bad-bg)", border: "1px solid #fca5a5", color: "var(--bad)", fontSize: 12.5 }}>{err}</div>
+      )}
       <div className="buat-layout">
         {/* LEFT: Form */}
         <div>
@@ -6880,184 +5414,6 @@ function KelasView({ store, navigate }) {
   </>;
 }
 
-// ─── PROFIL GURU ───
-// ═══ RAPOR PERKEMBANGAN SISWA ═══
-// Screen dedicated untuk siswa melihat breakdown nilai semester aktif.
-// Data di-fetch langsung dari Firebase (bukan dari store bulk listener yang guru-only).
-// Gated: nilai cuma muncul kalau guru sudah "terbitkan" di NilaiAkhirPage (publish gate).
-// Bonus Nilai ditampilkan sebagai angka tanpa alasan (alasan = catatan informal guru).
-function RaporSiswa({ user, store, navigate }) {
-  const [loading, setLoading] = useState(true);
-  const [nilaiData, setNilaiData] = useState({});
-  const [boostData, setBoostData] = useState({});
-  const periode = store.getActivePeriode();
-  const mapels = user.jenjang === "VII" ? ["IPA", "Informatika"] : ["IPA"];
-  const sanitize = (s) => s.replace(/[.#$/[\]]/g, "-");
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      const nd = {};
-      const bd = {};
-      for (const mapel of mapels) {
-        const naKey = sanitize(`${user.id}_${mapel}_${user.jenjang}_${periode}`);
-        try {
-          const snap = await get(ref(db, `nilaiAkhir/${naKey}`));
-          nd[mapel] = snap.val();
-        } catch { nd[mapel] = null; }
-        // Fetch boost (try both sanitized and legacy key)
-        const bKey = sanitize(`${user.id}_${mapel}_${user.jenjang}_${periode}`);
-        try {
-          const snap = await get(ref(db, `nilaiBoost/${bKey}`));
-          bd[mapel] = snap.val() || {};
-        } catch { bd[mapel] = {}; }
-      }
-      setNilaiData(nd);
-      setBoostData(bd);
-      setLoading(false);
-    };
-    fetchData();
-  }, [user.id, user.jenjang]);
-
-  // Compute breakdown per mapel (mirror computeNilaiAkhir tapi dari fetched data)
-  function computeBreakdown(mapel) {
-    const rec = nilaiData[mapel] || {};
-    const boosts = boostData[mapel] || {};
-    const boostArr = Object.values(boosts);
-    const getBoostSum = (komponen) => boostArr.filter(b => b.komponen === komponen).reduce((sum, b) => sum + (Number(b.nilai) || 0), 0);
-
-    const sumatifVals = Object.values(rec.sumatif || {}).filter(v => typeof v === "number");
-    const sumatifAvg = sumatifVals.length ? sumatifVals.reduce((a, b) => a + b, 0) / sumatifVals.length : null;
-    const kuisVals = Object.values(rec.kuis || {}).filter(v => typeof v === "number");
-    const kuisAvg = kuisVals.length ? kuisVals.reduce((a, b) => a + b, 0) / kuisVals.length : null;
-    const tugasAvg = store.getTugasAstrolabAvg(user.id, mapel, user.jenjang);
-
-    const applyBoost = (base, key) => {
-      const boost = getBoostSum(key);
-      if (typeof base !== "number") return { val: base, base, boost };
-      return { val: Math.min(100, base + boost), base, boost };
-    };
-
-    const komponen = [
-      { label: "Sumatif per BAB", key: "sumatif", ...applyBoost(sumatifAvg, "sumatif"), bobot: 0.10, icon: "book" },
-      { label: "Tugas Astrolab", key: "tugasAstrolab", ...applyBoost(tugasAvg, "tugasAstrolab"), bobot: 0.20, icon: "target" },
-      { label: "STS", key: "uts", ...applyBoost(rec.uts, "uts"), bobot: 0.20, icon: "edit" },
-      { label: "SAS", key: "uas", ...applyBoost(rec.uas, "uas"), bobot: 0.20, icon: "edit" },
-      { label: "Kuis Harian", key: "kuis", ...applyBoost(kuisAvg, "kuis"), bobot: 0.10, icon: "zap" },
-      { label: "Portofolio", key: "portofolio", ...applyBoost(rec.portofolio, "portofolio"), bobot: 0.20, icon: "star" },
-    ];
-
-    const filled = komponen.filter(k => typeof k.val === "number");
-    const totalBobot = filled.reduce((s, k) => s + k.bobot, 0);
-    const nilaiAkhir = totalBobot > 0 ? Math.round(filled.reduce((s, k) => s + k.val * k.bobot, 0) / totalBobot * 100) / 100 : null;
-
-    // Sumatif per BAB detail
-    const sumatifDetail = Object.entries(rec.sumatif || {}).filter(([, v]) => typeof v === "number").map(([label, val]) => ({ label, val }));
-
-    return { komponen, nilaiAkhir, filled: filled.length, total: komponen.length, sumatifDetail };
-  }
-
-  const nilaiColor = (n) => n >= 80 ? "var(--good)" : n >= 65 ? "var(--warn)" : "var(--bad)";
-
-  if (loading) return <>
-    <div className="topbar"><button className="topbar-back" onClick={() => navigate("profil")}><I n="chevL" s={18} /></button><div className="topbar-title">Rapor</div><div style={{ width: 36 }} /></div>
-    <div className="page"><div style={{ textAlign: "center", padding: "60px 0", color: "var(--ink-3)" }}>Memuat data...</div></div>
-  </>;
-
-  return <>
-    <div className="topbar"><button className="topbar-back" onClick={() => navigate("profil")}><I n="chevL" s={18} /></button><div className="topbar-title">Rapor Perkembangan</div><div style={{ width: 36 }} /></div>
-    <div className="page">
-      <div style={{ paddingTop: 8, paddingBottom: 6 }}>
-        <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{periode}</div>
-        <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", margin: "4px 0 0" }}>Rapor Perkembangan</h1>
-      </div>
-
-      {mapels.map(mapel => {
-        const published = store.isNilaiPublished(mapel, user.jenjang, periode);
-        if (!published) return (
-          <Card key={mapel} style={{ marginBottom: 14, textAlign: "center", padding: "30px 20px" }}>
-            <I n="clock" s={28} style={{ color: "var(--ink-3)", marginBottom: 8 }} />
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-2)" }}>Nilai {mapel} Belum Diterbitkan</div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>Guru belum menerbitkan nilai untuk {mapel} semester ini. Nanti akan muncul di sini.</div>
-          </Card>
-        );
-
-        const br = computeBreakdown(mapel);
-        return (
-          <div key={mapel} style={{ marginBottom: 20 }}>
-            {/* Hero card — Nilai Akhir besar */}
-            <Card pad="none" style={{ overflow: "hidden", marginBottom: 10 }}>
-              <div style={{ background: "linear-gradient(135deg, #0a525c 0%, #09637E 50%, #088395 100%)", color: "#fff", padding: "22px 20px 18px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".1em", opacity: 0.8, fontWeight: 700 }}>{mapel} · Kelas {user.jenjang}</div>
-                <div style={{ fontSize: 52, fontWeight: 900, fontFamily: "var(--mono)", lineHeight: 1.1, marginTop: 6 }}>
-                  {br.nilaiAkhir !== null ? br.nilaiAkhir : "—"}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>
-                  {br.nilaiAkhir === null ? "Belum cukup data" : br.nilaiAkhir >= 80 ? "Di atas KKM — Kerja bagus!" : br.nilaiAkhir >= 65 ? "Mendekati KKM — Terus tingkatkan!" : "Di bawah KKM — Jangan menyerah!"}
-                </div>
-                {br.filled < br.total && <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>({br.filled}/{br.total} komponen terisi)</div>}
-              </div>
-            </Card>
-
-            {/* Breakdown 6 komponen */}
-            <Card pad="none" style={{ overflow: "hidden", marginBottom: 10 }}>
-              <div style={{ padding: "12px 16px 8px", fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>Breakdown Komponen</div>
-              {br.komponen.map((k, i) => {
-                const hasVal = typeof k.val === "number";
-                const hasBoost = k.boost > 0 && typeof k.base === "number";
-                return (
-                  <div key={k.key} style={{ padding: "10px 16px", borderTop: "1px solid var(--line-soft)", display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: hasVal ? "var(--accent-tint)" : "var(--surface-alt)", color: hasVal ? "var(--accent-2)" : "var(--ink-3)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                      <I n={k.icon} s={14} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>{k.label}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
-                        <div style={{ flex: 1, height: 5, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: hasVal ? `${k.val}%` : "0%", background: hasVal ? nilaiColor(k.val) : "var(--ink-3)", borderRadius: 99, transition: "width .5s" }} />
-                        </div>
-                        <span style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600 }}>{Math.round(k.bobot * 100)}%</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      {hasVal ? (
-                        <div style={{ fontFamily: "var(--mono)", fontSize: 18, fontWeight: 800, color: nilaiColor(k.val) }}>{Math.round(k.val)}</div>
-                      ) : (
-                        <div style={{ fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>—</div>
-                      )}
-                      {hasBoost && (
-                        <div style={{ fontSize: 9, color: "var(--accent-2)", fontWeight: 700, fontFamily: "var(--mono)" }}>+{k.boost} bonus</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
-
-            {/* Sumatif per BAB — mini bar chart */}
-            {br.sumatifDetail.length > 0 && (
-              <Card style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 10 }}>Nilai Sumatif per BAB</div>
-                <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 100 }}>
-                  {br.sumatifDetail.map((d, i) => {
-                    const h = Math.max(8, (d.val / 100) * 90);
-                    return (
-                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <div style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700, color: nilaiColor(d.val) }}>{d.val}</div>
-                        <div style={{ width: "100%", maxWidth: 40, height: h, background: nilaiColor(d.val), borderRadius: "4px 4px 0 0", transition: "height .5s", opacity: 0.85 }} />
-                        <div style={{ fontSize: 9, color: "var(--ink-3)", fontWeight: 600, textAlign: "center", lineHeight: 1.2, maxWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.label}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  </>;
-}
 
 function ProfilGuru({ user, store, navigate }) {
   const photo = store.getPhoto(user.uid || user.id); // reaktif dari Firebase
@@ -7699,6 +6055,18 @@ function AuditPoinGanda({ store }) {
     finally { setProses(""); }
   }
   const jam = ts => new Date(ts).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const [ulang, setUlang] = useState(null);
+  function hitung() { setUlang(store.hitungUlangPoin().filter(x => x.selisih !== 0)); setHasil(null); setPesan(""); }
+  async function samakan(list) {
+    setProses("ulang");
+    try {
+      let n = 0;
+      for (const x of list) { await withTimeout(store.samakanPoin(x.siswaId, x.seharusnya)); n++; }
+      setPesan(`${n} siswa disamakan dengan hitungan dari sumber.`);
+      setTimeout(hitung, 800);
+    } catch (e) { setPesan("Gagal: " + (e?.message || "coba lagi")); }
+    finally { setProses(""); }
+  }
 
   if (!buka) return (
     <Card style={{ marginBottom: 14 }}>
@@ -7719,13 +6087,44 @@ function AuditPoinGanda({ store }) {
         <label style={{ fontSize: 12.5, color: "var(--ink-3)", display: "flex", alignItems: "center", gap: 6 }}>Sejak
           <input type="date" className="inp" style={{ width: "auto", padding: "6px 8px" }} value={sejak} onChange={e => setSejak(e.target.value)} />
         </label>
-        <button className="btn btn-primary btn-sm" onClick={periksa}>Periksa</button>
-        <button className="btn btn-outline btn-sm" onClick={() => { setBuka(false); setHasil(null); setPesan(""); }}>Tutup</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setUlang(null); periksa(); }}>Periksa</button>
+        <button className="btn btn-outline btn-sm" onClick={hitung}>Hitung ulang dari sumber</button>
+        <button className="btn btn-outline btn-sm" onClick={() => { setBuka(false); setHasil(null); setUlang(null); setPesan(""); }}>Tutup</button>
       </div>
       <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "0 0 10px" }}>
         Entri yang dicentang otomatis = kelebihan "tugas selesai" dibanding tugas yang benar-benar terkumpul. Periksa dulu: badge yang diberikan manual juga bisa muncul di sini — hilangkan centangnya kalau itu badge.
       </p>
       {pesan && <div style={{ fontSize: 12.5, padding: "8px 10px", borderRadius: 8, background: "var(--accent-tint)", marginBottom: 10 }}>{pesan}</div>}
+      {ulang && (
+        <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10 }}>
+          <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "0 0 8px" }}>
+            Poin seharusnya = poin semua tugas yang terkumpul + poin badge yang dimiliki + poin nilai manual periode {store.getActivePeriode()}.
+            Selisih <b>minus</b> = poin hilang (mis. tertimpa saat dapat badge). Selisih <b>plus</b> = poin berlebih. Kalau hampir semua siswa plus dengan angka besar, kemungkinan poin semester lalu belum direset — jangan disamakan.
+          </p>
+          {ulang.length === 0 ? <div style={{ fontSize: 13 }}>Semua poin siswa sudah cocok dengan sumbernya.</div> : (
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                  <thead><tr style={{ textAlign: "right", color: "var(--ink-3)" }}>
+                    <th style={{ textAlign: "left", padding: "6px 4px" }}>Siswa</th><th>Tersimpan</th><th>Tugas</th><th>Badge</th><th>Nilai</th><th>Seharusnya</th><th>Selisih</th><th />
+                  </tr></thead>
+                  <tbody>{ulang.map(x => (
+                    <tr key={x.siswaId} style={{ borderTop: "1px solid var(--line-soft)", textAlign: "right", fontFamily: "var(--mono)" }}>
+                      <td style={{ textAlign: "left", padding: "6px 4px", fontFamily: "var(--font)" }}>{x.nama} <span style={{ color: "var(--ink-4)" }}>{x.jenjang}</span></td>
+                      <td>{x.tersimpan}</td><td>{x.tugas}</td><td>{x.badge}</td><td>{x.nilai}</td><td><b>{x.seharusnya}</b></td>
+                      <td style={{ color: x.selisih < 0 ? "var(--warn)" : "var(--bad)", fontWeight: 700 }}>{x.selisih > 0 ? "+" : ""}{x.selisih}</td>
+                      <td style={{ paddingLeft: 6 }}><button className="btn btn-outline btn-sm" disabled={!!proses} onClick={() => samakan([x])}>Samakan</button></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} disabled={!!proses} onClick={() => samakan(ulang)}>
+                {proses === "ulang" ? "Menyamakan…" : `Samakan semua (${ulang.length} siswa)`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {hasil && hasil.map(r => {
         const sel = pilih[r.siswaId] || new Set();
         const totalPilih = r.kandidat.filter(k => sel.has(k.i)).reduce((a, k) => a + k.delta, 0);
@@ -9619,201 +8018,6 @@ function MissionGuru({ store, navigate }) {
   </div>;
 }
 
-// ── Panel siswa: Mission Mode ──
-function MissionSiswa({ user, store, navigate }) {
-  const mission = store.getMission(user.jenjang);
-  const [sending, setSending] = useState(false);
-  const [hadirErr, setHadirErr] = useState("");
-  if (!mission || !mission.active) {
-    return <div className="page"><Card><div className="empty empty-box"><I n="target" s={32} /><h3>Mission Mode tidak aktif</h3><p>Belum ada misi untuk kelasmu saat ini.</p><button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => navigate("home")}>Kembali ke Beranda</button></div></Card></div>;
-  }
-  const misi = [...(mission.misi || [])].sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
-  const wajib = misi.filter(m => m.wajib);
-  const wajibSelesai = wajib.filter(m => store.isMisiSelesai(m, user.id)).length;
-  const sessionId = mission.sessionId;
-  const sudahHadir = store.hasAttended(user.jenjang, sessionId, user.id);
-
-  function openMisi(m) {
-    if (m.tipe === "tugas") navigate("tugas-detail", { tugasId: m.refId });
-    else navigate("latihan-mandiri");
-  }
-  async function handleHadir() {
-    if (sending || sudahHadir) return;
-    setSending(true); setHadirErr("");
-    const lengkap = wajib.length > 0 && wajibSelesai === wajib.length;
-    try {
-      const res = await store.markAttendance(user.jenjang, sessionId, { nama: user.nama, kelas: user.kelas || `Kelas ${user.jenjang}`, selesaiWajib: wajibSelesai, totalWajib: wajib.length, lengkap });
-      if (!res.already) {
-        const now = new Date();
-        const tgl = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-        const jam = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-        const guruId = store.fbGuru?.id || "fata";
-        const text = `📍 KONFIRMASI KEHADIRAN — MISSION MODE\n\nNama: ${user.nama}\nKelas: ${user.kelas || `Kelas ${user.jenjang}`}\nTanggal: ${tgl}\nMisi wajib selesai: ${wajibSelesai}/${wajib.length}\nStatus misi: ${lengkap ? "selesai" : "belum selesai"}\nWaktu konfirmasi: ${jam}`;
-        try { await withTimeout(store.sendMessage(user.id, guruId, text)); }
-        catch { setHadirErr("Kehadiran tercatat, tapi notifikasi chat ke guru gagal terkirim."); }
-      }
-    } catch (e) {
-      setHadirErr("Gagal mengirim kehadiran: " + (e?.message || "coba lagi"));
-    } finally { setSending(false); }
-  }
-
-  return <div>
-    <div className="topbar"><button className="topbar-back" onClick={() => navigate("home")}><I n="chevL" s={18} /></button><div className="topbar-title">Mission Mode</div><div style={{ width: 36 }} /></div>
-    <div className="page">
-      <div style={{ background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)", borderRadius: "var(--r)", padding: "16px 18px", color: "#fff", marginBottom: 14, boxShadow: "var(--shadow)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><I n="target" s={18} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".04em" }}>MISSION MODE AKTIF</span></div>
-        <div style={{ fontSize: 12, opacity: .9, lineHeight: 1.5 }}>Astrolab sedang berada dalam Mission Mode. Selesaikan seluruh misi wajib berikut untuk memenuhi persyaratan pembelajaran hari ini.</div>
-      </div>
-      {mission.judul && <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{mission.judul}</div>}
-      {mission.instruksi && <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 14, whiteSpace: "pre-wrap" }}>{mission.instruksi}</div>}
-
-      <div style={{ background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: "var(--r)", padding: "14px 16px", marginBottom: 14, boxShadow: "var(--shadow-sm)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>Perkembangan Misi</span>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "var(--accent-2)", fontFamily: "var(--mono)" }}>{wajibSelesai} / {wajib.length} selesai</span>
-        </div>
-        <div style={{ height: 8, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}><div style={{ height: "100%", width: `${wajib.length ? Math.round(wajibSelesai / wajib.length * 100) : 0}%`, background: "var(--accent)", borderRadius: 99, transition: "width .4s" }} /></div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-        {misi.map(m => {
-          const selesai = store.isMisiSelesai(m, user.id);
-          return <button key={m.key} onClick={() => openMisi(m)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--surface)", border: `1px solid ${selesai ? "var(--good)" : "var(--line-soft)"}`, borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", boxShadow: "var(--shadow-sm)" }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: selesai ? "var(--good-bg)" : "var(--surface-alt)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n={selesai ? "check" : (m.tipe === "tugas" ? "fileText" : "book")} s={16} style={{ color: selesai ? "var(--good)" : "var(--ink-3)" }} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{missionMisiLabel(m, store)}</div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{m.tipe === "tugas" ? "Tugas" : "Materi"} · {m.wajib ? "Wajib" : "Opsional"}</div>
-            </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: selesai ? "var(--good)" : "var(--accent)", flexShrink: 0 }}>{selesai ? "Selesai" : "Buka →"}</span>
-          </button>;
-        })}
-      </div>
-
-      {hadirErr && <div style={{ fontSize: 12, color: "var(--bad)", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>{hadirErr}</div>}
-      {sudahHadir
-        ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px", borderRadius: "var(--r)", background: "var(--good-bg)", border: "1.5px solid #86efac", color: "var(--good)", fontWeight: 700, fontSize: 14 }}><I n="checkCircle" s={18} /> Kehadiran sudah dikonfirmasi</div>
-        : <button className="btn btn-primary btn-full btn-lg" onClick={handleHadir} disabled={sending}>{sending ? "Mengirim..." : <><I n="flag" s={16} /> Konfirmasi Hadir</>}</button>}
-      {!sudahHadir && wajib.length > 0 && wajibSelesai < wajib.length && <div style={{ fontSize: 11, color: "var(--ink-4)", textAlign: "center", marginTop: 8 }}>Bisa konfirmasi hadir walau misi wajib belum selesai — statusnya tetap tercatat.</div>}
-    </div>
-  </div>;
-}
-
-// ── Panel siswa Mission Mode sebagai MODAL (dibuka dari banner dashboard) ──
-function MissionSiswaModal({ user, store, navigate, onClose }) {
-  const mission = store.getMission(user.jenjang);
-  const [sending, setSending] = useState(false);
-  const [hadirErr, setHadirErr] = useState("");
-  if (!mission || !mission.active) return null;
-
-  const misi = [...(mission.misi || [])].sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
-  const wajib = misi.filter(m => m.wajib);
-  const wajibSelesai = wajib.filter(m => store.isMisiSelesai(m, user.id)).length;
-  const sessionId = mission.sessionId;
-  const sudahHadir = store.hasAttended(user.jenjang, sessionId, user.id);
-
-  // Kehadiran = misi wajib pertama. Total = kehadiran + semua misi wajib lain.
-  const totalWajib = wajib.length + 1;
-  const doneWajib = (sudahHadir ? 1 : 0) + wajibSelesai;
-  const allDone = sudahHadir && wajibSelesai === wajib.length;
-  const pct = Math.round(doneWajib / totalWajib * 100);
-
-  function openMisi(m) {
-    onClose();
-    if (m.tipe === "tugas") navigate("tugas-detail", { tugasId: m.refId });
-    else navigate("latihan-mandiri");
-  }
-  async function handleHadir() {
-    if (sending || sudahHadir) return;
-    setSending(true); setHadirErr("");
-    try {
-      const res = await store.markAttendance(user.jenjang, sessionId, { nama: user.nama, kelas: user.kelas || `Kelas ${user.jenjang}` });
-      if (!res.already) {
-        const now = new Date();
-        const tgl = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-        const jam = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-        const guruId = store.fbGuru?.id || "fata";
-        const text = `📍 Konfirmasi kehadiran Mission Mode — ${user.nama} (${user.kelas || `Kelas ${user.jenjang}`}), ${tgl} ${jam}.`;
-        try { await withTimeout(store.sendMessage(user.id, guruId, text, { type: "mission-attendance", meta: { nama: user.nama, kelas: user.kelas || `Kelas ${user.jenjang}`, tgl, jam } })); }
-        catch { setHadirErr("Kehadiran tercatat, tapi notifikasi chat ke guru gagal terkirim."); }
-      }
-    } catch (e) {
-      setHadirErr("Gagal mengirim kehadiran: " + (e?.message || "coba lagi"));
-    } finally { setSending(false); }
-  }
-
-  const closeBtn = { width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 };
-
-  return <div className="modal-overlay" style={{ zIndex: 9998 }} onClick={onClose}>
-    <div className="modal" style={{ maxWidth: 400, width: "100%", overflow: "hidden", padding: 0, maxHeight: "88vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
-      {/* Header indigo + rocket */}
-      <div style={{ background: MISSION_THEME.grad, color: "#fff", padding: "18px 20px", display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 11, background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center", flexShrink: 0 }}><I n="rocket" s={20} /></div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: ".04em" }}>MISSION MODE</div>
-          <div style={{ fontSize: 11.5, opacity: .9 }}>{allDone ? "Semua misi selesai" : `${doneWajib}/${totalWajib} misi wajib selesai`}</div>
-        </div>
-        <button onClick={onClose} style={closeBtn} title="Tutup"><I n="x" s={16} /></button>
-      </div>
-
-      <div style={{ padding: 18, overflowY: "auto" }}>
-        {allDone ? (
-          /* ── Layar PUJIAN — tampil saat semua misi wajib selesai ── */
-          <div style={{ textAlign: "center", padding: "14px 6px 8px" }}>
-            <div style={{ width: 76, height: 76, borderRadius: "50%", margin: "0 auto 16px", background: MISSION_THEME.gradSoft, display: "grid", placeItems: "center", border: `2px solid ${MISSION_THEME.ring}` }}>
-              <I n="sparkle" s={38} style={{ color: MISSION_THEME.solid }} />
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.02em", marginBottom: 6 }}>Keren, {user.namaDisplay || getFirstName(user.nama || "")}! 🎉</div>
-            <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.6, maxWidth: 300, margin: "0 auto 18px" }}>Kamu sudah menyelesaikan <b>seluruh misi</b> Mission Mode hari ini. Mantap — terus jaga ritme belajarmu!</div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 16px", borderRadius: 99, background: MISSION_THEME.tint, color: MISSION_THEME.onTint, fontSize: 12.5, fontWeight: 700, marginBottom: 18 }}>
-              <I n="checkCircle" s={15} /> {totalWajib} dari {totalWajib} misi tuntas
-            </div>
-            <button className="btn btn-full" style={{ background: MISSION_THEME.grad, color: "#fff" }} onClick={onClose}>Selesai</button>
-          </div>
-        ) : (
-          <>
-            {mission.judul && <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{mission.judul}</div>}
-            {mission.instruksi && <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 14, whiteSpace: "pre-wrap" }}>{mission.instruksi}</div>}
-
-            {/* Progress */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>Perkembangan Misi</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: MISSION_THEME.solid, fontFamily: "var(--mono)" }}>{doneWajib} / {totalWajib}</span>
-              </div>
-              <div style={{ height: 8, background: "var(--surface-alt)", borderRadius: 99, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: MISSION_THEME.grad, borderRadius: 99, transition: "width .4s" }} /></div>
-            </div>
-
-            {/* Misi #1: KEHADIRAN — selalu di atas */}
-            <div style={{ padding: "13px 14px", borderRadius: "var(--r)", marginBottom: 8, background: sudahHadir ? "var(--good-bg)" : MISSION_THEME.tint, border: `1px solid ${sudahHadir ? "#86efac" : MISSION_THEME.ring}` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: sudahHadir ? 0 : 11 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 9, background: sudahHadir ? "#dcfce7" : "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}><I n={sudahHadir ? "checkCircle" : "mapPin"} s={17} style={{ color: sudahHadir ? "var(--good)" : MISSION_THEME.solid }} /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>Konfirmasi Kehadiran</div>
-                  <div style={{ fontSize: 11, color: sudahHadir ? "var(--good)" : "var(--ink-3)" }}>{sudahHadir ? "Sudah dikonfirmasi ke guru" : "Misi pertama · Wajib"}</div>
-                </div>
-              </div>
-              {!sudahHadir && <button onClick={handleHadir} disabled={sending} style={{ width: "100%", padding: "12px 0", borderRadius: 11, border: "none", background: MISSION_THEME.grad, color: "#fff", fontWeight: 700, fontSize: 14, cursor: sending ? "default" : "pointer", opacity: sending ? .7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>{sending ? "Mengirim..." : <><I n="flag" s={15} /> Hadir Sekarang</>}</button>}
-            </div>
-            {hadirErr && <div style={{ fontSize: 11.5, color: "var(--bad)", background: "var(--bad-bg)", border: "1px solid #fca5a5", borderRadius: 8, padding: "7px 11px", marginBottom: 8 }}>{hadirErr}</div>}
-
-            {/* Misi lainnya */}
-            {misi.map(m => {
-              const selesai = store.isMisiSelesai(m, user.id);
-              return <button key={m.key} onClick={() => openMisi(m)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", background: "var(--surface)", border: `1px solid ${selesai ? "var(--good)" : "var(--line-soft)"}`, borderRadius: "var(--r)", cursor: "pointer", textAlign: "left", width: "100%", boxShadow: "var(--shadow-sm)", marginBottom: 8 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 9, background: selesai ? "var(--good-bg)" : MISSION_THEME.tint, display: "grid", placeItems: "center", flexShrink: 0 }}><I n={selesai ? "check" : (m.tipe === "tugas" ? "fileText" : "book")} s={16} style={{ color: selesai ? "var(--good)" : MISSION_THEME.solid }} /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{missionMisiLabel(m, store)}</div>
-                  <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{m.tipe === "tugas" ? "Tugas" : "Materi"} · {m.wajib ? "Wajib" : "Opsional"}</div>
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: selesai ? "var(--good)" : MISSION_THEME.solid, flexShrink: 0 }}>{selesai ? "Selesai" : "Buka →"}</span>
-              </button>;
-            })}
-          </>
-        )}
-      </div>
-    </div>
-  </div>;
-}
 
 function AppInner() {
   const [user, setUser] = useState(null);
@@ -9940,7 +8144,7 @@ function AppInner() {
       else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
       else if (route === "mission") screen = <MisiSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
-      else screen = <DashboardSiswa user={user} store={store} navigate={navigate} />;
+      else screen = <BerandaSiswa user={user} store={store} navigate={navigate} MissionModal={MisiModal} />;
     }
   }
   return <>
