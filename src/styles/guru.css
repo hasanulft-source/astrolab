@@ -205,6 +205,33 @@
 .gr-akun-txt .lv{display:inline-flex;align-items:center;gap:3px;font-weight:700}
 .gr-akun-act{display:flex;gap:14px;margin-left:auto}
 .gr-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Tindak lanjut & arsip */
+.gr-link.done{color:var(--ink-2)}
+.gr-link:disabled{opacity:.5;cursor:wait}
+.gr-more.muted{color:var(--ink-3);font-weight:600}
+.gr-siswa.done{padding-left:14px;background:var(--surface-alt)}
+.gr-warn{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:var(--warn-bg);color:#8A4208;font-size:13px}
+.gr-filter{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 320px;justify-content:flex-end}
+.gr-siap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:12px 16px}
+.gr-siap>div{flex:1 1 260px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gr-siap b{font-size:14px}
+.gr-arsip{overflow:hidden}
+.gr-arsip-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;padding:12px 16px;background:var(--surface-alt);border-bottom:1px solid var(--line-soft)}
+.gr-arsip-head b{font-size:14.5px}
+.gr-arsip-row+.gr-arsip-row{border-top:1px solid var(--line-soft)}
+.gr-arsip-main{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:12px 16px}
+.gr-arsip-txt{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gr-arsip-txt b{font-size:14px}
+.gr-arsip-main .gr-tugas-act{align-items:center}
+.gr-soal-list{margin:0;padding:0 16px 14px 36px;display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--ink-2)}
+.gr-soal-list .tipe,.gr-pick-s .tipe{font-size:11px;font-weight:700;color:var(--ink-3)}
+.modal.gr-pick{max-width:620px;width:100%;display:flex;flex-direction:column;gap:12px}
+.gr-pick-list{max-height:min(55vh,460px);overflow:auto;border:1px solid var(--line);border-radius:10px}
+.gr-pick-t+.gr-pick-t{border-top:1px solid var(--line-soft)}
+.gr-pick-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:10px 12px}
+.gr-pick-head .gr-muted{flex:1 1 160px}
+.gr-pick-s{display:flex;gap:8px;align-items:flex-start;padding:6px 12px 6px 22px;font-size:13px;cursor:pointer}
+.gr-pick-s input{margin-top:3px;accent-color:var(--accent)}
 .gr-belum{display:flex;align-items:center;gap:10px;padding:11px 14px}
 .gr-belum span{flex:1;min-width:0;font-weight:600;font-size:13.5px}
 
@@ -220,6 +247,7 @@
   .gr-grid.nilai>*{padding:0 14px}
   .gr-grid.nilai .c-nm{grid-area:nm}.gr-grid.nilai .c-num{grid-area:num}.gr-grid.nilai .c-sbx{grid-area:sbx;font-size:12px}.gr-grid.nilai .c-st{grid-area:st;text-align:right}
 }
+@media(max-width:600px){.gr-filter{justify-content:stretch}.gr-filter>*{flex:1 1 140px;min-width:0}.gr-filter select{width:100%}}
 @media(max-width:480px){
   .gr{gap:16px}
   .gr h1{font-size:22px}

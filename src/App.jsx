@@ -15,7 +15,6 @@ import { getLevel, TierIcon, BadgeIcon, AUTO_BADGES, MANUAL_BADGES, ALL_BADGES, 
 import { downloadTemplateSandbox, importSandboxFromExcel, downloadTemplateSoal, exportNilai, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, backupFromStore, importSoalFromExcel, parseNilaiAkhirExcel, exportLatihanSoal } from './utils/excel';
 import { LaporanModal } from './utils/laporan';
 import { ChatScreen } from './pages/chat';
-import { BankSoal, PilihDariBankSoalModal } from './pages/banksoal';
 import { LatihanMandiri, MateriManager } from './pages/materi';
 import { Welcome } from './pages/welcome';
 import { RaporSiswaV2 } from './pages/rapor';
@@ -23,7 +22,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
-import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2 } from './pages/guru';
+import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -273,7 +272,29 @@ function useStore() {
   }, []);
 
   // TUGAS
-  const getTugas = () => tugas;
+  // Tugas yang diarsipkan (tugas tahun/semester lalu yang disimpan sebagai templat) disembunyikan dari
+  // semua tampilan aktif: daftar siswa, nilai tugas Astrolab, streak, dashboard, laporan.
+  const getTugas = () => tugas.filter(t => !t.arsip);
+  const getTugasArsip = () => tugas.filter(t => t.arsip);
+  const getTugasSemua = () => tugas;
+  // Arsipkan / kembalikan beberapa tugas sekaligus (atomik)
+  const arsipkanTugas = async (ids, arsip = true) => {
+    const patch = {};
+    ids.forEach(id => { patch[`tugas/${id}/arsip`] = arsip ? true : null; patch[`tugas/${id}/arsipAt`] = arsip ? Date.now() : null; });
+    if (Object.keys(patch).length) await update(ref(db), patch);
+  };
+  // Terbitkan ulang tugas dari arsip sebagai tugas BARU untuk kelas & periode sekarang.
+  // Tugas personal dijadikan untuk seluruh kelas; submission lama tidak ikut.
+  const terbitkanUlang = async (t, { judul, jenjang, deadline, scheduledAt = null }) => {
+    const { id, createdAt, arsip, arsipAt, periode, status, scheduledAt: _s, assignedTo, ...rest } = t;
+    const terjadwal = !!scheduledAt && new Date(scheduledAt).getTime() > Date.now();
+    const newRef = push(ref(db, "tugas"));
+    const data = JSON.parse(JSON.stringify({ ...rest, judul: judul || t.judul, jenjang: jenjang || t.jenjang, deadline,
+      createdAt: new Date().toISOString(), periode: getActivePeriode(), status: terjadwal ? "scheduled" : "aktif",
+      scheduledAt: terjadwal ? scheduledAt : null, dariArsip: id }));
+    await set(newRef, data);
+    return newRef.key;
+  };
   const addTugas = async (t) => {
     const newRef = push(ref(db, "tugas"));
     const terjadwal = !!t.scheduledAt && new Date(t.scheduledAt).getTime() > Date.now();
@@ -308,30 +329,7 @@ function useStore() {
   };
 
   // BANK SOAL
-  const [bankSoal, setBankSoal] = useState([]);
-  useEffect(() => {
-    const bsRef = ref(db, "banksoal");
-    const unsub = onValue(bsRef, snap => {
-      const data = snap.val() || {};
-      setBankSoal(Object.entries(data).map(([id, s]) => ({ ...s, id })));
-    }, () => setBankSoal([]));
-    return () => unsub();
-  }, []);
-  const getBankSoal = () => bankSoal;
-  const addBankSoal = async (s) => {
-    const newRef = push(ref(db, "banksoal"));
-    await set(newRef, { ...s, createdAt: new Date().toISOString() });
-  };
-  const updateBankSoal = async (id, patch) => { await update(ref(db, `banksoal/${id}`), patch); };
-  const deleteBankSoal = async (id) => { await remove(ref(db, `banksoal/${id}`)); };
-  const addBankSoalBulk = async (soalList) => {
-    const updates = {};
-    soalList.forEach(s => {
-      const newRef = push(ref(db, "banksoal"));
-      updates[newRef.key] = { ...s, createdAt: new Date().toISOString() };
-    });
-    await update(ref(db, "banksoal"), updates);
-  };
+  // Bank Soal dihapus (Nov 2026): diganti Arsip Tugas per materi. Data lama di node "banksoal" tidak disentuh.
 
   // SUBMISSIONS
   const getSubs = () => subs;
@@ -769,6 +767,19 @@ function useStore() {
     return { siswaId, mapel, jenjang, periode, sumatif: {}, kuis: {}, uts: null, uas: null, portofolio: null };
   };
 
+  // ─── TINDAK LANJUT "Siswa perlu perhatian" (guru only) ───
+  // tindakLanjut/{siswaId} = { ts, tipe: ["tren_turun", ...] } — siswa disembunyikan dari dashboard
+  // sampai muncul pemicu yang belum pernah ditindaklanjuti. Rules: hanya guru yang bisa baca & tulis.
+  const [tindakLanjut, setTindakLanjutData] = useState({});
+  useEffect(() => {
+    if (currentUser && currentUser.role !== "guru") return;
+    const u = onValue(ref(db, "tindakLanjut"), snap => setTindakLanjutData(snap.val() || {}), () => setTindakLanjutData({}));
+    return () => u();
+  }, [currentUser?.role]);
+  const getTindakLanjut = () => tindakLanjut;
+  const setTindakLanjut = async (siswaId, tipe) => { await set(ref(db, `tindakLanjut/${siswaId}`), { ts: Date.now(), tipe: [...new Set(tipe)] }); };
+  const hapusTindakLanjut = async (siswaId) => { await remove(ref(db, `tindakLanjut/${siswaId}`)); };
+
   // ─── AKSES REQUEST (siswa minta akses tugas yang sudah lewat deadline) ───
   // Key: `${tugasId}_${siswaId}`. Status: "pending" | "approved" | "rejected"
   const [aksesRequests, setAksesRequests] = useState({});
@@ -1102,7 +1113,7 @@ function useStore() {
   //   siswa lain gak di-vonis 0 karena tugas emang bukan buat mereka.
   const getTugasAstrolabAvg = (siswaId, mapel, jenjang) => {
     const relevantTugas = tugas.filter(t => {
-      if (t.mapel !== mapel || t.jenjang !== jenjang || t.status === "scheduled") return false;
+      if (t.arsip || t.mapel !== mapel || t.jenjang !== jenjang || t.status === "scheduled") return false;
       // Tugas dengan graded: false gak masuk avg (biasanya tugas personal "Latihan Khusus")
       if (t.graded === false) return false;
       // Tugas personal (assignedTo array): cuma siswa yg di-assign yang dihitung
@@ -1545,7 +1556,7 @@ function useStore() {
   useEffect(() => {
     const checkScheduled = async () => {
       const now = Date.now();
-      tugas.filter(t => t.status === "scheduled" && t.scheduledAt && new Date(t.scheduledAt).getTime() <= now)
+      tugas.filter(t => !t.arsip && t.status === "scheduled" && t.scheduledAt && new Date(t.scheduledAt).getTime() <= now)
         .forEach(t => {
           update(ref(db, `tugas/${t.id}`), { status: "aktif" });
         });
@@ -1914,7 +1925,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -2924,29 +2935,6 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
     setForm(f => ({ ...f, assignedTo: (f.assignedTo || []).filter(id => submittedSiswaIds.has(id)) }));
   }
 
-  function handleBankSelect(picked) {
-    // Convert bank soal format ke tugas soal format
-    const converted = picked.map(p => {
-      const base = { id: uid(), pertanyaan: p.pertanyaan, gambar: p.gambar || null, type: p.type === "kompleks" ? "komplex" : p.type === "pasangkan" ? "pasang" : p.type, poin: 10, pembahasan: p.pembahasan || "" };
-      if (p.type === "pg") return { ...base, opsi: p.opsi, jawaban: p.jawaban };
-      if (p.type === "tf") return { ...base, jawaban: p.jawaban };
-      if (p.type === "kompleks") {
-        const jawaban = (p.benarOpsi || []).map((b, i) => b ? i : null).filter(x => x !== null);
-        return { ...base, opsi: p.opsi, jawaban };
-      }
-      if (p.type === "pasangkan") {
-        const kiri = (p.pasangan || []).map(x => x[0]);
-        const kanan = (p.pasangan || []).map(x => x[1]);
-        return { ...base, kiri, kanan, jawaban: kiri.map((_, i) => i) };
-      }
-      if (p.type === "excel") return { ...base, headers: p.headers, table: p.table, opsi: p.opsi, jawaban: p.jawaban };
-      if (p.type === "essay") return { ...base, kataKunci: p.kataKunci || "", panduanNilai: p.panduanNilai || "" };
-      return base;
-    });
-    setSoal([...soal, ...converted]);
-    setShowBank(false);
-  }
-
   function submit() {
     if (!form.judul.trim()) { setErr("Judul tugas wajib diisi."); return; }
     if (!form.deadline) { setErr("Deadline wajib diisi."); return; }
@@ -3238,12 +3226,12 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
             <button className="btn btn-ghost btn-sm" onClick={downloadTemplateSoal} title="Download template soal Excel">
               <I n="chartBar" s={14} /> Download Template
             </button>
-            <button className="btn btn-outline btn-sm" onClick={() => setShowBank(true)} title="Pilih dari Bank Soal">
-              <I n="book" s={14} /> Bank Soal
+            <button className="btn btn-outline btn-sm" onClick={() => setShowBank(true)} title="Ambil soal dari tugas yang diarsipkan">
+              <I n="book" s={14} /> Dari arsip
             </button>
           </div>
 
-          {showBank && <PilihDariBankSoalModal store={store} defaultMapel={form.mapel} defaultJenjang={form.jenjang} onClose={() => setShowBank(false)} onSelect={handleBankSelect} />}
+          {showBank && <PilihDariArsipModal store={store} mapel={form.mapel} jenjang={form.jenjang} onClose={() => setShowBank(false)} onSelect={baru => { setSoal([...soal, ...baru]); setShowBank(false); }} />}
 
           <QuestionBuilder soal={soal} setSoal={setSoal} />
 
@@ -5822,7 +5810,7 @@ function ResetSemesterModal({ store, onClose }) {
           <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.8 }}>
             <div>✅ Akun siswa <b>tetap ada</b></div>
             <div>✅ Tugas yang sudah dibuat <b>tetap ada</b></div>
-            <div>✅ Bank Soal <b>tetap ada</b></div>
+            <div>✅ Arsip tugas <b>tetap ada</b></div>
             <div>✅ Foto profil <b>tetap ada</b></div>
             <div>✅ Nilai Akhir & bonus nilai <b>tetap ada</b> (per periode)</div>
           </div>
@@ -6655,7 +6643,7 @@ function BadgeManager({ store }) {
 
 // ─── NAV ───
 const SNAV = [{ id: "home", l: "Beranda", ic: "home" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "tugas", l: "Tugas", ic: "book" }, { id: "latihan-mandiri", l: "Mandiri", ic: "layers" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "profil", l: "Profil", ic: "user" }];
-const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "bank-soal", l: "Bank Soal", ic: "chartBar" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "flag" }, { id: "nilai-akhir", l: "Nilai Akhir", ic: "award" }];
+const GNAV = [{ id: "home-guru", l: "Dashboard", ic: "layers" }, { id: "tugas-guru", l: "Tugas", ic: "book" }, { id: "arsip-tugas", l: "Arsip", ic: "fileText" }, { id: "leaderboard", l: "Ranking", ic: "trophy" }, { id: "chat", l: "Pesan", ic: "chat" }, { id: "kelas", l: "Siswa", ic: "user" }, { id: "laporan-guru", l: "Laporan", ic: "flag" }, { id: "nilai-akhir", l: "Nilai Akhir", ic: "award" }];
 
 function Sidebar({ user, route, navigate, onLogout, store }) {
   const nav = user.role === "guru" ? GNAV : SNAV;
@@ -8153,7 +8141,7 @@ function AppInner() {
       else if (route === "analisis-tugas") screen = <AnalisisTugasV2 store={store} tugasId={params.tugasId} navigate={navigate} NilaiEssayModal={NilaiEssayModal} IntervensiNilaiModal={IntervensiNilaiModal} onTampilanLama={() => navigate("analisis-tugas-lama", { tugasId: params.tugasId })} />;
       else if (route === "analisis-tugas-lama") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
-      else if (route === "bank-soal") screen = <BankSoal store={store} navigate={navigate} />;
+      else if (route === "arsip-tugas" || route === "bank-soal") screen = <ArsipTugas store={store} navigate={navigate} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswaV2 store={store} TambahSiswaModal={TambahSiswaModal} ImportSiswaModal={ImportSiswaModal} AuditPoinGanda={AuditPoinGanda} withTimeout={withTimeout} cetakKartu={(list, j) => printKartuLogin(list.map(s => ({ ...s, password: s.password || "—" })), j)} onTampilanLama={() => navigate("manajemen-siswa-lama")} />;
       else if (route === "manajemen-siswa-lama") screen = <ManajemenSiswa store={store} />;
       else if (route === "laporan-guru") screen = <LaporanGuruV2 store={store} LaporanDetailModal={LaporanDetailModal} onTampilanLama={() => navigate("laporan-guru-lama")} />;

@@ -8,6 +8,7 @@ import { verifikasiSandbox, normal } from "../utils/rumus";
 import { exportNilai, backupFromStore } from "../utils/excel";
 import { LaporanModal } from "../utils/laporan";
 import { deadlineEnd } from "./siswa";
+import { uid } from "../utils/helpers";
 import { Confirm, Avatar } from "../components/visual";
 import { getLevel, TierIcon } from "../components/gamification";
 import "../styles/guru.css";
@@ -268,8 +269,21 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
   const [laporan, setLaporan] = useState(false);
   const [esaiTugas, setEsaiTugas] = useState(null);
   const [semuaPerhatian, setSemuaPerhatian] = useState(false);
+  const [lihatSelesai, setLihatSelesai] = useState(false);
+  const [sibukTL, setSibukTL] = useState(null);
   const d = hitungDashboard(store, jenjang);
-  const perhatian = hitungPerhatian ? hitungPerhatian(store, jenjang) : [];
+  const tl = store.getTindakLanjut ? store.getTindakLanjut() : {};
+  // Siswa disembunyikan kalau semua pemicunya sudah pernah ditandai selesai; pemicu baru memunculkannya lagi
+  const sudahTL = p => { const r = tl[p.siswa.id]; return !!r && p.triggers.every(tr => (r.tipe || []).includes(tr.type)); };
+  const semuaP = hitungPerhatian ? hitungPerhatian(store, jenjang) : [];
+  const perhatian = semuaP.filter(p => !sudahTL(p));
+  const selesaiTL = semuaP.filter(sudahTL);
+  const tandai = async (p, selesai) => {
+    setSibukTL(p.siswa.id);
+    try { if (selesai) await store.setTindakLanjut(p.siswa.id, p.triggers.map(tr => tr.type)); else await store.hapusTindakLanjut(p.siswa.id); }
+    catch (e) { alert("Gagal menyimpan tindak lanjut: " + (e?.message || "coba lagi")); }
+    finally { setSibukTL(null); }
+  };
   const now = new Date();
   const sapa = now.getHours() < 11 ? "Selamat pagi" : now.getHours() < 15 ? "Selamat siang" : now.getHours() < 18 ? "Selamat sore" : "Selamat malam";
   const jumlah = j => store.getAllSiswa(j).length;
@@ -375,6 +389,7 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
                     <div className="gr-siswa-act">
                       <button type="button" className="gr-link" onClick={() => navigate("chat", { openChat: p.siswa.id })}>Kirim pesan</button>
                       <button type="button" className="gr-link" onClick={() => navigate("buat-tugas", { presetAssignedTo: [p.siswa.id], presetJenjang: jenjang })}>Beri latihan khusus</button>
+                      {store.setTindakLanjut && <button type="button" className="gr-link done" disabled={sibukTL === p.siswa.id} onClick={() => tandai(p, true)}>Selesai ditindaklanjuti</button>}
                     </div>
                   </div>
                 </div>
@@ -382,6 +397,18 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
               {perhatian.length > 4 && (
                 <button type="button" className="gr-more" onClick={() => setSemuaPerhatian(v => !v)}>{semuaPerhatian ? "Ringkas" : `Tampilkan ${perhatian.length - 4} siswa lainnya`}</button>
               )}
+              {selesaiTL.length > 0 && (
+                <button type="button" className="gr-more muted" onClick={() => setLihatSelesai(v => !v)}>{lihatSelesai ? "Sembunyikan" : `${selesaiTL.length} siswa sudah ditindaklanjuti`}</button>
+              )}
+              {lihatSelesai && selesaiTL.map(p => (
+                <div key={p.siswa.id} className="gr-siswa done">
+                  <div className="gr-siswa-txt">
+                    <b>{p.siswa.namaDisplay || p.siswa.nama}</b>
+                    <span className="gr-muted">Ditindaklanjuti {new Date(tl[p.siswa.id].ts).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} · {p.triggers.map(tr => tr.label).join(" · ")}</span>
+                    <div className="gr-siswa-act"><button type="button" className="gr-link" disabled={sibukTL === p.siswa.id} onClick={() => tandai(p, false)}>Tampilkan lagi di daftar</button></div>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 
@@ -486,7 +513,7 @@ export function AnalisisTugasV2({ store, tugasId, navigate, NilaiEssayModal, Int
   const [semua, setSemua] = useState(false);
   const [esai, setEsai] = useState(false);
   const [ubah, setUbah] = useState(false);
-  const t = store.getTugas().find(x => x.id === tugasId);
+  const t = (store.getTugasSemua || store.getTugas)().find(x => x.id === tugasId);
   if (!t) return <div className="page gr"><p className="gr-empty">Tugas tidak ditemukan.</p></div>;
   const a = hitungAnalisis(t, store.getSubs(), store.getAllSiswa(t.jenjang), { hanyaBawah });
   const namaSiswa = id => { const s = store.getAllSiswa().find(x => x.id === id); return s ? (s.namaDisplay || s.nama) : id; };
@@ -650,10 +677,12 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
   const [hapus, setHapus] = useState(null);
   const [nilaiT, setNilaiT] = useState(null);
   const [materi, setMateri] = useState(false);
+  const [arsipT, setArsipT] = useState(null);
   const [toast, setToast] = useState("");
   const kabar = m => { setToast(m); setTimeout(() => setToast(""), 2500); };
   const d = hitungDaftarTugas(store, jenjang, { tab, personalSaja, cari });
   const TAB = [["berjalan", "Berjalan"], ["terjadwal", "Terjadwal"], ["selesai", "Selesai"], ["semua", "Semua"]];
+  // (tugas yang diarsipkan tidak muncul di sini; lihat menu Arsip)
   const kosong = cari ? `Tidak ada tugas yang cocok dengan "${cari}".` : personalSaja ? "Belum ada tugas personal di kelompok ini."
     : tab === "berjalan" ? "Tidak ada tugas yang sedang berjalan." : tab === "terjadwal" ? "Tidak ada tugas terjadwal." : tab === "selesai" ? "Belum ada tugas yang ditutup." : "Belum ada tugas.";
 
@@ -719,6 +748,7 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
                     {x.kumpul > 0 && IntervensiNilaiModal && <button type="button" className="gr-link" onClick={() => setNilaiT(t)}>Nilai</button>}
                     <button type="button" className="gr-link" onClick={() => navigate("edit-tugas", { tugasId: t.id })}>{x.grup === "selesai" ? "Perpanjang" : "Edit"}</button>
                     <button type="button" className="gr-link" onClick={async () => { try { await store.duplicateTugas(t); kabar("Tugas diduplikat dan langsung aktif. Edit judul atau jadwalnya bila perlu."); } catch (e) { kabar("Gagal menduplikat: " + (e?.message || "coba lagi")); } }}>Duplikat</button>
+                    {x.grup === "selesai" && store.arsipkanTugas && <button type="button" className="gr-link" onClick={() => setArsipT(t)}>Arsipkan</button>}
                     <button type="button" className="gr-link danger" onClick={() => setHapus(t)}>Hapus</button>
                   </div>
                 </div>
@@ -732,6 +762,7 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
       {toast && <div className="gr-toast" role="status">{toast}</div>}
       {hapus && <Confirm title={`Hapus "${hapus.judul}"?`} desc="Tugas dihapus permanen. Poin siswa yang sudah mengerjakan tidak berubah." onOk={() => { store.deleteTugas(hapus.id); setHapus(null); kabar("Tugas dihapus."); }} onCancel={() => setHapus(null)} />}
       {nilaiT && IntervensiNilaiModal && <IntervensiNilaiModal tugas={nilaiT} store={store} onClose={() => setNilaiT(null)} />}
+      {arsipT && <KonfirmasiArsip store={store} daftar={[arsipT]} onClose={() => setArsipT(null)} onDone={n => { setArsipT(null); kabar(`${n} tugas diarsipkan. Lihat di menu Arsip.`); }} />}
       {materi && MateriManagerModal && <MateriManagerModal store={store} jenjang={jenjang} onClose={() => setMateri(false)} onSuccess={msg => { setMateri(false); kabar(msg); }} />}
     </div>
   );
@@ -925,6 +956,250 @@ export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, Au
       {hapus && <Confirm title={`Hapus ${hapus.nama}?`} desc="Akun siswa dan percakapannya di Pesan dihapus permanen." onOk={hapusSiswa} onCancel={() => setHapus(null)} />}
       {tambah && TambahSiswaModal && <TambahSiswaModal store={store} onClose={() => setTambah(false)} onSuccess={(id, p) => { setTambah(false); kabar(`Siswa ditambahkan. ID: ${id} · Password: ${p}`); }} />}
       {impor && ImportSiswaModal && <ImportSiswaModal store={store} onClose={() => setImpor(false)} onSuccess={n => { setImpor(false); kabar(`${n} siswa berhasil diimpor.`); }} />}
+    </div>
+  );
+}
+
+// ─── Arsip tugas per materi (pengganti Bank Soal, Nov 2026) ───
+const kunciMateri = t => (t.materi && t.materi.trim()) || "Tanpa materi";
+const periodeAktif = store => (store.getActivePeriode ? store.getActivePeriode() : "");
+
+export function KonfirmasiArsip({ store, daftar, onClose, onDone }) {
+  const [sibuk, setSibuk] = useState(false);
+  const sekarang = periodeAktif(store);
+  const periodeIni = daftar.filter(t => !t.periode || t.periode === sekarang).length;
+  const tutup = periodeIni && store.isSemesterClosed && store.isSemesterClosed(sekarang);
+  async function ok() {
+    setSibuk(true);
+    try { await store.arsipkanTugas(daftar.map(t => t.id), true); onDone(daftar.length); }
+    catch (e) { alert("Gagal mengarsipkan: " + (e?.message || "coba lagi")); setSibuk(false); }
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-arsip-j">
+        <h3 id="gr-arsip-j">Arsipkan {daftar.length === 1 ? `"${daftar[0].judul}"` : `${daftar.length} tugas`}?</h3>
+        <p style={{ marginBottom: 10 }}>Tugas yang diarsipkan disimpan sebagai templat untuk diterbitkan ulang nanti. Siswa tidak lagi melihatnya, dan tugas ini tidak lagi dihitung di nilai Tugas Astrolab maupun streak.</p>
+        {periodeIni > 0 && !tutup && (
+          <p className="gr-warn">{periodeIni === daftar.length ? "Tugas ini" : `${periodeIni} di antaranya`} berasal dari periode {sekarang} yang masih berjalan. Kalau diarsipkan sekarang, nilai Tugas Astrolab siswa di rapor periode ini ikut berubah. Sebaiknya arsipkan setelah rapor terkirim.</p>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={sibuk} onClick={ok}>{sibuk ? "Mengarsipkan…" : "Arsipkan"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TerbitUlangModal({ store, t, onClose, onDone }) {
+  const [judul, setJudul] = useState(t.judul);
+  const [jenjang, setJenjang] = useState(t.jenjang || "VII");
+  const [deadline, setDeadline] = useState("");
+  const [jadwal, setJadwal] = useState("");
+  const [err, setErr] = useState("");
+  const [sibuk, setSibuk] = useState(false);
+  async function ok() {
+    if (!judul.trim()) { setErr("Judul wajib diisi."); return; }
+    if (!deadline) { setErr("Deadline wajib diisi."); return; }
+    if (deadlineEnd(deadline) < Date.now()) { setErr("Deadline sudah lewat. Pilih tanggal yang akan datang."); return; }
+    if (jadwal && new Date(jadwal).getTime() > deadlineEnd(deadline)) { setErr("Jadwal terbit jatuh setelah deadline."); return; }
+    setSibuk(true);
+    try { await store.terbitkanUlang(t, { judul: judul.trim(), jenjang, deadline, scheduledAt: jadwal ? new Date(jadwal).toISOString() : null }); onDone(jadwal); }
+    catch (e) { setErr("Gagal menerbitkan: " + (e?.message || "coba lagi")); setSibuk(false); }
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-tu-j">
+        <h3 id="gr-tu-j">Terbitkan ulang</h3>
+        <p style={{ marginBottom: 14 }}>Membuat tugas baru dari arsip dengan {(t.soal || []).length} soal yang sama, untuk periode {periodeAktif(store)}. Arsipnya tetap tersimpan.</p>
+        <div className="fg"><label className="lbl" htmlFor="gr-tu-judul">Judul</label><input id="gr-tu-judul" className="inp" value={judul} onChange={e => setJudul(e.target.value)} /></div>
+        <div className="fg"><span className="lbl">Untuk kelas</span>
+          <div className="gr-seg" role="radiogroup" aria-label="Kelas">{["VII", "VIII"].map(j => <button key={j} type="button" role="radio" aria-checked={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => setJenjang(j)}>Kelas {j}</button>)}</div>
+        </div>
+        <div className="fg"><label className="lbl" htmlFor="gr-tu-dl">Deadline</label><input id="gr-tu-dl" type="date" className="inp" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
+        <div className="fg"><label className="lbl" htmlFor="gr-tu-jd">Jadwal terbit (opsional)</label><input id="gr-tu-jd" type="datetime-local" className="inp" value={jadwal} onChange={e => setJadwal(e.target.value)} /><span className="gr-muted">Kosongkan untuk langsung terbit.</span></div>
+        {err && <p className="gr-warn">{err}</p>}
+        <div className="modal-actions">
+          <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={sibuk} onClick={ok}>{sibuk ? "Menerbitkan…" : jadwal ? "Jadwalkan" : "Terbitkan"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ArsipTugas({ store, navigate }) {
+  const [jenjang, setJenjang] = useState("semua");
+  const [mapel, setMapel] = useState("semua");
+  const [cari, setCari] = useState("");
+  const [buka, setBuka] = useState(null);
+  const [terbit, setTerbit] = useState(null);
+  const [arsipkan, setArsipkan] = useState(null);
+  const [kembali, setKembali] = useState(null);
+  const [hapus, setHapus] = useState(null);
+  const [toast, setToast] = useState("");
+  const kabar = m => { setToast(m); setTimeout(() => setToast(""), 3500); };
+  const now = Date.now();
+  const cocok = t => (jenjang === "semua" || t.jenjang === jenjang) && (mapel === "semua" || t.mapel === mapel)
+    && (!cari.trim() || `${t.judul} ${t.materi || ""}`.toLowerCase().includes(cari.trim().toLowerCase()));
+  const arsip = (store.getTugasArsip ? store.getTugasArsip() : []).filter(cocok);
+  const siap = store.getTugas().filter(t => t.status !== "scheduled" && labelTenggat(t, now).lewat).filter(cocok);
+  const kelompok = list => {
+    const g = {};
+    list.forEach(t => { const k = `${t.mapel}|${kunciMateri(t)}`; (g[k] = g[k] || []).push(t); });
+    return Object.entries(g).map(([k, ts]) => { const [mp, mt] = k.split("|"); return { k, mapel: mp, materi: mt, tugas: ts.sort((a, b) => (a.judul || "").localeCompare(b.judul || "", "id")) }; })
+      .sort((a, b) => a.mapel.localeCompare(b.mapel) || a.materi.localeCompare(b.materi, "id"));
+  };
+  const gArsip = kelompok(arsip);
+  const gSiap = kelompok(siap);
+  const mapels = [...new Set([...(store.getTugasSemua ? store.getTugasSemua() : store.getTugas()).map(t => t.mapel).filter(Boolean)])];
+
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">{arsip.length} tugas tersimpan · dikelompokkan per materi</span>
+          <h1>Arsip tugas</h1>
+        </div>
+      </div>
+      <p className="gr-muted" style={{ marginTop: -10 }}>Tugas yang sudah selesai bisa diarsipkan per materi, lalu diterbitkan ulang tahun depan tanpa import soal lagi. Arsip tidak terlihat siswa dan tidak dihitung di nilai.</p>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg" role="tablist" aria-label="Kelas">
+          {[["semua", "Semua kelas"], ["VII", "VII"], ["VIII", "VIII"]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={jenjang === k} className={jenjang === k ? "on" : ""} onClick={() => setJenjang(k)}>{l}</button>)}
+        </div>
+        <div className="gr-filter">
+          <label className="gr-select"><span className="sr">Mapel</span>
+            <select value={mapel} onChange={e => setMapel(e.target.value)}><option value="semua">Semua mapel</option>{mapels.map(m => <option key={m} value={m}>{m}</option>)}</select>
+          </label>
+          <label className="gr-cari"><span className="sr">Cari</span><input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari judul atau materi" /></label>
+        </div>
+      </div>
+
+      {gSiap.length > 0 && (
+        <section>
+          <Kepala judul="Siap diarsipkan" kanan={<span className="gr-mono">{siap.length} tugas selesai</span>} />
+          <div className="gr-card list">
+            {gSiap.map(g => (
+              <div key={g.k} className="gr-siap">
+                <div><b>{g.materi}</b><span className="gr-muted">{g.mapel} · {g.tugas.length} tugas selesai · {g.tugas.map(t => t.judul).slice(0, 2).join(", ")}{g.tugas.length > 2 ? ", …" : ""}</span></div>
+                <button type="button" className="gr-btn outline sm" onClick={() => setArsipkan(g.tugas)}>Arsipkan {g.tugas.length} tugas</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <Kepala judul="Tersimpan di arsip" />
+        {gArsip.length === 0 ? (
+          <div className="gr-card"><p className="gr-empty">{arsip.length === 0 && !cari && jenjang === "semua" && mapel === "semua" ? "Arsip masih kosong. Tugas yang sudah selesai bisa diarsipkan dari daftar di atas atau dari menu Tugas." : "Tidak ada arsip yang cocok dengan pilihan ini."}</p></div>
+        ) : (
+          <div className="gr-stack">
+            {gArsip.map(g => (
+              <div key={g.k} className="gr-card gr-arsip">
+                <div className="gr-arsip-head"><b>{g.materi}</b><span className="gr-mono">{g.mapel} · {g.tugas.length} tugas</span></div>
+                {g.tugas.map(t => {
+                  const open = buka === t.id;
+                  const sbx = (t.soal || []).filter(s => s.type === "sandbox").length;
+                  return (
+                    <div key={t.id} className="gr-arsip-row">
+                      <div className="gr-arsip-main">
+                        <div className="gr-arsip-txt">
+                          <b>{t.judul}</b>
+                          <span className="gr-muted">Kelas {t.jenjang} · {(t.soal || []).length} soal{sbx ? ` · ${sbx} sandbox` : ""}{t.periode ? ` · dari ${t.periode}` : ""}</span>
+                        </div>
+                        <div className="gr-tugas-act">
+                          <button type="button" className="gr-link" aria-expanded={open} onClick={() => setBuka(open ? null : t.id)}>{open ? "Tutup soal" : "Lihat soal"}</button>
+                          <button type="button" className="gr-link" onClick={() => navigate("analisis-tugas", { tugasId: t.id })}>Analisis</button>
+                          <button type="button" className="gr-link" onClick={() => setKembali(t)}>Kembalikan</button>
+                          <button type="button" className="gr-link danger" onClick={() => setHapus(t)}>Hapus</button>
+                          <button type="button" className="gr-btn sm" onClick={() => setTerbit(t)}>Terbitkan ulang</button>
+                        </div>
+                      </div>
+                      {open && (
+                        <ol className="gr-soal-list">
+                          {(t.soal || []).map((s, i) => <li key={s.id || i}><span className="tipe">{LABEL_TIPE[s.type] || s.type}</span> {s.pertanyaan || "(tanpa teks)"}</li>)}
+                        </ol>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {toast && <div className="gr-toast" role="status">{toast}</div>}
+      {terbit && <TerbitUlangModal store={store} t={terbit} onClose={() => setTerbit(null)} onDone={jd => { setTerbit(null); kabar(jd ? "Tugas dijadwalkan. Lihat di Tugas → Terjadwal." : "Tugas diterbitkan dan sudah terlihat siswa."); }} />}
+      {arsipkan && <KonfirmasiArsip store={store} daftar={arsipkan} onClose={() => setArsipkan(null)} onDone={n => { setArsipkan(null); kabar(`${n} tugas diarsipkan.`); }} />}
+      {kembali && (
+        <div className="modal-overlay" onClick={() => setKembali(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Kembalikan "{kembali.judul}"?</h3>
+            <p>Tugas aslinya kembali ke daftar Tugas, terlihat lagi oleh siswa Kelas {kembali.jenjang}, dan dihitung lagi di nilai. Untuk memakai soalnya di tahun ajaran baru, pakai "Terbitkan ulang" saja.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setKembali(null)}>Batal</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={async () => { await store.arsipkanTugas([kembali.id], false); setKembali(null); kabar("Tugas dikembalikan ke daftar Tugas."); }}>Kembalikan</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {hapus && <Confirm title={`Hapus "${hapus.judul}" dari arsip?`} desc="Tugas dan soalnya dihapus permanen, tidak bisa diterbitkan ulang lagi." onOk={async () => { await store.deleteTugas(hapus.id); setHapus(null); kabar("Arsip dihapus."); }} onCancel={() => setHapus(null)} />}
+    </div>
+  );
+}
+
+// Ambil soal dari tugas yang diarsipkan (dipakai di editor tugas, menggantikan "Bank Soal")
+export function PilihDariArsipModal({ store, mapel, jenjang, onClose, onSelect }) {
+  const [hanyaMapel, setHanyaMapel] = useState(true);
+  const [cari, setCari] = useState("");
+  const [buka, setBuka] = useState(null);
+  const [pilih, setPilih] = useState({}); // { "tugasId|idx": soal }
+  const q = cari.trim().toLowerCase();
+  const daftar = (store.getTugasArsip ? store.getTugasArsip() : [])
+    .filter(t => !hanyaMapel || t.mapel === mapel)
+    .filter(t => !q || `${t.judul} ${t.materi || ""} ${(t.soal || []).map(s => s.pertanyaan).join(" ")}`.toLowerCase().includes(q))
+    .sort((a, b) => (a.jenjang === jenjang ? -1 : 0) - (b.jenjang === jenjang ? -1 : 0) || kunciMateri(a).localeCompare(kunciMateri(b), "id"));
+  const n = Object.keys(pilih).length;
+  const toggle = (k, s) => setPilih(p => { const x = { ...p }; if (x[k]) delete x[k]; else x[k] = s; return x; });
+  const semuaDari = t => setPilih(p => { const x = { ...p }; (t.soal || []).forEach((s, i) => { x[`${t.id}|${i}`] = s; }); return x; });
+  const tambah = () => onSelect(Object.values(pilih).map(s => JSON.parse(JSON.stringify({ ...s, id: uid() }))));
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal gr-pick" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-pick-j">
+        <h3 id="gr-pick-j">Ambil soal dari arsip</h3>
+        <div className="gr-bar-row">
+          <label className="gr-cari"><span className="sr">Cari soal</span><input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari judul, materi, atau isi soal" /></label>
+          <label className="gr-check"><input type="checkbox" checked={hanyaMapel} onChange={e => setHanyaMapel(e.target.checked)} /> Hanya {mapel}</label>
+        </div>
+        <div className="gr-pick-list">
+          {daftar.length === 0 && <p className="gr-empty">{(store.getTugasArsip ? store.getTugasArsip() : []).length ? "Tidak ada arsip yang cocok." : "Arsip masih kosong. Arsipkan tugas yang sudah selesai lewat menu Arsip atau Tugas."}</p>}
+          {daftar.map(t => (
+            <div key={t.id} className="gr-pick-t">
+              <div className="gr-pick-head">
+                <button type="button" className="gr-link" aria-expanded={buka === t.id} onClick={() => setBuka(buka === t.id ? null : t.id)}>{t.judul}</button>
+                <span className="gr-muted">{kunciMateri(t)} · Kelas {t.jenjang} · {(t.soal || []).length} soal</span>
+                <button type="button" className="gr-link" onClick={() => semuaDari(t)}>Pilih semua</button>
+              </div>
+              {buka === t.id && (t.soal || []).map((s, i) => {
+                const k = `${t.id}|${i}`;
+                return (
+                  <label key={k} className="gr-pick-s">
+                    <input type="checkbox" checked={!!pilih[k]} onChange={() => toggle(k, s)} />
+                    <span><span className="tipe">{LABEL_TIPE[s.type] || s.type}</span> {s.pertanyaan || "(tanpa teks)"}</span>
+                  </label>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!n} onClick={tambah}>Tambahkan {n} soal</button>
+        </div>
+      </div>
     </div>
   );
 }
