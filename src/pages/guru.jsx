@@ -683,7 +683,8 @@ export function hitungDaftarTugas(store, jenjang, { tab = "berjalan", personalSa
         t, grup, penerima: penerima.length, kumpul: ss.length, belum,
         kumpulPct: penerima.length ? Math.round(ss.length / penerima.length * 100) : 0,
         rata: bulat(avg(nilai)), esai: ss.reduce((a, s) => a + perluDinilai(s), 0),
-        tenggat: grup === "terjadwal" ? `Terbit ${t.scheduledAt ? new Date(t.scheduledAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "terjadwal"}` : grup === "selesai" ? `Ditutup ${t.deadline ? tglPanjang(deadlineEnd(t.deadline)) : ""}` : tg.label,
+        draf: grup === "terjadwal" && !t.scheduledAt,
+        tenggat: grup === "terjadwal" && !t.scheduledAt ? "Draf" : grup === "terjadwal" ? `Terbit ${t.scheduledAt ? new Date(t.scheduledAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "terjadwal"}` : grup === "selesai" ? `Ditutup ${t.deadline ? tglPanjang(deadlineEnd(t.deadline)) : ""}` : tg.label,
         tenggatTone: grup === "terjadwal" ? "soft" : grup === "selesai" ? "muted" : tg.segera ? "amber" : "teal",
         untuk: Array.isArray(t.assignedTo) ? penerima.map(s => (s.namaDisplay || s.nama || "").split(" ")[0]) : null,
         sandbox: (t.soal || []).filter(s => s.type === "sandbox").length,
@@ -704,8 +705,14 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
   const [materi, setMateri] = useState(false);
   const [arsipT, setArsipT] = useState(null);
   const [toast, setToast] = useState("");
-  const kabar = m => { setToast(m); setTimeout(() => setToast(""), 2500); };
+  const kabar = m => { setToast(m); setTimeout(() => setToast(""), 3500); };
   const d = hitungDaftarTugas(store, jenjang, { tab, personalSaja, cari });
+  // Draf hasil duplikat: terbitkan langsung kalau tenggatnya masih berlaku, kalau tidak buka editor dulu
+  async function terbitkanDraf(t) {
+    if (!t.deadline || deadlineEnd(t.deadline) < Date.now()) { kabar("Tenggat draf ini sudah lewat. Atur tenggat baru, lalu simpan."); navigate("edit-tugas", { tugasId: t.id }); return; }
+    try { await store.updateTugas(t.id, { status: "aktif", scheduledAt: null, draf: null }); kabar("Tugas diterbitkan dan sudah terlihat siswa."); }
+    catch (e) { kabar("Gagal menerbitkan: " + (e?.message || "coba lagi")); }
+  }
   const TAB = [["berjalan", "Berjalan"], ["terjadwal", "Terjadwal"], ["selesai", "Selesai"], ["semua", "Semua"]];
   // (tugas yang diarsipkan tidak muncul di sini; lihat menu Arsip)
   const kosong = cari ? `Tidak ada tugas yang cocok dengan "${cari}".` : personalSaja ? "Belum ada tugas personal di kelompok ini."
@@ -766,13 +773,14 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
                 )}
                 <div className="gr-tugas-foot">
                   <span className={x.esai || (x.grup === "selesai" && x.belum) ? "amber" : "muted"}>
-                    {x.grup === "terjadwal" ? "Belum terlihat oleh siswa" : x.esai ? `${x.esai} esai belum dinilai` : x.belum === 0 ? "Semua penerima sudah mengumpulkan" : x.grup === "selesai" ? `${x.belum} siswa tidak mengumpulkan` : `${x.belum} siswa belum mengumpulkan`}
+                    {x.draf ? "Draf, belum terlihat siswa" : x.grup === "terjadwal" ? "Belum terlihat oleh siswa" : x.esai ? `${x.esai} esai belum dinilai` : x.belum === 0 ? "Semua penerima sudah mengumpulkan" : x.grup === "selesai" ? `${x.belum} siswa tidak mengumpulkan` : `${x.belum} siswa belum mengumpulkan`}
                   </span>
                   <div className="gr-tugas-act">
+                    {x.draf && <button type="button" className="gr-link" onClick={() => terbitkanDraf(t)}>Terbitkan</button>}
                     {x.kumpul > 0 && <button type="button" className="gr-link" onClick={() => navigate("analisis-tugas", { tugasId: t.id })}>Analisis</button>}
                     {x.kumpul > 0 && IntervensiNilaiModal && <button type="button" className="gr-link" onClick={() => setNilaiT(t)}>Nilai</button>}
                     <button type="button" className="gr-link" onClick={() => navigate("edit-tugas", { tugasId: t.id })}>{x.grup === "selesai" ? "Perpanjang" : "Edit"}</button>
-                    <button type="button" className="gr-link" onClick={async () => { try { await store.duplicateTugas(t); kabar("Tugas diduplikat dan langsung aktif. Edit judul atau jadwalnya bila perlu."); } catch (e) { kabar("Gagal menduplikat: " + (e?.message || "coba lagi")); } }}>Duplikat</button>
+                    <button type="button" className="gr-link" onClick={async () => { try { await store.duplicateTugas(t); { kabar("Salinan dibuat sebagai draf di tab Terjadwal. Siswa belum melihatnya."); setTab("terjadwal"); } } catch (e) { kabar("Gagal menduplikat: " + (e?.message || "coba lagi")); } }}>Duplikat</button>
                     {x.grup === "selesai" && store.arsipkanTugas && <button type="button" className="gr-link" onClick={() => setArsipT(t)}>Arsipkan</button>}
                     <button type="button" className="gr-link danger" onClick={() => setHapus(t)}>Hapus</button>
                   </div>
@@ -884,6 +892,7 @@ export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, Au
   const [pw, setPw] = useState("");
   const [hapus, setHapus] = useState(null);
   const [sibuk, setSibuk] = useState(false);
+  const [kartu, setKartu] = useState(false);
   const [toast, setToast] = useState("");
   const kabar = m => { setToast(m); setTimeout(() => setToast(""), 3500); };
   const tunggu = p => (withTimeout ? withTimeout(p) : p);
@@ -914,7 +923,7 @@ export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, Au
           <h1>Siswa</h1>
         </div>
         <div className="gr-actions">
-          {cetakKartu && <button type="button" className="gr-btn outline" disabled={!siswa.length} onClick={() => cetakKartu(siswa, jenjang)}>Cetak kartu</button>}
+          {cetakKartu && <button type="button" className="gr-btn outline" disabled={!siswa.length} onClick={() => setKartu(true)}>Cetak kartu login</button>}
           {ImportSiswaModal && <button type="button" className="gr-btn outline" onClick={() => setImpor(true)}>Import Excel</button>}
           {TambahSiswaModal && <button type="button" className="gr-btn" onClick={() => setTambah(true)}><Ikon d={IKON.plus} s={15} w={2.4} /> Tambah siswa</button>}
         </div>
@@ -978,6 +987,7 @@ export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, Au
           </div>
         </div>
       )}
+      {kartu && cetakKartu && <KartuLoginModal store={store} siswa={siswa} jenjang={jenjang} cetakKartu={cetakKartu} tunggu={tunggu} onClose={() => setKartu(false)} />}
       {hapus && <Confirm title={`Hapus ${hapus.nama}?`} desc="Akun siswa dan percakapannya di Pesan dihapus permanen." onOk={hapusSiswa} onCancel={() => setHapus(null)} />}
       {tambah && TambahSiswaModal && <TambahSiswaModal store={store} onClose={() => setTambah(false)} onSuccess={(id, p) => { setTambah(false); kabar(`Siswa ditambahkan. ID: ${id} · Password: ${p}`); }} />}
       {impor && ImportSiswaModal && <ImportSiswaModal store={store} onClose={() => setImpor(false)} onSuccess={n => { setImpor(false); kabar(`${n} siswa berhasil diimpor.`); }} />}
@@ -1412,6 +1422,80 @@ export function NilaiEsaiCepat({ store, tugasId, navigate, NilaiEssayModal }) {
         </div>
       )}
       {modeLama && NilaiEssayModal && <NilaiEssayModal tugas={t} store={store} onClose={() => setModeLama(false)} />}
+    </div>
+  );
+}
+
+// ─── Kartu login: password baru massal ───
+// Password akun tidak bisa dibaca dari app (sengaja, demi keamanan), jadi kartu yang berisi password
+// hanya bisa dicetak tepat setelah password dibuat ulang. Password baru: 6 karakter acak tanpa huruf/angka
+// yang mudah tertukar (bukan "ID + 3 angka" yang mudah ditebak teman sekelas).
+const HURUF_PW = "abcdefghjkmnpqrstuvwxyz23456789";
+export function buatPasswordAcak(n = 6) {
+  const a = new Uint32Array(n);
+  (globalThis.crypto || window.crypto).getRandomValues(a);
+  return Array.from(a, x => HURUF_PW[x % HURUF_PW.length]).join("");
+}
+
+function KartuLoginModal({ store, siswa, jenjang, cetakKartu, tunggu, onClose }) {
+  const [pilih, setPilih] = useState(() => new Set(siswa.map(s => s.id)));
+  const [jalan, setJalan] = useState(null); // { selesai, total, gagal: [] }
+  const [yakin, setYakin] = useState(false);
+  const daftar = siswa.filter(s => pilih.has(s.id));
+  const toggle = id => setPilih(p => { const x = new Set(p); x.has(id) ? x.delete(id) : x.add(id); return x; });
+  async function mulai() {
+    // Buka jendela cetak SEKARANG (masih di dalam klik). Kalau diblokir, batalkan sebelum ada password berubah.
+    const win = window.open("", "_blank");
+    if (!win) { alert("Jendela cetak diblokir browser. Izinkan pop-up untuk Astrolab, lalu coba lagi. Belum ada password yang diubah."); return; }
+    try { win.document.write("<p style=\"font-family:sans-serif;padding:24px\">Menyiapkan kartu login… jangan tutup jendela ini.</p>"); } catch { /* abaikan */ }
+    const hasil = [], gagal = [];
+    setJalan({ selesai: 0, total: daftar.length, gagal });
+    for (const s of daftar) {
+      const pw = buatPasswordAcak();
+      try { await tunggu(store.resetPassword(s.id, pw)); hasil.push({ ...s, password: pw }); }
+      catch (e) { gagal.push(`${s.nama} (${e?.message || "gagal"})`); }
+      setJalan({ selesai: hasil.length + gagal.length, total: daftar.length, gagal: [...gagal] });
+    }
+    if (hasil.length) cetakKartu(hasil, jenjang, win); else { try { win.close(); } catch { /* abaikan */ } }
+    setJalan(j => ({ ...j, beres: true, berhasil: hasil.length, hasil }));
+  }
+  return (
+    <div className="modal-overlay" onClick={jalan && !jalan.beres ? undefined : onClose}>
+      <div className="modal gr-pick" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-kartu-j">
+        <h3 id="gr-kartu-j">Cetak kartu login · Kelas {jenjang}</h3>
+        {!jalan ? (<>
+          <p>Password siswa tidak tersimpan dalam bentuk yang bisa dibaca, jadi kartu hanya bisa berisi password kalau passwordnya <b>dibuat ulang sekarang</b>. Password lama siswa yang dipilih langsung tidak berlaku untuk login berikutnya.</p>
+          <div className="gr-bar-row">
+            <span className="gr-muted">{daftar.length} dari {siswa.length} siswa dipilih</span>
+            <div className="gr-tugas-act">
+              <button type="button" className="gr-link" onClick={() => setPilih(new Set(siswa.map(s => s.id)))}>Pilih semua</button>
+              <button type="button" className="gr-link" onClick={() => setPilih(new Set())}>Kosongkan</button>
+            </div>
+          </div>
+          <div className="gr-pick-list">
+            {siswa.map(s => (
+              <label key={s.id} className="gr-pick-s"><input type="checkbox" checked={pilih.has(s.id)} onChange={() => toggle(s.id)} /><span>{s.nama} <code className="gr-mono">{s.id}</code></span></label>
+            ))}
+          </div>
+          <label className="gr-check"><input type="checkbox" checked={yakin} onChange={e => setYakin(e.target.checked)} /> Saya akan membagikan kartu baru ke siswa yang dipilih</label>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => { cetakKartu(siswa.map(s => ({ ...s, password: "—" })), jenjang); onClose(); }}>Cetak tanpa password</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={!daftar.length || !yakin} onClick={mulai}>Buat password baru & cetak · {daftar.length}</button>
+          </div>
+        </>) : (<>
+          <p>{jalan.beres ? `Selesai. ${jalan.berhasil} kartu siap dicetak di jendela baru.` : `Membuat password baru… ${jalan.selesai} dari ${jalan.total}`}</p>
+          <Bar v={jalan.total ? jalan.selesai / jalan.total * 100 : 0} tone="solid" />
+          {jalan.gagal.length > 0 && <p className="gr-warn">Gagal untuk {jalan.gagal.length} siswa: {jalan.gagal.join(", ")}. Password mereka tidak berubah dan tidak ikut dicetak.</p>}
+          {jalan.beres && jalan.hasil?.length > 0 && (<>
+            <p className="gr-muted">Cadangan: catat atau salin daftar ini sebelum menutup. Password ini tidak bisa dilihat lagi setelah modal ditutup.</p>
+            <div className="gr-pick-list gr-pwlist">
+              {jalan.hasil.map(s => <div key={s.id}><span>{s.nama}</span><code>{s.id}</code><code className="pw">{s.password}</code></div>)}
+            </div>
+            <button type="button" className="gr-link" onClick={() => { try { navigator.clipboard.writeText(jalan.hasil.map(s => `${s.nama}\t${s.id}\t${s.password}`).join("\n")); } catch { /* abaikan */ } }}>Salin daftar (bisa ditempel ke Excel)</button>
+          </>)}
+          <div className="modal-actions"><button type="button" className="btn btn-primary btn-sm" disabled={!jalan.beres} onClick={onClose}>Tutup</button></div>
+        </>)}
+      </div>
     </div>
   );
 }

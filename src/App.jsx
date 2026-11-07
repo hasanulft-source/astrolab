@@ -327,8 +327,10 @@ function useStore() {
   const updateTugas = async (id, patch) => { await update(ref(db, `tugas/${id}`), patch); };
   const duplicateTugas = async (t) => {
     const newRef = push(ref(db, "tugas"));
-    const { id, createdAt, ...rest } = t;
-    await set(newRef, { ...rest, judul: `${t.judul} (Salinan)`, createdAt: new Date().toISOString(), status: "aktif", scheduledAt: null });
+    // Salinan dibuat sebagai DRAF (status scheduled tanpa jadwal): tidak terlihat siswa sampai guru
+    // mengedit & menyimpannya (atau klik "Terbitkan"). Dulu langsung aktif → siswa melihat "(Salinan)".
+    const { id, createdAt, arsip, arsipAt, dariArsip, ...rest } = t;
+    await set(newRef, JSON.parse(JSON.stringify({ ...rest, judul: `${t.judul} (Salinan)`, createdAt: new Date().toISOString(), status: "scheduled", scheduledAt: null, draf: true, periode: getActivePeriode() })));
   };
 
   // BANK SOAL
@@ -3047,6 +3049,7 @@ function BuatTugas({ store, navigate, editId = null, presetAssignedTo = null, pr
       }
       data.status = terjadwal ? "scheduled" : "aktif";
       data.scheduledAt = terjadwal ? form.scheduledAt : null;
+      data.draf = null; // menyimpan draf = menerbitkannya (atau menjadwalkannya)
       store.updateTugas(editId, data);
     } else store.addTugas(data);
     setSaved(true); setTimeout(() => navigate("home-guru"), 1200);
@@ -5844,7 +5847,8 @@ function ResetSemesterModal({ store, onClose }) {
 // Bikin HTML print-friendly dengan grid 3×4 kartu per halaman A4 portrait.
 // Setiap kartu berisi: nama, ID (username), password, kelas, URL login.
 // Batas potong (dashed) di setiap kartu supaya gampang digunting.
-function printKartuLogin(siswaList, jenjang) {
+// winAda: jendela yang sudah dibuka saat klik (supaya tidak diblokir sebagai pop-up setelah proses async)
+function printKartuLogin(siswaList, jenjang, winAda = null) {
   if (!siswaList || siswaList.length === 0) return;
   try {
     const now = new Date();
@@ -5997,7 +6001,7 @@ function printKartuLogin(siswaList, jenjang) {
 </body>
 </html>`;
 
-  const win = window.open("", "_blank");
+  const win = winAda || window.open("", "_blank");
   if (!win) { alert("Popup diblokir. Izinkan popup untuk cetak kartu."); return; }
   win.document.write(html);
   win.document.close();
@@ -8140,7 +8144,7 @@ function AppInner() {
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
       else if (route === "nilai-esai") screen = <NilaiEsaiCepat store={store} tugasId={params.tugasId} navigate={navigate} NilaiEssayModal={NilaiEssayModal} />;
       else if (route === "arsip-tugas" || route === "bank-soal") screen = <ArsipTugas store={store} navigate={navigate} />;
-      else if (route === "manajemen-siswa") screen = <ManajemenSiswaV2 store={store} TambahSiswaModal={TambahSiswaModal} ImportSiswaModal={ImportSiswaModal} AuditPoinGanda={AuditPoinGanda} withTimeout={withTimeout} cetakKartu={(list, j) => printKartuLogin(list.map(s => ({ ...s, password: s.password || "—" })), j)} onTampilanLama={() => navigate("manajemen-siswa-lama")} />;
+      else if (route === "manajemen-siswa") screen = <ManajemenSiswaV2 store={store} TambahSiswaModal={TambahSiswaModal} ImportSiswaModal={ImportSiswaModal} AuditPoinGanda={AuditPoinGanda} withTimeout={withTimeout} cetakKartu={(list, j, win) => printKartuLogin(list.map(s => ({ ...s, password: s.password || "—" })), j, win)} onTampilanLama={() => navigate("manajemen-siswa-lama")} />;
       else if (route === "manajemen-siswa-lama") screen = <ManajemenSiswa store={store} />;
       else if (route === "laporan-guru") screen = <LaporanGuruV2 store={store} LaporanDetailModal={LaporanDetailModal} onTampilanLama={() => navigate("laporan-guru-lama")} />;
       else if (route === "laporan-guru-lama") screen = <LaporanGuru store={store} />;

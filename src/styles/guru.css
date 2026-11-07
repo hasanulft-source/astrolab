@@ -282,6 +282,10 @@
 .gr-komen .inp{flex:1 1 240px}
 .gr-esai .gr-link{align-self:flex-start;font-weight:600;font-size:12.5px}
 .gr-warn.inline{margin:0;padding:6px 10px}
+.gr-pwlist>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;padding:6px 12px;font-size:13px;align-items:center}
+.gr-pwlist>div+div{border-top:1px solid var(--line-soft)}
+.gr-pwlist code{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
+.gr-pwlist code.pw{color:var(--accent-2);font-weight:500;background:var(--accent-tint);padding:1px 7px;border-radius:5px}
 .gr-belum{display:flex;align-items:center;gap:10px;padding:11px 14px}
 .gr-belum span{flex:1;min-width:0;font-weight:600;font-size:13.5px}
 
