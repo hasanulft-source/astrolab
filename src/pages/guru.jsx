@@ -21,6 +21,8 @@ const tglPanjang = ms => new Date(ms).toLocaleDateString("id-ID", { day: "numeri
 const namaPendek = n => { const p = String(n || "").trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[1][0]}.` : p[0] || "Siswa"; };
 const inisial = n => String(n || "?").trim().split(/\s+/).slice(0, 2).map(x => x[0]).join("").toUpperCase();
 const WARNA_AVATAR = ["#0d6b7a", "#6D52D9", "#B0612C", "#0B8AC9", "#0a525c"];
+// "Tren turun Informatika (100→88→75)" → ["Tren turun Informatika", "100 → 88 → 75"]
+const pecahAlasan = label => { const m = String(label).match(/^(.*?)\s*\((.+)\)$/); return m ? [m[1], m[2].replace(/\s*→\s*/g, " → ")] : [label, null]; };
 
 // Penerima tugas: tugas personal hanya siswa yang di-assign
 export const penerimaTugas = (t, siswa) => (Array.isArray(t.assignedTo) ? siswa.filter(s => t.assignedTo.includes(s.id)) : siswa);
@@ -250,6 +252,10 @@ const IKON = {
   lapor: "M5 21V4h11l-1.5 4L16 12H5",
   sas: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
   plus: "M12 5v14M5 12h14",
+  pesan: "M20 12a8 8 0 0 1-11.6 7.1L4 20l1.2-4.1A8 8 0 1 1 20 12z",
+  latihan: "M9 3h6v3H9zM7 4.5H5.5V21h13V4.5H17M12 10v7M8.5 13.5h7",
+  centang: "M5 12.5l4.5 4.5L19 7.5",
+  balik: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
   kanan: "M9 6l6 6-6 6",
   kiri: "M15 6l-6 6 6 6",
 };
@@ -271,6 +277,7 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
   const [semuaPerhatian, setSemuaPerhatian] = useState(false);
   const [lihatSelesai, setLihatSelesai] = useState(false);
   const [sibukTL, setSibukTL] = useState(null);
+  const [urung, setUrung] = useState(null); // { p } — notifikasi "Urungkan" setelah ditandai selesai
   const d = hitungDashboard(store, jenjang);
   const tl = store.getTindakLanjut ? store.getTindakLanjut() : {};
   // Siswa disembunyikan kalau semua pemicunya sudah pernah ditandai selesai; pemicu baru memunculkannya lagi
@@ -280,7 +287,14 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
   const selesaiTL = semuaP.filter(sudahTL);
   const tandai = async (p, selesai) => {
     setSibukTL(p.siswa.id);
-    try { if (selesai) await store.setTindakLanjut(p.siswa.id, p.triggers.map(tr => tr.type)); else await store.hapusTindakLanjut(p.siswa.id); }
+    try {
+      if (selesai) {
+        await store.setTindakLanjut(p.siswa.id, p.triggers.map(tr => tr.type));
+        setUrung({ p });
+        clearTimeout(window.__grUrung);
+        window.__grUrung = setTimeout(() => setUrung(null), 6000);
+      } else { await store.hapusTindakLanjut(p.siswa.id); setUrung(null); }
+    }
     catch (e) { alert("Gagal menyimpan tindak lanjut: " + (e?.message || "coba lagi")); }
     finally { setSibukTL(null); }
   };
@@ -380,20 +394,23 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
             <Kepala judul="Siswa perlu perhatian" kanan={<span className="gr-mono">{perhatian.length ? `${perhatian.length} siswa` : ""}</span>} />
             <div className="gr-card list">
               {perhatian.length === 0 && <p className="gr-empty">Tidak ada siswa yang menunjukkan tanda perlu perhatian.</p>}
-              {perhatian.slice(0, semuaPerhatian ? perhatian.length : 4).map((p, i) => (
-                <div key={p.siswa.id} className="gr-siswa">
-                  <div className="gr-ava" style={{ background: WARNA_AVATAR[i % WARNA_AVATAR.length] }}>{inisial(p.siswa.nama)}</div>
-                  <div className="gr-siswa-txt">
-                    <b>{p.siswa.namaDisplay || p.siswa.nama}</b>
-                    <div className="gr-tags">{p.triggers.map(tr => <span key={tr.type}>{tr.label}</span>)}</div>
+              {perhatian.slice(0, semuaPerhatian ? perhatian.length : 4).map((p, i) => {
+                const nama = p.siswa.namaDisplay || p.siswa.nama;
+                return (
+                  <div key={p.siswa.id} className="gr-siswa grid">
+                    <div className="gr-ava" style={{ background: WARNA_AVATAR[i % WARNA_AVATAR.length] }}>{inisial(p.siswa.nama)}</div>
+                    <b className="gr-siswa-nama">{nama}</b>
+                    <ul className="gr-alasan">
+                      {p.triggers.map(tr => { const [teks, angka] = pecahAlasan(tr.label); return <li key={tr.type}><span>{teks}</span>{angka && <code>{angka}</code>}</li>; })}
+                    </ul>
                     <div className="gr-siswa-act">
-                      <button type="button" className="gr-link" onClick={() => navigate("chat", { openChat: p.siswa.id })}>Kirim pesan</button>
-                      <button type="button" className="gr-link" onClick={() => navigate("buat-tugas", { presetAssignedTo: [p.siswa.id], presetJenjang: jenjang })}>Beri latihan khusus</button>
-                      {store.setTindakLanjut && <button type="button" className="gr-link done" disabled={sibukTL === p.siswa.id} onClick={() => tandai(p, true)}>Selesai ditindaklanjuti</button>}
+                      <button type="button" className="gr-ib" title="Kirim pesan" aria-label={`Kirim pesan ke ${nama}`} onClick={() => navigate("chat", { openChat: p.siswa.id })}><Ikon d={IKON.pesan} s={16} /></button>
+                      <button type="button" className="gr-ib" title="Beri latihan khusus" aria-label={`Beri latihan khusus untuk ${nama}`} onClick={() => navigate("buat-tugas", { presetAssignedTo: [p.siswa.id], presetJenjang: jenjang })}><Ikon d={IKON.latihan} s={16} /></button>
+                      {store.setTindakLanjut && <button type="button" className="gr-ib ok" title="Selesai ditindaklanjuti" aria-label={`Tandai ${nama} selesai ditindaklanjuti`} disabled={sibukTL === p.siswa.id} onClick={() => tandai(p, true)}><Ikon d={IKON.centang} s={16} w={2.4} /></button>}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {perhatian.length > 4 && (
                 <button type="button" className="gr-more" onClick={() => setSemuaPerhatian(v => !v)}>{semuaPerhatian ? "Ringkas" : `Tampilkan ${perhatian.length - 4} siswa lainnya`}</button>
               )}
@@ -402,10 +419,13 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
               )}
               {lihatSelesai && selesaiTL.map(p => (
                 <div key={p.siswa.id} className="gr-siswa done">
+                  <div className="gr-ava sm" aria-hidden="true"><Ikon d={IKON.centang} s={14} w={2.6} /></div>
                   <div className="gr-siswa-txt">
                     <b>{p.siswa.namaDisplay || p.siswa.nama}</b>
-                    <span className="gr-muted">Ditindaklanjuti {new Date(tl[p.siswa.id].ts).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} · {p.triggers.map(tr => tr.label).join(" · ")}</span>
-                    <div className="gr-siswa-act"><button type="button" className="gr-link" disabled={sibukTL === p.siswa.id} onClick={() => tandai(p, false)}>Tampilkan lagi di daftar</button></div>
+                    <span className="gr-muted">Selesai {new Date(tl[p.siswa.id].ts).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} · {p.triggers.map(tr => pecahAlasan(tr.label)[0]).join(", ")}</span>
+                  </div>
+                  <div className="gr-siswa-act">
+                    <button type="button" className="gr-ib" title="Kembalikan ke daftar" aria-label={`Kembalikan ${p.siswa.namaDisplay || p.siswa.nama} ke daftar perhatian`} disabled={sibukTL === p.siswa.id} onClick={() => tandai(p, false)}><Ikon d={IKON.balik} s={16} /></button>
                   </div>
                 </div>
               ))}
@@ -429,6 +449,12 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
       </div>
 
       {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
+      {urung && (
+        <div className="gr-toast act" role="status">
+          <span>{urung.p.siswa.namaDisplay || urung.p.siswa.nama} ditandai selesai ditindaklanjuti</span>
+          <button type="button" onClick={() => tandai(urung.p, false)}>Urungkan</button>
+        </div>
+      )}
       {laporan && <LaporanModal store={store} onClose={() => setLaporan(false)} />}
       {esaiTugas && NilaiEssayModal && <NilaiEssayModal tugas={esaiTugas} store={store} onClose={() => setEsaiTugas(null)} />}
     </div>
