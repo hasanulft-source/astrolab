@@ -286,6 +286,29 @@
 .gr-pwlist>div+div{border-top:1px solid var(--line-soft)}
 .gr-pwlist code{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
 .gr-pwlist code.pw{color:var(--accent-2);font-weight:500;background:var(--accent-tint);padding:1px 7px;border-radius:5px}
+/* Siswa (ringkasan kelas) */
+.gr-akt{padding:16px 18px}
+.gr-akt-bars{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:end;height:128px}
+.gr-akt-bars>div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
+.gr-akt-bars b{font-family:var(--mono);font-weight:500;font-size:12px;min-height:16px}
+.gr-akt-bars i{display:block;width:100%;max-width:40px;border-radius:6px 6px 2px 2px;background:var(--accent-light)}
+.gr-akt-bars i.solid{background:var(--accent)}
+.gr-akt-bars span{font-size:11px;color:var(--ink-3);white-space:nowrap}
+.gr-grid.kelas{grid-template-columns:minmax(0,2fr) 90px 110px 90px minmax(0,1fr);align-items:center;min-width:620px}
+.gr-grid.kelas .c-nm{display:flex;align-items:center;gap:10px;min-width:0}
+.gr-ava.xs{width:30px;height:30px;border-radius:9px;font-size:11px}
+.gr-grid.kelas .nm-txt{display:flex;flex-direction:column;min-width:0}
+.gr-grid.kelas .nm-txt b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gr-grid.kelas .nm-txt>span{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gr-grid.kelas .num{font-weight:700}
+.gr-online{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--accent-2)}
+.gr-online::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent-mid)}
+@media(max-width:600px){
+  .gr-grid.kelas{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"nm rata kumpul" "nm akt akt";row-gap:2px;column-gap:12px;padding:10px 0}
+  .gr-grid.kelas>*{padding:0 12px}
+  .gr-grid.kelas .c-nm{grid-area:nm}.gr-grid.kelas .c-rata{grid-area:rata}.gr-grid.kelas .c-kumpul{grid-area:kumpul}.gr-grid.kelas .c-poin{display:none}
+  .gr-grid.kelas .c-rata::before,.gr-grid.kelas .c-kumpul::before{content:attr(data-l);display:block;font-size:10.5px;font-weight:600;color:var(--ink-3);text-align:right}.gr-grid.kelas .c-akt{grid-area:akt;text-align:right;font-size:12px}
+}
 .gr-belum{display:flex;align-items:center;gap:10px;padding:11px 14px}
 .gr-belum span{flex:1;min-width:0;font-weight:600;font-size:13.5px}
 

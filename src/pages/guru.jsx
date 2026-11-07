@@ -8,7 +8,7 @@ import { verifikasiSandbox, normal } from "../utils/rumus";
 import { exportNilai, backupFromStore } from "../utils/excel";
 import { LaporanModal } from "../utils/laporan";
 import { deadlineEnd } from "./siswa";
-import { uid } from "../utils/helpers";
+import { uid, fmtLastSeen } from "../utils/helpers";
 import { Confirm, Avatar } from "../components/visual";
 import { getLevel, TierIcon } from "../components/gamification";
 import "../styles/guru.css";
@@ -1496,6 +1496,116 @@ function KartuLoginModal({ store, siswa, jenjang, cetakKartu, tunggu, onClose })
           <div className="modal-actions"><button type="button" className="btn btn-primary btn-sm" disabled={!jalan.beres} onClick={onClose}>Tutup</button></div>
         </>)}
       </div>
+    </div>
+  );
+}
+
+// ─── Siswa (ringkasan kelas) — menu "Siswa" ───
+export function hitungKelas(store, jenjang, now = Date.now()) {
+  const siswa = store.getAllSiswa(jenjang);
+  const subs = store.getSubs();
+  const tugas = store.getTugas().filter(t => t.jenjang === jenjang && t.status !== "scheduled");
+  const baris = siswa.map(s => {
+    const milik = tugas.filter(t => !Array.isArray(t.assignedTo) || t.assignedTo.includes(s.id));
+    const ss = subs.filter(x => x.siswaId === s.id && milik.some(t => t.id === x.tugasId));
+    const dinilai = ss.filter(x => typeof x.nilai === "number" && milik.find(t => t.id === x.tugasId)?.graded !== false).map(x => x.nilai);
+    // Pembanding pengumpulan: tugas yang tenggatnya sudah lewat + tugas berjalan yang sudah dikumpulkan
+    // (tugas berjalan yang belum dikumpulkan tidak dihitung kurang — masih ada waktu)
+    const wajib = milik.filter(t => labelTenggat(t, now).lewat || ss.some(x => x.tugasId === t.id)).length;
+    const st = store.getStats(s.id);
+    const lv = getLevel(st.poin || 0);
+    const online = store.isOnline ? store.isOnline(s.uid || s.id) || store.isOnline(s.id) : false;
+    const last = store.getLastSeen ? store.getLastSeen(s.uid || s.id) || store.getLastSeen(s.id) : null;
+    return {
+      s, lv, poin: st.poin || 0, streak: st.streak || 0, badge: (store.getBadges ? store.getBadges(s.id) : []).length,
+      kumpul: ss.length, wajib, pctKumpul: wajib ? Math.round(ss.length / wajib * 100) : null,
+      rata: bulat(avg(dinilai)), online, last: last || null,
+    };
+  });
+  // Aktivitas 7 hari: siswa unik yang mengumpulkan tiap hari
+  const ids = new Set(siswa.map(s => s.id));
+  const hariIni = new Date(now); hariIni.setHours(0, 0, 0, 0);
+  const HARI_NM = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+  const aktivitas = Array.from({ length: 7 }, (_, i) => {
+    const a = new Date(hariIni.getTime() - (6 - i) * HARI), b = a.getTime() + HARI;
+    const di = subs.filter(x => ids.has(x.siswaId) && x.submittedAt && new Date(x.submittedAt).getTime() >= a.getTime() && new Date(x.submittedAt).getTime() < b);
+    return { label: i === 6 ? "Hari ini" : HARI_NM[a.getDay()], siswa: new Set(di.map(x => x.siswaId)).size, kumpul: di.length };
+  });
+  return { baris, aktivitas, total: siswa.length };
+}
+
+export function KelasV2({ store, navigate, onTampilanLama }) {
+  const [jenjang, setJenjang] = useState("VII");
+  const [urut, setUrut] = useState("nama");
+  const [cari, setCari] = useState("");
+  const d = hitungKelas(store, jenjang);
+  const q = cari.trim().toLowerCase();
+  const URUT = { nama: "Nama", rata: "Rata-rata terendah", kumpul: "Pengumpulan terendah", poin: "Poin tertinggi", aktif: "Terakhir aktif" };
+  const sorter = {
+    nama: (a, b) => (a.s.nama || "").localeCompare(b.s.nama || "", "id"),
+    rata: (a, b) => (a.rata ?? 999) - (b.rata ?? 999),
+    kumpul: (a, b) => (a.pctKumpul ?? 999) - (b.pctKumpul ?? 999),
+    poin: (a, b) => b.poin - a.poin,
+    aktif: (a, b) => (b.online - a.online) || ((b.last || 0) - (a.last || 0)),
+  }[urut];
+  const baris = d.baris.filter(r => !q || `${r.s.nama} ${r.s.id}`.toLowerCase().includes(q)).sort(sorter);
+  const maxA = Math.max(1, ...d.aktivitas.map(x => x.siswa));
+  const rataKelas = bulat(avg(d.baris.map(r => r.rata).filter(v => v != null)));
+  const bawah = d.baris.filter(r => r.rata != null && r.rata < KKTP).length;
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">{d.total} siswa · rata-rata tugas {rataKelas ?? "belum ada"} · {bawah} di bawah KKTP</span>
+          <h1>Siswa</h1>
+        </div>
+        <div className="gr-actions">
+          <button type="button" className="gr-btn outline" onClick={() => navigate("badge-manager")}>Kelola badge</button>
+          <button type="button" className="gr-btn outline" onClick={() => navigate("manajemen-siswa")}>Kelola akun</button>
+        </div>
+      </div>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg" role="tablist" aria-label="Pilih kelas">
+          {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => setJenjang(j)}>Kelas {j} · {store.getAllSiswa(j).length}</button>)}
+        </div>
+      </div>
+
+      <section className="gr-card gr-akt">
+        <div className="gr-sh"><span className="gr-sub up">Siswa yang mengumpulkan, 7 hari terakhir</span><span className="gr-muted">dari {d.total} siswa</span></div>
+        <div className="gr-akt-bars" role="img" aria-label={d.aktivitas.map(a => `${a.label} ${a.siswa} siswa`).join(", ")}>
+          {d.aktivitas.map((a, i) => (
+            <div key={i}><b>{a.siswa || ""}</b><i className={i === 6 ? "solid" : ""} style={{ height: `${Math.round(a.siswa / maxA * 84) + 3}px` }} /><span>{a.label}</span></div>
+          ))}
+        </div>
+      </section>
+
+      <div className="gr-bar-row">
+        <label className="gr-cari"><span className="sr">Cari siswa</span><input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari nama atau ID" /></label>
+        <label className="gr-select"><span className="sr">Urutkan</span>
+          <select value={urut} onChange={e => setUrut(e.target.value)}>{Object.entries(URUT).map(([k, l]) => <option key={k} value={k}>Urut: {l}</option>)}</select>
+        </label>
+      </div>
+
+      {baris.length === 0 ? <div className="gr-card"><p className="gr-empty">{d.total ? `Tidak ada siswa yang cocok dengan "${cari}".` : `Belum ada siswa di Kelas ${jenjang}.`}</p></div> : (
+        <div className="gr-card gr-scroll">
+          <div className="gr-grid kelas head"><span>Siswa</span><span className="r">Rata-rata</span><span className="r">Pengumpulan</span><span className="r">Poin</span><span>Terakhir aktif</span></div>
+          {baris.map(r => (
+            <div key={r.s.id} className="gr-grid kelas">
+              <div className="c-nm">
+                <span className="gr-ava xs" style={{ background: r.lv.color || "#0d6b7a" }}>{inisial(r.s.nama)}</span>
+                <span className="nm-txt"><b>{r.s.namaDisplay || r.s.nama}</b><span style={{ color: r.lv.color }}><TierIcon tierId={r.lv.tierId} size={11} color={r.lv.color} /> {r.lv.name}{r.streak >= 3 ? ` · streak ${r.streak}` : ""}{r.badge ? ` · ${r.badge} badge` : ""}</span></span>
+              </div>
+              <span data-l="Rata-rata" className={`r num c-rata ${r.rata != null && r.rata < KKTP ? "amber" : ""}`}>{r.rata ?? <span className="gr-muted">Belum ada</span>}</span>
+              <span data-l="Kumpul" className={`r num c-kumpul ${r.pctKumpul != null && r.pctKumpul < 70 ? "amber" : ""}`}>{r.wajib ? `${r.kumpul}/${r.wajib}` : <span className="gr-muted">Belum ada</span>}</span>
+              <span className="r num c-poin">{r.poin.toLocaleString("id-ID")}</span>
+              <span className="c-akt">{r.online ? <span className="gr-online">Sedang online</span> : <span className="gr-muted">{r.last ? fmtLastSeen(r.last) : "Belum tercatat"}</span>}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="gr-muted">Rata-rata = nilai tugas Astrolab yang dinilai. Pengumpulan = tugas yang dikumpulkan dibanding tugas yang tenggatnya sudah lewat (tugas berjalan yang belum dikumpulkan tidak dihitung). Amber = di bawah KKTP {KKTP} atau pengumpulan di bawah 70%.</p>
+      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
     </div>
   );
 }
