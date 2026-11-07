@@ -8,7 +8,8 @@ import { verifikasiSandbox, normal } from "../utils/rumus";
 import { exportNilai, backupFromStore } from "../utils/excel";
 import { LaporanModal } from "../utils/laporan";
 import { deadlineEnd } from "./siswa";
-import { Confirm } from "../components/visual";
+import { Confirm, Avatar } from "../components/visual";
+import { getLevel, TierIcon } from "../components/gamification";
 import "../styles/guru.css";
 
 export const KKTP = 70;
@@ -732,6 +733,198 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
       {hapus && <Confirm title={`Hapus "${hapus.judul}"?`} desc="Tugas dihapus permanen. Poin siswa yang sudah mengerjakan tidak berubah." onOk={() => { store.deleteTugas(hapus.id); setHapus(null); kabar("Tugas dihapus."); }} onCancel={() => setHapus(null)} />}
       {nilaiT && IntervensiNilaiModal && <IntervensiNilaiModal tugas={nilaiT} store={store} onClose={() => setNilaiT(null)} />}
       {materi && MateriManagerModal && <MateriManagerModal store={store} jenjang={jenjang} onClose={() => setMateri(false)} onSuccess={msg => { setMateri(false); kabar(msg); }} />}
+    </div>
+  );
+}
+
+// ─── Laporan siswa (guru) ───
+const KATEGORI_LAPOR = { konflik: "Konflik dengan teman", bullying: "Bullying / perundungan", sarpras: "Sarana/prasarana rusak", akademik: "Kesulitan akademik", kesehatan: "Kesehatan/kondisi diri", lainnya: "Lainnya" };
+const STATUS_LAPOR = { baru: "Baru", diproses: "Diproses", selesai: "Selesai" };
+function waktuLalu(ts, now = Date.now()) {
+  const d = now - ts;
+  if (d < 6e4) return "baru saja";
+  if (d < 36e5) return `${Math.floor(d / 6e4)} menit lalu`;
+  if (d < HARI) return `${Math.floor(d / 36e5)} jam lalu`;
+  if (d < 7 * HARI) return `${Math.floor(d / HARI)} hari lalu`;
+  return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export function LaporanGuruV2({ store, LaporanDetailModal, onTampilanLama }) {
+  const [status, setStatus] = useState("baru");
+  const [kategori, setKategori] = useState("semua");
+  const [pilih, setPilih] = useState(null);
+  const [hapus, setHapus] = useState(null);
+  const now = Date.now();
+  const semua = store.getReports();
+  const jumlah = { baru: 0, diproses: 0, selesai: 0, semua: semua.length };
+  semua.forEach(r => { jumlah[r.status] = (jumlah[r.status] || 0) + 1; });
+  const urut = { baru: 0, diproses: 1, selesai: 2 };
+  const tampil = semua
+    .filter(r => status === "semua" || r.status === status)
+    .filter(r => kategori === "semua" || r.kategori === kategori)
+    // Laporan baru: yang paling lama menunggu di atas. Lainnya: terbaru di atas.
+    .sort((a, b) => (urut[a.status] ?? 3) - (urut[b.status] ?? 3) || (a.status === "baru" ? (a.createdAt || 0) - (b.createdAt || 0) : (b.createdAt || 0) - (a.createdAt || 0)));
+  const labelKat = r => (r.kategori === "lainnya" && r.kategoriLain ? r.kategoriLain : KATEGORI_LAPOR[r.kategori] || r.kategori);
+
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">Rahasia · hanya wali kelas yang bisa melihat</span>
+          <h1>Laporan siswa</h1>
+        </div>
+      </div>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg scroll" role="tablist" aria-label="Status laporan">
+          {[["baru", "Baru"], ["diproses", "Diproses"], ["selesai", "Selesai"], ["semua", "Semua"]].map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={status === k} className={status === k ? "on" : ""} onClick={() => setStatus(k)}>{l} · {jumlah[k] || 0}</button>
+          ))}
+        </div>
+        <label className="gr-select">
+          <span className="sr">Kategori</span>
+          <select value={kategori} onChange={e => setKategori(e.target.value)}>
+            <option value="semua">Semua kategori</option>
+            {Object.entries(KATEGORI_LAPOR).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {tampil.length === 0 ? (
+        <div className="gr-card"><p className="gr-empty">{status === "baru" && kategori === "semua" ? "Tidak ada laporan baru. Semua laporan sudah ditanggapi." : "Tidak ada laporan yang cocok dengan pilihan ini."}</p></div>
+      ) : (
+        <div className="gr-card list">
+          {tampil.map(r => {
+            const lama = r.status === "baru" && now - (r.createdAt || now) > 2 * HARI;
+            return (
+              <button key={r.id} type="button" className="gr-lapor" onClick={() => setPilih(r)}>
+                <div className="gr-lapor-top">
+                  <span className={`gr-chip ${r.status === "baru" ? "amber" : r.status === "diproses" ? "teal" : "muted"}`}>{STATUS_LAPOR[r.status] || r.status}</span>
+                  <b>{labelKat(r)}</b>
+                  {lama && <span className="gr-lapor-lama">Belum ditanggapi {Math.floor((now - r.createdAt) / HARI)} hari</span>}
+                </div>
+                <p>{r.deskripsi}</p>
+                <span className="gr-muted">{r.pelaporNama} · Kelas {r.jenjang} · {waktuLalu(r.createdAt, now)}{r.catatanGuru ? " · ada catatan guru" : ""}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
+      {pilih && LaporanDetailModal && <LaporanDetailModal report={pilih} store={store} kategoriLabel={KATEGORI_LAPOR} onClose={() => setPilih(null)} onDelete={() => { setHapus(pilih); setPilih(null); }} />}
+      {hapus && <Confirm title="Hapus laporan?" desc="Laporan dihapus permanen dan tidak bisa dikembalikan." onOk={async () => { await store.deleteReport(hapus.id); setHapus(null); }} onCancel={() => setHapus(null)} />}
+    </div>
+  );
+}
+
+// ─── Manajemen siswa (guru) ───
+export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, AuditPoinGanda, cetakKartu, withTimeout, onTampilanLama }) {
+  const [jenjang, setJenjang] = useState("VII");
+  const [cari, setCari] = useState("");
+  const [tambah, setTambah] = useState(false);
+  const [impor, setImpor] = useState(false);
+  const [reset, setReset] = useState(null);
+  const [pw, setPw] = useState("");
+  const [hapus, setHapus] = useState(null);
+  const [sibuk, setSibuk] = useState(false);
+  const [toast, setToast] = useState("");
+  const kabar = m => { setToast(m); setTimeout(() => setToast(""), 3500); };
+  const tunggu = p => (withTimeout ? withTimeout(p) : p);
+  const siswa = store.getAllSiswa(jenjang);
+  const q = cari.trim().toLowerCase();
+  const tampil = siswa.filter(s => !q || `${s.nama} ${s.id}`.toLowerCase().includes(q));
+
+  async function simpanPw() {
+    if (!reset || pw.trim().length < 6) return;
+    setSibuk(true);
+    try { await tunggu(store.resetPassword(reset.id, pw.trim())); kabar(`Password ${reset.nama} diganti.`); setReset(null); setPw(""); }
+    catch (e) { kabar("Gagal mengganti password: " + (e?.message || "coba lagi")); }
+    finally { setSibuk(false); }
+  }
+  async function hapusSiswa() {
+    if (!hapus) return;
+    setSibuk(true);
+    try { await tunggu(store.deleteSiswa(hapus.id)); kabar(`${hapus.nama} dihapus.`); setHapus(null); }
+    catch (e) { kabar("Gagal menghapus: " + (e?.message || "coba lagi")); }
+    finally { setSibuk(false); }
+  }
+
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">{store.getAllSiswa().length} siswa · VII {store.getAllSiswa("VII").length} · VIII {store.getAllSiswa("VIII").length}</span>
+          <h1>Siswa</h1>
+        </div>
+        <div className="gr-actions">
+          {cetakKartu && <button type="button" className="gr-btn outline" disabled={!siswa.length} onClick={() => cetakKartu(siswa, jenjang)}>Cetak kartu</button>}
+          {ImportSiswaModal && <button type="button" className="gr-btn outline" onClick={() => setImpor(true)}>Import Excel</button>}
+          {TambahSiswaModal && <button type="button" className="gr-btn" onClick={() => setTambah(true)}><Ikon d={IKON.plus} s={15} w={2.4} /> Tambah siswa</button>}
+        </div>
+      </div>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg" role="tablist" aria-label="Pilih kelas">
+          {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => setJenjang(j)}>Kelas {j} · {store.getAllSiswa(j).length}</button>)}
+        </div>
+        <label className="gr-cari"><span className="sr">Cari siswa</span><input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari nama atau ID" /></label>
+      </div>
+
+      {siswa.length === 0 ? (
+        <div className="gr-card"><p className="gr-empty">Belum ada siswa di Kelas {jenjang}. Tambah satu per satu atau import dari Excel.</p></div>
+      ) : tampil.length === 0 ? (
+        <div className="gr-card"><p className="gr-empty">Tidak ada siswa yang cocok dengan "{cari}".</p></div>
+      ) : (
+        <div className="gr-card list">
+          {tampil.map(s => {
+            const st = store.getStats(s.id);
+            const lv = getLevel(st.poin || 0);
+            return (
+              <div key={s.id} className="gr-akun">
+                <Avatar name={s.nama} size="md" photo={store.getPhoto ? store.getPhoto(s.uid || s.id) : null} />
+                <div className="gr-akun-txt">
+                  <b>{s.nama}</b>
+                  <span><code>{s.id}</code><span className="lv" style={{ color: lv.color }}><TierIcon tierId={lv.tierId} size={12} color={lv.color} /> {lv.name}</span><span className="gr-muted">{(st.poin || 0).toLocaleString("id-ID")} poin</span></span>
+                </div>
+                <div className="gr-akun-act">
+                  <button type="button" className="gr-link" onClick={() => { setReset(s); setPw(""); }}>Ganti password</button>
+                  <button type="button" className="gr-link danger" onClick={() => setHapus(s)}>Hapus</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {AuditPoinGanda && (
+        <section>
+          <Kepala judul="Alat data" />
+          <AuditPoinGanda store={store} />
+        </section>
+      )}
+
+      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
+      {toast && <div className="gr-toast" role="status">{toast}</div>}
+      {reset && (
+        <div className="modal-overlay" onClick={() => setReset(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-pw-judul">
+            <h3 id="gr-pw-judul">Ganti password</h3>
+            <p style={{ marginBottom: 14 }}>Password baru untuk <b>{reset.nama}</b> ({reset.id}). Sampaikan ke siswa secara langsung.</p>
+            <div className="fg">
+              <label className="lbl" htmlFor="gr-pw">Password baru</label>
+              <input id="gr-pw" className="inp" value={pw} onChange={e => setPw(e.target.value)} placeholder="Minimal 6 karakter" onKeyDown={e => e.key === "Enter" && simpanPw()} autoFocus />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setReset(null)}>Batal</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={sibuk || pw.trim().length < 6} onClick={simpanPw}>{sibuk ? "Menyimpan…" : "Simpan password"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {hapus && <Confirm title={`Hapus ${hapus.nama}?`} desc="Akun siswa dan percakapannya di Pesan dihapus permanen." onOk={hapusSiswa} onCancel={() => setHapus(null)} />}
+      {tambah && TambahSiswaModal && <TambahSiswaModal store={store} onClose={() => setTambah(false)} onSuccess={(id, p) => { setTambah(false); kabar(`Siswa ditambahkan. ID: ${id} · Password: ${p}`); }} />}
+      {impor && ImportSiswaModal && <ImportSiswaModal store={store} onClose={() => setImpor(false)} onSuccess={n => { setImpor(false); kabar(`${n} siswa berhasil diimpor.`); }} />}
     </div>
   );
 }

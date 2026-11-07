@@ -23,7 +23,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
-import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2 } from './pages/guru';
+import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2 } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -8154,8 +8154,10 @@ function AppInner() {
       else if (route === "analisis-tugas-lama") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
       else if (route === "bank-soal") screen = <BankSoal store={store} navigate={navigate} />;
-      else if (route === "manajemen-siswa") screen = <ManajemenSiswa store={store} />;
-      else if (route === "laporan-guru") screen = <LaporanGuru store={store} />;
+      else if (route === "manajemen-siswa") screen = <ManajemenSiswaV2 store={store} TambahSiswaModal={TambahSiswaModal} ImportSiswaModal={ImportSiswaModal} AuditPoinGanda={AuditPoinGanda} withTimeout={withTimeout} cetakKartu={(list, j) => printKartuLogin(list.map(s => ({ ...s, password: s.password || "—" })), j)} onTampilanLama={() => navigate("manajemen-siswa-lama")} />;
+      else if (route === "manajemen-siswa-lama") screen = <ManajemenSiswa store={store} />;
+      else if (route === "laporan-guru") screen = <LaporanGuruV2 store={store} LaporanDetailModal={LaporanDetailModal} onTampilanLama={() => navigate("laporan-guru-lama")} />;
+      else if (route === "laporan-guru-lama") screen = <LaporanGuru store={store} />;
       else if (route === "nilai-akhir") screen = <NilaiAkhirPage store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
       else if (route === "materi-manager") screen = <MateriManager store={store} navigate={navigate} />;
