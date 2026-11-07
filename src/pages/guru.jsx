@@ -8,6 +8,7 @@ import { verifikasiSandbox, normal } from "../utils/rumus";
 import { exportNilai, backupFromStore } from "../utils/excel";
 import { LaporanModal } from "../utils/laporan";
 import { deadlineEnd } from "./siswa";
+import { Confirm } from "../components/visual";
 import "../styles/guru.css";
 
 export const KKTP = 70;
@@ -599,6 +600,138 @@ export function AnalisisTugasV2({ store, tugasId, navigate, NilaiEssayModal, Int
       {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
       {esai && NilaiEssayModal && <NilaiEssayModal tugas={t} store={store} onClose={() => setEsai(false)} />}
       {ubah && IntervensiNilaiModal && <IntervensiNilaiModal tugas={t} store={store} onClose={() => setUbah(false)} />}
+    </div>
+  );
+}
+
+// ─── Daftar Tugas (guru) ───
+export function hitungDaftarTugas(store, jenjang, { tab = "berjalan", personalSaja = false, cari = "" } = {}, now = Date.now()) {
+  const siswa = store.getAllSiswa(jenjang);
+  const subs = store.getSubs();
+  const semua = store.getTugas().filter(t => t.jenjang === jenjang);
+  const kelompok = t => (t.status === "scheduled" ? "terjadwal" : labelTenggat(t, now).lewat ? "selesai" : "berjalan");
+  const hitung = { berjalan: 0, terjadwal: 0, selesai: 0, semua: semua.length };
+  semua.forEach(t => { hitung[kelompok(t)]++; });
+  const personal = semua.filter(t => Array.isArray(t.assignedTo)).length;
+  const q = cari.trim().toLowerCase();
+  const tampil = semua
+    .filter(t => tab === "semua" || kelompok(t) === tab)
+    .filter(t => !personalSaja || Array.isArray(t.assignedTo))
+    .filter(t => !q || `${t.judul} ${t.materi || ""}`.toLowerCase().includes(q))
+    .map(t => {
+      const penerima = penerimaTugas(t, siswa);
+      const ids = new Set(penerima.map(s => s.id));
+      const ss = subs.filter(s => s.tugasId === t.id && ids.has(s.siswaId));
+      const nilai = ss.filter(s => typeof s.nilai === "number").map(s => s.nilai);
+      const tg = labelTenggat(t, now);
+      const grup = kelompok(t);
+      const belum = penerima.length - ss.length;
+      return {
+        t, grup, penerima: penerima.length, kumpul: ss.length, belum,
+        kumpulPct: penerima.length ? Math.round(ss.length / penerima.length * 100) : 0,
+        rata: bulat(avg(nilai)), esai: ss.reduce((a, s) => a + perluDinilai(s), 0),
+        tenggat: grup === "terjadwal" ? `Terbit ${t.scheduledAt ? new Date(t.scheduledAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "terjadwal"}` : grup === "selesai" ? `Ditutup ${t.deadline ? tglPanjang(deadlineEnd(t.deadline)) : ""}` : tg.label,
+        tenggatTone: grup === "terjadwal" ? "soft" : grup === "selesai" ? "muted" : tg.segera ? "amber" : "teal",
+        untuk: Array.isArray(t.assignedTo) ? penerima.map(s => (s.namaDisplay || s.nama || "").split(" ")[0]) : null,
+        sandbox: (t.soal || []).filter(s => s.type === "sandbox").length,
+        urut: grup === "terjadwal" ? new Date(t.scheduledAt || 0).getTime() : t.deadline ? deadlineEnd(t.deadline) : Infinity,
+      };
+    })
+    .sort((a, b) => (tab === "selesai" || (tab === "semua" && a.grup === "selesai" && b.grup === "selesai") ? b.urut - a.urut : a.urut - b.urut));
+  return { hitung, personal, tampil };
+}
+
+export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManagerModal, onTampilanLama }) {
+  const [jenjang, setJenjang] = useState("VII");
+  const [tab, setTab] = useState("berjalan");
+  const [personalSaja, setPersonalSaja] = useState(false);
+  const [cari, setCari] = useState("");
+  const [hapus, setHapus] = useState(null);
+  const [nilaiT, setNilaiT] = useState(null);
+  const [materi, setMateri] = useState(false);
+  const [toast, setToast] = useState("");
+  const kabar = m => { setToast(m); setTimeout(() => setToast(""), 2500); };
+  const d = hitungDaftarTugas(store, jenjang, { tab, personalSaja, cari });
+  const TAB = [["berjalan", "Berjalan"], ["terjadwal", "Terjadwal"], ["selesai", "Selesai"], ["semua", "Semua"]];
+  const kosong = cari ? `Tidak ada tugas yang cocok dengan "${cari}".` : personalSaja ? "Belum ada tugas personal di kelompok ini."
+    : tab === "berjalan" ? "Tidak ada tugas yang sedang berjalan." : tab === "terjadwal" ? "Tidak ada tugas terjadwal." : tab === "selesai" ? "Belum ada tugas yang ditutup." : "Belum ada tugas.";
+
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">{d.hitung.semua} tugas · Kelas {jenjang}</span>
+          <h1>Tugas</h1>
+        </div>
+        <div className="gr-actions">
+          {MateriManagerModal && <button type="button" className="gr-btn outline" onClick={() => setMateri(true)}>Atur materi</button>}
+          <button type="button" className="gr-btn" onClick={() => navigate("buat-tugas")}><Ikon d={IKON.plus} s={15} w={2.4} /> Tugas baru</button>
+        </div>
+      </div>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg" role="tablist" aria-label="Pilih kelas">
+          {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => setJenjang(j)}>Kelas {j}</button>)}
+        </div>
+        <label className="gr-cari">
+          <span className="sr">Cari tugas</span>
+          <input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari judul atau materi" />
+        </label>
+      </div>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg scroll" role="tablist" aria-label="Kelompok tugas">
+          {TAB.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l} · {d.hitung[k]}</button>)}
+        </div>
+        {d.personal > 0 && (
+          <label className="gr-check"><input type="checkbox" checked={personalSaja} onChange={e => setPersonalSaja(e.target.checked)} /> Tugas personal saja · {d.personal}</label>
+        )}
+      </div>
+
+      {d.tampil.length === 0 ? <div className="gr-card"><p className="gr-empty">{kosong}</p></div> : (
+        <div className="gr-stack">
+          {d.tampil.map(x => {
+            const t = x.t;
+            return (
+              <div key={t.id} className={`gr-card gr-tugas${x.grup === "selesai" ? " done" : ""}`}>
+                <div className="gr-tugas-top">
+                  <b>{t.judul}</b>
+                  <span className={`gr-chip ${x.tenggatTone}`}>{x.tenggat}</span>
+                </div>
+                <span className="gr-mono">
+                  {[t.mapel, t.materi || null, `${(t.soal || []).length} soal`, x.sandbox ? `${x.sandbox} sandbox` : null,
+                    t.graded === false ? `latihan khusus · poin 20%` : `maks ${t.poinMax || 0} poin`].filter(Boolean).join(" · ")}
+                </span>
+                {x.untuk && <span className="gr-untuk">Tugas personal untuk {x.untuk.length <= 4 ? x.untuk.join(", ") : `${x.untuk.slice(0, 4).join(", ")} dan ${x.untuk.length - 4} lainnya`}</span>}
+                {x.grup !== "terjadwal" && (
+                  <div className="gr-meters">
+                    <div><div className="gr-meter-lbl"><span>Mengumpulkan</span><b>{x.kumpul}/{x.penerima}</b></div><Bar v={x.kumpulPct} tone="solid" /></div>
+                    <div><div className="gr-meter-lbl"><span>Rata-rata</span><b className={x.rata != null && x.rata < KKTP ? "amber" : ""}>{x.rata ?? "Belum ada"}</b></div><Bar v={x.rata || 0} kktp tone={x.rata != null && x.rata < KKTP ? "amber" : "teal"} /></div>
+                  </div>
+                )}
+                <div className="gr-tugas-foot">
+                  <span className={x.esai || (x.grup === "selesai" && x.belum) ? "amber" : "muted"}>
+                    {x.grup === "terjadwal" ? "Belum terlihat oleh siswa" : x.esai ? `${x.esai} esai belum dinilai` : x.belum === 0 ? "Semua penerima sudah mengumpulkan" : x.grup === "selesai" ? `${x.belum} siswa tidak mengumpulkan` : `${x.belum} siswa belum mengumpulkan`}
+                  </span>
+                  <div className="gr-tugas-act">
+                    {x.kumpul > 0 && <button type="button" className="gr-link" onClick={() => navigate("analisis-tugas", { tugasId: t.id })}>Analisis</button>}
+                    {x.kumpul > 0 && IntervensiNilaiModal && <button type="button" className="gr-link" onClick={() => setNilaiT(t)}>Nilai</button>}
+                    <button type="button" className="gr-link" onClick={() => navigate("edit-tugas", { tugasId: t.id })}>{x.grup === "selesai" ? "Perpanjang" : "Edit"}</button>
+                    <button type="button" className="gr-link" onClick={async () => { try { await store.duplicateTugas(t); kabar("Tugas diduplikat dan langsung aktif. Edit judul atau jadwalnya bila perlu."); } catch (e) { kabar("Gagal menduplikat: " + (e?.message || "coba lagi")); } }}>Duplikat</button>
+                    <button type="button" className="gr-link danger" onClick={() => setHapus(t)}>Hapus</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
+      {toast && <div className="gr-toast" role="status">{toast}</div>}
+      {hapus && <Confirm title={`Hapus "${hapus.judul}"?`} desc="Tugas dihapus permanen. Poin siswa yang sudah mengerjakan tidak berubah." onOk={() => { store.deleteTugas(hapus.id); setHapus(null); kabar("Tugas dihapus."); }} onCancel={() => setHapus(null)} />}
+      {nilaiT && IntervensiNilaiModal && <IntervensiNilaiModal tugas={nilaiT} store={store} onClose={() => setNilaiT(null)} />}
+      {materi && MateriManagerModal && <MateriManagerModal store={store} jenjang={jenjang} onClose={() => setMateri(false)} onSuccess={msg => { setMateri(false); kabar(msg); }} />}
     </div>
   );
 }

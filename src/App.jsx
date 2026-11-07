@@ -23,7 +23,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
-import { DashboardGuruV2, AnalisisTugasV2 } from './pages/guru';
+import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2 } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -8143,7 +8143,8 @@ function AppInner() {
       // Fase 3 (Nov 2026): layar guru baru. Versi lama tetap bisa dibuka lewat rute *-lama selama transisi.
       if (route === "home-guru") screen = <DashboardGuruV2 store={store} navigate={navigate} hitungPerhatian={computePerluPerhatian} NilaiEssayModal={NilaiEssayModal} onTampilanLama={() => navigate("home-guru-lama")} />;
       else if (route === "home-guru-lama") screen = <DashboardGuru store={store} navigate={navigate} />;
-      else if (route === "tugas-guru") screen = <TugasGuru store={store} navigate={navigate} />;
+      else if (route === "tugas-guru") screen = <TugasGuruV2 store={store} navigate={navigate} IntervensiNilaiModal={IntervensiNilaiModal} MateriManagerModal={MateriManagerModal} onTampilanLama={() => navigate("tugas-guru-lama")} />;
+      else if (route === "tugas-guru-lama") screen = <TugasGuru store={store} navigate={navigate} />;
       else if (route === "buat-tugas") screen = <BuatTugas store={store} navigate={navigate} presetAssignedTo={params.presetAssignedTo} presetJenjang={params.presetJenjang} />;
       else if (route === "edit-tugas") screen = <BuatTugas store={store} navigate={navigate} editId={params.tugasId} />;
       else if (route === "leaderboard") screen = <RankingScreen user={user} store={store} />;
