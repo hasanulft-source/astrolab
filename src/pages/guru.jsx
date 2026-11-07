@@ -10,7 +10,7 @@ import { LaporanModal } from "../utils/laporan";
 import { deadlineEnd } from "./siswa";
 import { uid, fmtLastSeen } from "../utils/helpers";
 import { Confirm, Avatar } from "../components/visual";
-import { getLevel, TierIcon } from "../components/gamification";
+import { getLevel, TierIcon, BadgeIcon, AUTO_BADGES, MANUAL_BADGES } from "../components/gamification";
 import "../styles/guru.css";
 
 export const KKTP = 70;
@@ -1606,6 +1606,149 @@ export function KelasV2({ store, navigate, onTampilanLama }) {
       )}
       <p className="gr-muted">Rata-rata = nilai tugas Astrolab yang dinilai. Pengumpulan = tugas yang dikumpulkan dibanding tugas yang tenggatnya sudah lewat (tugas berjalan yang belum dikumpulkan tidak dihitung). Amber = di bawah KKTP {KKTP} atau pengumpulan di bawah 70%.</p>
       {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
+    </div>
+  );
+}
+
+// ─── Badge (guru): beri satu badge ke banyak siswa sekaligus, atau kelola per siswa ───
+export function BadgeGuruV2({ store, onTampilanLama }) {
+  const [mode, setMode] = useState("beri");
+  const [jenjang, setJenjang] = useState("VII");
+  const [badge, setBadge] = useState(null);
+  const [pilih, setPilih] = useState(new Set());
+  const [cari, setCari] = useState("");
+  const [siswaId, setSiswaId] = useState(null);
+  const [cabut, setCabut] = useState(null);
+  const [sibuk, setSibuk] = useState(false);
+  const [toast, setToast] = useState("");
+  const kabar = m => { setToast(m); setTimeout(() => setToast(""), 3500); };
+  const siswa = store.getAllSiswa(jenjang);
+  const q = cari.trim().toLowerCase();
+  const terlihat = siswa.filter(x => !q || `${x.nama} ${x.id}`.toLowerCase().includes(q));
+  const punya = id => store.getBadges(id);
+  const kategori = [...new Set(MANUAL_BADGES.map(b => b.category || "Lainnya"))];
+  const b = MANUAL_BADGES.find(x => x.id === badge);
+  const bisa = terlihat.filter(x => !(b && punya(x.id).includes(b.id)));
+  const aktif = siswa.find(x => x.id === siswaId) || siswa[0];
+
+  async function beri() {
+    if (!b || !pilih.size) return;
+    setSibuk(true);
+    let ok = 0; const gagal = [];
+    for (const id of pilih) {
+      try { await store.awardBadge(id, b.id); ok++; } catch { gagal.push(siswa.find(x => x.id === id)?.nama || id); }
+    }
+    setSibuk(false); setPilih(new Set());
+    kabar(gagal.length ? `${ok} siswa menerima ${b.name}. Gagal: ${gagal.join(", ")}.` : `${ok} siswa menerima ${b.name} (+${b.poin || 0} poin masing-masing).`);
+  }
+  const toggle = id => setPilih(p => { const x = new Set(p); x.has(id) ? x.delete(id) : x.add(id); return x; });
+  const kartuBadge = (bd, opt = {}) => (
+    <button key={bd.id} type="button" className={`gr-bdg${opt.on ? " on" : ""}${opt.punya === false ? " off" : ""}`} onClick={opt.onClick} disabled={opt.disabled} aria-pressed={opt.on}>
+      <BadgeIcon type={bd.icon} rim={bd.rim} size={opt.size || 40} locked={opt.punya === false} />
+      <b>{bd.name}</b>
+      <span>{opt.ket ?? bd.desc}</span>
+    </button>
+  );
+
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div><span className="gr-mono">Badge manual memberi poin ke siswa · badge otomatis diberikan sistem</span><h1>Badge</h1></div>
+      </div>
+      <div className="gr-bar-row">
+        <div className="gr-seg" role="tablist" aria-label="Mode">
+          <button type="button" role="tab" aria-selected={mode === "beri"} className={mode === "beri" ? "on" : ""} onClick={() => setMode("beri")}>Beri badge</button>
+          <button type="button" role="tab" aria-selected={mode === "siswa"} className={mode === "siswa" ? "on" : ""} onClick={() => setMode("siswa")}>Per siswa</button>
+        </div>
+        <div className="gr-seg" role="tablist" aria-label="Kelas">
+          {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => { setJenjang(j); setPilih(new Set()); setSiswaId(null); }}>Kelas {j}</button>)}
+        </div>
+      </div>
+
+      {mode === "beri" ? (<>
+        <section>
+          <Kepala judul="1. Pilih badge" />
+          {kategori.map(k => (
+            <div key={k} className="gr-bdg-grup">
+              <span className="gr-sub">{k}</span>
+              <div className="gr-bdg-grid">
+                {MANUAL_BADGES.filter(x => (x.category || "Lainnya") === k).map(bd => kartuBadge(bd, { on: badge === bd.id, onClick: () => { setBadge(bd.id); setPilih(new Set()); }, ket: `${bd.desc} · +${bd.poin || 0} poin` }))}
+              </div>
+            </div>
+          ))}
+        </section>
+        <section>
+          <Kepala judul={b ? `2. Pilih siswa untuk ${b.name}` : "2. Pilih siswa"} kanan={b && <span className="gr-mono">{pilih.size} dipilih</span>} />
+          {!b ? <div className="gr-card"><p className="gr-empty">Pilih badge dulu di atas.</p></div> : (
+            <div className="gr-card list">
+              <div className="gr-bdg-tool">
+                <label className="gr-cari"><span className="sr">Cari siswa</span><input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari nama" /></label>
+                <button type="button" className="gr-link" onClick={() => setPilih(new Set(bisa.map(x => x.id)))}>Pilih semua yang belum punya</button>
+                {pilih.size > 0 && <button type="button" className="gr-link" onClick={() => setPilih(new Set())}>Kosongkan</button>}
+              </div>
+              {terlihat.map(x => {
+                const sudah = punya(x.id).includes(b.id);
+                return (
+                  <label key={x.id} className={`gr-bdg-siswa${sudah ? " sudah" : ""}`}>
+                    <input type="checkbox" disabled={sudah} checked={sudah || pilih.has(x.id)} onChange={() => toggle(x.id)} />
+                    <span className="nm">{x.namaDisplay || x.nama}</span>
+                    <span className="gr-muted">{sudah ? "Sudah punya" : `${punya(x.id).length} badge`}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        {b && (
+          <div className="gr-sticky">
+            <span>{pilih.size ? `${b.name} untuk ${pilih.size} siswa · total +${(b.poin || 0) * pilih.size} poin` : "Centang siswa yang menerima badge"}</span>
+            <button type="button" className="gr-btn" disabled={!pilih.size || sibuk} onClick={beri}>{sibuk ? "Memberikan…" : `Beri badge · ${pilih.size}`}</button>
+          </div>
+        )}
+      </>) : (
+        <div className="gr-cols">
+          <section className="gr-side">
+            <label className="gr-cari"><span className="sr">Cari siswa</span><input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari nama" /></label>
+            <div className="gr-card list gr-bdg-daftar">
+              {terlihat.map(x => (
+                <button key={x.id} type="button" className={`gr-bdg-pilih${aktif?.id === x.id ? " on" : ""}`} onClick={() => setSiswaId(x.id)}>
+                  <span className="nm">{x.namaDisplay || x.nama}</span><span className="gr-mono">{punya(x.id).length}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+          <section className="gr-main">
+            {!aktif ? <div className="gr-card"><p className="gr-empty">Belum ada siswa di kelas ini.</p></div> : (
+              <div className="gr-card gr-bdg-detail">
+                <div className="gr-sh"><h2 style={{ textTransform: "none", letterSpacing: 0, fontSize: 16, color: "var(--ink)" }}>{aktif.nama}</h2><span className="gr-mono">{punya(aktif.id).length} badge</span></div>
+                <span className="gr-sub">Badge manual · klik untuk memberi atau mencabut</span>
+                <div className="gr-bdg-grid">
+                  {MANUAL_BADGES.map(bd => { const ada = punya(aktif.id).includes(bd.id); return kartuBadge(bd, { size: 36, punya: ada, on: ada, ket: ada ? `Dimiliki · cabut −${bd.poin || 0} poin` : `Beri · +${bd.poin || 0} poin`, onClick: async () => { if (ada) setCabut(bd); else { try { await store.awardBadge(aktif.id, bd.id); kabar(`${bd.name} diberikan ke ${aktif.nama}.`); } catch (e) { kabar("Gagal: " + (e?.message || "coba lagi")); } } } }); })}
+                </div>
+                <span className="gr-sub">Badge otomatis · diberikan sistem</span>
+                <div className="gr-bdg-grid">
+                  {AUTO_BADGES.map(bd => { const ada = punya(aktif.id).includes(bd.id); return kartuBadge(bd, { size: 36, punya: ada, disabled: true, ket: ada ? "Sudah didapat" : bd.desc }); })}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
+      {toast && <div className="gr-toast" role="status">{toast}</div>}
+      {cabut && aktif && (
+        <div className="modal-overlay" onClick={() => setCabut(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Cabut {cabut.name} dari {aktif.nama}?</h3>
+            <p>Poin siswa berkurang {cabut.poin || 0}.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setCabut(null)}>Batal</button>
+              <button type="button" className="btn btn-danger btn-sm" onClick={async () => { try { await store.removeBadge(aktif.id, cabut.id); kabar(`${cabut.name} dicabut.`); } catch (e) { kabar("Gagal: " + (e?.message || "coba lagi")); } setCabut(null); }}>Cabut badge</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

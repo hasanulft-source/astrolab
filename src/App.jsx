@@ -22,7 +22,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
-import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat, KelasV2 } from './pages/guru';
+import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat, KelasV2, BadgeGuruV2 } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -8142,7 +8142,8 @@ function AppInner() {
       else if (route === "kelas-lama") screen = <KelasView store={store} navigate={navigate} />;
       else if (route === "analisis-tugas") screen = <AnalisisTugasV2 store={store} tugasId={params.tugasId} navigate={navigate} NilaiEssayModal={NilaiEssayModal} IntervensiNilaiModal={IntervensiNilaiModal} onTampilanLama={() => navigate("analisis-tugas-lama", { tugasId: params.tugasId })} />;
       else if (route === "analisis-tugas-lama") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
-      else if (route === "badge-manager") screen = <BadgeManager store={store} />;
+      else if (route === "badge-manager") screen = <BadgeGuruV2 store={store} onTampilanLama={() => navigate("badge-manager-lama")} />;
+      else if (route === "badge-manager-lama") screen = <BadgeManager store={store} />;
       else if (route === "nilai-esai") screen = <NilaiEsaiCepat store={store} tugasId={params.tugasId} navigate={navigate} NilaiEssayModal={NilaiEssayModal} />;
       else if (route === "arsip-tugas" || route === "bank-soal") screen = <ArsipTugas store={store} navigate={navigate} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswaV2 store={store} TambahSiswaModal={TambahSiswaModal} ImportSiswaModal={ImportSiswaModal} AuditPoinGanda={AuditPoinGanda} withTimeout={withTimeout} cetakKartu={(list, j, win) => printKartuLogin(list.map(s => ({ ...s, password: s.password || "—" })), j, win)} onTampilanLama={() => navigate("manajemen-siswa-lama")} />;
