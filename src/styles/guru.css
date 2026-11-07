@@ -251,6 +251,37 @@
 .gr-pick-head .gr-muted{flex:1 1 160px}
 .gr-pick-s{display:flex;gap:8px;align-items:flex-start;padding:6px 12px 6px 22px;font-size:13px;cursor:pointer}
 .gr-pick-s input{margin-top:3px;accent-color:var(--accent)}
+/* Nilai esai per soal */
+.gr-progres{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.gr-progres>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;font-size:13.5px}
+.gr-esai-soal{padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.gr-esai-soal>p{margin:0;font-size:15px;font-weight:600;line-height:1.55}
+.gr-pedoman{display:flex;flex-wrap:wrap;gap:4px 10px;padding:8px 12px;border-radius:10px;background:var(--accent-tint);font-size:13px}
+.gr-pedoman b{color:var(--accent-2)}
+.gr-esai{padding:14px 16px;display:flex;flex-direction:column;gap:10px;outline:none;transition:box-shadow .2s}
+.gr-esai:focus{box-shadow:0 0 0 2px var(--accent-mid)}
+.gr-esai.done{background:#FBFCFD}
+.gr-esai.grup{border-color:var(--accent-light);background:#F6FAFB}
+.gr-esai header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 10px}
+.gr-esai header b{font-size:14px}
+.gr-esai-teks{margin:0;font-size:14px;line-height:1.6;white-space:pre-wrap;color:var(--ink)}
+.gr-esai-teks.kosong{color:var(--ink-3);font-style:italic}
+.gr-refleksi{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.gr-refleksi>div{padding:8px 10px;border-radius:9px;background:var(--surface-alt)}
+.gr-refleksi span{font-size:11.5px;font-weight:700;color:var(--accent-2)}
+.gr-refleksi p{margin:2px 0 0;font-size:13px;white-space:pre-wrap}
+.gr-nilai-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.gr-nb{all:unset;box-sizing:border-box;cursor:pointer;min-width:48px;height:40px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;font-family:var(--mono);font-size:14px;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;transition:background .12s,border-color .12s,color .12s}
+.gr-nb:hover{border-color:var(--accent-mid);color:var(--accent)}
+.gr-nb.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.gr-nb:disabled{opacity:.5;cursor:wait}
+.gr-nb:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px}
+.gr-nb-lain input{width:72px;height:40px;box-sizing:border-box;padding:0 10px;border-radius:10px;border:1px solid var(--line);font-family:var(--mono);font-size:14px;color:var(--ink);background:var(--surface)}
+.gr-nb-lain input:focus{outline:2px solid var(--accent-mid);outline-offset:1px}
+.gr-komen{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.gr-komen .inp{flex:1 1 240px}
+.gr-esai .gr-link{align-self:flex-start;font-weight:600;font-size:12.5px}
+.gr-warn.inline{margin:0;padding:6px 10px}
 .gr-belum{display:flex;align-items:center;gap:10px;padding:11px 14px}
 .gr-belum span{flex:1;min-width:0;font-weight:600;font-size:13.5px}
 
@@ -268,6 +299,9 @@
 }
 @media(max-width:600px){.gr-filter{justify-content:stretch}.gr-filter>*{flex:1 1 140px;min-width:0}.gr-filter select{width:100%}}
 @media(max-width:480px){
+  .gr-nilai-row{gap:5px}
+  .gr-nb{min-width:44px;height:44px;padding:0 6px}
+  .gr-nb-lain input{width:58px;height:44px;padding:0 8px}
   .gr{gap:16px}
   .gr h1{font-size:22px}
   .gr-tiles b{font-size:22px}

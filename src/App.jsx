@@ -22,7 +22,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
-import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal } from './pages/guru';
+import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -235,6 +235,7 @@ function evalExcelFormula(formula, tableData) {
 function useStore() {
   const [tugas, setTugas] = useState([]);
   const [subs, setSubs] = useState([]);
+  const subsLive = useRef([]); // salinan submissions terbaru di luar render (lihat statsLive)
   const [stats, setStats] = useState({});
   // Salinan stats terbaru di luar siklus render. Fungsi store yang dipanggil berturut-turut dalam satu
   // alur (mis. kumpulkan tugas → badge) memegang `stats` dari render lama; tanpa ini tulisan kedua
@@ -261,7 +262,9 @@ function useStore() {
     }, () => setLoading(false)); // error handler
     const u2 = onValue(subsRef, snap => {
       const data = snap.val();
-      setSubs(data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : []);
+      const list = data ? Object.entries(data).map(([id, v]) => ({ ...v, id })) : [];
+      subsLive.current = list;
+      setSubs(list);
     }, () => {});
     const u3 = onValue(statsRef, snap => {
       const v = snap.val() || {};
@@ -391,6 +394,54 @@ function useStore() {
     const siswa = getAllAccounts().find(a => a.id === s.siswaId);
     const t = tugas.find(x => x.id === s.tugasId);
     callPush("send", { targetAccountId: fbGuru?.id || "fata", title: `${siswa?.namaDisplay || siswa?.nama || s.siswaId} mengumpulkan tugas`, body: t?.judul || "Tugas", tag: `sub-${s.tugasId}` }).catch(() => {});
+  };
+
+  // ─── NILAI ESAI / REFLEKSI (manual guru) ───
+  // items: [{ subId, soalId, origIdx }] — satu atau banyak jawaban (mis. jawaban identik dinilai sekaligus).
+  // Rumus sama dengan NilaiEssayModal lama: esai dinilai → poin proporsional, nilai ≥ 60 dihitung benar;
+  // penyebut = total butir saat siswa submit; batas nilai susulan & poin 20% latihan khusus tetap berlaku.
+  // Semua submission + stats yang terdampak ditulis dalam SATU multi-path update.
+  const nilaiJawabanManual = async (items, nilai, komentar = "") => {
+    const v = Number(nilai);
+    if (!Number.isFinite(v) || v < 0 || v > 100) throw new Error("Nilai harus 0–100");
+    const bySub = {};
+    items.forEach(it => { (bySub[it.subId] = bySub[it.subId] || []).push(it); });
+    const live = subsLive.current.length ? subsLive.current : subs;
+    const patch = {};
+    const now = Date.now();
+    Object.entries(bySub).forEach(([subId, its]) => {
+      const sub = live.find(x => x.id === subId);
+      if (!sub) throw new Error("Submission tidak ditemukan");
+      const t = tugas.find(x => x.id === sub.tugasId) || {};
+      const kena = r => its.some(it => (it.soalId ? r.soalId === it.soalId : (!r.soalId && r.origIdx === it.origIdx)));
+      const results = (sub.soalResults || []).map(r => (kena(r) && r.statusNilai ? { ...r, statusNilai: "dinilai", nilaiEssay: v, komentarGuru: komentar || "" } : r));
+      let poin = 0, benar = 0;
+      results.forEach(r => {
+        if (r.correct === true) { poin += Number(r.poinSoal) || 0; benar++; }
+        else if (r.statusNilai === "dinilai") { poin += Math.round((r.nilaiEssay / 100) * (Number(r.poinSoal) || 0)); if (r.nilaiEssay >= 60) benar++; }
+      });
+      const totalSoal = sub.total || (t.soal || []).length || 1;
+      let nilaiBaru = Math.round((benar / totalSoal) * 100);
+      const sus = getSusulan(sub.tugasId, sub.siswaId);
+      if (sus && typeof sus.nilaiMaks === "number" && nilaiBaru > sus.nilaiMaks) {
+        const rasio = nilaiBaru > 0 ? sus.nilaiMaks / nilaiBaru : 0;
+        poin = Math.round(poin * rasio); nilaiBaru = sus.nilaiMaks;
+      }
+      if (t.graded === false) poin = Math.round(poin * 0.2);
+      const sp = `submissions/${subId}`;
+      Object.assign(patch, { [`${sp}/soalResults`]: JSON.parse(JSON.stringify(results)), [`${sp}/nilai`]: nilaiBaru, [`${sp}/poinDapat`]: poin, [`${sp}/correctCount`]: benar });
+      const st = getStats(sub.siswaId);
+      const selisih = poin - (Number(sub.poinDapat) || 0);
+      const { nilaiList, nilaiRata } = recomputeNilaiStats(sub.siswaId, { subId, nilai: nilaiBaru });
+      const tp = `stats/${sub.siswaId}`;
+      Object.assign(patch, { [`${tp}/nilaiList`]: nilaiList, [`${tp}/nilaiRata`]: nilaiRata });
+      if (selisih !== 0) {
+        const poinBaru = Math.max(0, (st.poin || 0) + selisih);
+        patch[`${tp}/poin`] = poinBaru;
+        patch[`${tp}/poinHistory`] = [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: poinBaru, ts: now, reason: "nilai-esai", tugasId: sub.tugasId, delta: selisih }];
+      }
+    });
+    if (Object.keys(patch).length) await update(ref(db), patch);
   };
 
   // ─── AUDIT POIN GANDA (bug soal-hantu, Nov 2026) ───
@@ -1925,7 +1976,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -3754,64 +3805,10 @@ function NilaiEssayModal({ tugas, store, onClose }) {
   async function saveResultUpdate(matchFn, savingKey, nilaiEssayVal, komentar) {
     setSavingFor(savingKey);
     try {
-      const newResults = currentSub.soalResults.map(r => {
-        if (matchFn(r) && r.statusNilai === "perlu_dinilai") {
-          return { ...r, statusNilai: "dinilai", nilaiEssay: Number(nilaiEssayVal), komentarGuru: komentar || "" };
-        }
-        return r;
-      });
-      // Hitung ulang nilai total
-      const allResults = newResults;
-      let totalPoinBaru = 0;
-      let correctCountBaru = 0;
-      allResults.forEach(r => {
-        if (r.correct === true) { totalPoinBaru += r.poinSoal; correctCountBaru++; }
-        else if (r.statusNilai === "dinilai") {
-          // Tambah poin proporsional dari nilai essay (nilai/100 * poinSoal)
-          totalPoinBaru += Math.round((r.nilaiEssay / 100) * r.poinSoal);
-          if (r.nilaiEssay >= 60) correctCountBaru++;
-        }
-      });
-      // Pakai total soal SAAT SISWA SUBMIT (snapshot di currentSub.total), bukan jumlah soal sekarang.
-      // Kalau guru edit tugas (tambah/hapus soal) setelah siswa submit, nilai siswa tidak boleh berubah
-      // gara-gara denominator berubah. Fallback ke tugas.soal.length kalau snapshot tidak ada (data lama).
-      const totalSoal = currentSub.total || (tugas.soal || []).length || 1;
-      let nilaiBaru = Math.round((correctCountBaru / totalSoal) * 100);
-
-      // Cap susulan — kalau siswa ini submit lewat susulan personal dengan nilai maksimal dibatasi,
-      // nilai essay yang baru dinilai gak boleh bikin nilai akhir naik ngelewatin cap itu lagi.
-      const susulanInfo = store.getSusulan(tugas.id, currentSub.siswaId);
-      if (susulanInfo && typeof susulanInfo.nilaiMaks === "number" && nilaiBaru > susulanInfo.nilaiMaks) {
-        const rasio = nilaiBaru > 0 ? susulanInfo.nilaiMaks / nilaiBaru : 0;
-        totalPoinBaru = Math.round(totalPoinBaru * rasio);
-        nilaiBaru = susulanInfo.nilaiMaks;
-      }
-
-      // Latihan Khusus (graded: false): poin 20% — konsisten dengan doSubmit
-      if (tugas.graded === false) {
-        totalPoinBaru = Math.round(totalPoinBaru * 0.2);
-      }
-
-      await update(ref(db, `submissions/${currentSub.id}`), {
-        soalResults: newResults,
-        nilai: nilaiBaru,
-        poinDapat: totalPoinBaru,
-        correctCount: correctCountBaru,
-      });
-
-      // Update stats siswa: selisih poin + rebuild nilaiList/nilaiRata.
-      // nilaiList WAJIB ikut di-rebuild — submission.nilai baru saja berubah, dan tanpa ini
-      // rata-rata nilai siswa selamanya memakai nilai saat submit (sering 0 untuk tugas yang
-      // isinya essay semua, karena essay belum terhitung waktu auto-grading).
-      const selisihPoin = totalPoinBaru - (currentSub.poinDapat || 0);
-      const stats = store.getStats(currentSub.siswaId);
-      const { nilaiList, nilaiRata } = store.recomputeNilaiStats(currentSub.siswaId, {
-        subId: currentSub.id,
-        nilai: nilaiBaru,
-      });
-      const statsPatch = { nilaiList, nilaiRata };
-      if (selisihPoin !== 0) statsPatch.poin = (stats.poin || 0) + selisihPoin;
-      await update(ref(db, `stats/${currentSub.siswaId}`), statsPatch);
+      // Simpan lewat store (atomik: submission + stats dalam satu tulisan, rumus sama seperti sebelumnya)
+      const items = (currentSub.soalResults || []).filter(r => matchFn(r) && r.statusNilai === "perlu_dinilai")
+        .map(r => ({ subId: currentSub.id, soalId: r.soalId || null, origIdx: r.origIdx }));
+      if (items.length) await store.nilaiJawabanManual(items, nilaiEssayVal, komentar);
     } catch (e) {
       alert("Gagal menyimpan nilai: " + e.message);
     } finally {
@@ -8141,6 +8138,7 @@ function AppInner() {
       else if (route === "analisis-tugas") screen = <AnalisisTugasV2 store={store} tugasId={params.tugasId} navigate={navigate} NilaiEssayModal={NilaiEssayModal} IntervensiNilaiModal={IntervensiNilaiModal} onTampilanLama={() => navigate("analisis-tugas-lama", { tugasId: params.tugasId })} />;
       else if (route === "analisis-tugas-lama") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
+      else if (route === "nilai-esai") screen = <NilaiEsaiCepat store={store} tugasId={params.tugasId} navigate={navigate} NilaiEssayModal={NilaiEssayModal} />;
       else if (route === "arsip-tugas" || route === "bank-soal") screen = <ArsipTugas store={store} navigate={navigate} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswaV2 store={store} TambahSiswaModal={TambahSiswaModal} ImportSiswaModal={ImportSiswaModal} AuditPoinGanda={AuditPoinGanda} withTimeout={withTimeout} cetakKartu={(list, j) => printKartuLogin(list.map(s => ({ ...s, password: s.password || "—" })), j)} onTampilanLama={() => navigate("manajemen-siswa-lama")} />;
       else if (route === "manajemen-siswa-lama") screen = <ManajemenSiswa store={store} />;

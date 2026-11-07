@@ -303,8 +303,7 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
   const jumlah = j => store.getAllSiswa(j).length;
 
   const aksi = item => {
-    if (item.key === "esai" && NilaiEssayModal) setEsaiTugas(item.tugas);
-    else if (item.key === "esai") navigate("analisis-tugas", { tugasId: item.tugas.id });
+    if (item.key === "esai") navigate("nilai-esai", { tugasId: item.tugas.id });
     else if (item.key === "akses") navigate("chat");
     else if (item.key === "lapor") navigate("laporan-guru");
     else if (item.key === "sas") navigate("nilai-akhir");
@@ -556,7 +555,7 @@ export function AnalisisTugasV2({ store, tugasId, navigate, NilaiEssayModal, Int
           <h1>{t.judul}</h1>
         </div>
         <div className="gr-actions">
-          {a.esaiBelum > 0 && NilaiEssayModal && <button type="button" className="gr-btn" onClick={() => setEsai(true)}>Nilai esai · {a.esaiBelum}</button>}
+          {a.esaiBelum > 0 && <button type="button" className="gr-btn" onClick={() => navigate("nilai-esai", { tugasId: t.id })}>Nilai esai · {a.esaiBelum}</button>}
           {IntervensiNilaiModal && a.totalSub > 0 && <button type="button" className="gr-btn outline" onClick={() => setUbah(true)}>Ubah nilai</button>}
           <button type="button" className="gr-btn outline" onClick={() => navigate("edit-tugas", { tugasId: t.id })}>Edit tugas</button>
         </div>
@@ -1226,6 +1225,193 @@ export function PilihDariArsipModal({ store, mapel, jenjang, onClose, onSelect }
           <button type="button" className="btn btn-primary btn-sm" disabled={!n} onClick={tambah}>Tambahkan {n} soal</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Penilaian esai per soal (Nov 2026) ───
+// Satu soal, semua jawaban siswa berderet. Jawaban yang sama persis (setelah huruf kecil & tanda baca dibuang)
+// dikelompokkan dan bisa dinilai sekaligus. Setiap klik nilai langsung tersimpan (store.nilaiJawabanManual, atomik).
+const NILAI_CEPAT = [0, 50, 70, 85, 100];
+const normalJawaban = x => String(x || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+const LABEL_REFLEKSI = ["Prediksi saya", "Yang saya observasi", "Yang salah/bug", "Pelajaran yang saya ambil"];
+
+function IsiJawaban({ soal, r }) {
+  if (soal.type === "refleksi") {
+    return (
+      <div className="gr-refleksi">
+        {["k1", "k2", "k3", "k4"].map((k, i) => (
+          <div key={k}><span>{soal[`labelKolom${i + 1}`] || LABEL_REFLEKSI[i]}</span><p>{r.jawabanRefleksi?.[k] || <i>kosong</i>}</p></div>
+        ))}
+      </div>
+    );
+  }
+  const teks = r.jawabanEssay || "";
+  return teks.trim() ? <p className="gr-esai-teks">{teks}</p> : <p className="gr-esai-teks kosong">Tidak menjawab</p>;
+}
+
+export function NilaiEsaiCepat({ store, tugasId, navigate, NilaiEssayModal }) {
+  const [pilihSoal, setPilihSoal] = useState(null);
+  const [tampil, setTampil] = useState("belum");
+  const [sesi, setSesi] = useState({});
+  const [sibuk, setSibuk] = useState(null);
+  const [lain, setLain] = useState({});
+  const [komen, setKomen] = useState({});
+  const [modeLama, setModeLama] = useState(false);
+  const [err, setErr] = useState("");
+  const t = (store.getTugasSemua || store.getTugas)().find(x => x.id === tugasId);
+  if (!t) return <div className="page gr"><p className="gr-empty">Tugas tidak ditemukan.</p></div>;
+
+  const siswaAll = store.getAllSiswa();
+  const namaOf = id => { const x = siswaAll.find(a => a.id === id); return x ? (x.namaDisplay || x.nama) : id; };
+  const subs = store.getSubs().filter(x => x.tugasId === t.id);
+  const manual = (t.soal || []).map((s, i) => ({ s, i })).filter(x => x.s.type === "essay" || x.s.type === "refleksi");
+  const jawabanOf = ({ s, i }) => subs.map(sub => {
+    const r = (sub.soalResults || []).find(x => (x.soalId && x.soalId === s.id) || (!x.soalId && x.origIdx === i));
+    if (!r || !r.statusNilai) return null;
+    const teks = s.type === "refleksi" ? ["k1", "k2", "k3", "k4"].map(k => r.jawabanRefleksi?.[k] || "").join(" | ") : (r.jawabanEssay || "");
+    return { key: `${sub.id}|${s.id || i}`, sub, r, nama: namaOf(sub.siswaId), teks, belum: r.statusNilai === "perlu_dinilai" };
+  }).filter(Boolean).sort((a, b) => a.nama.localeCompare(b.nama, "id"));
+
+  const perSoal = manual.map(m => { const js = jawabanOf(m); return { ...m, js, belum: js.filter(j => j.belum).length }; });
+  const total = perSoal.reduce((n, x) => n + x.js.length, 0);
+  const belumTotal = perSoal.reduce((n, x) => n + x.belum, 0);
+  const aktif = perSoal.find(x => x.i === pilihSoal) || perSoal.find(x => x.belum > 0) || perSoal[0];
+
+  if (!aktif) return (
+    <div className="page gr">
+      <button type="button" className="gr-link back" onClick={() => navigate("analisis-tugas", { tugasId: t.id })}><Ikon d={IKON.kiri} s={15} w={2.4} /> Analisis</button>
+      <div className="gr-card"><p className="gr-empty">Tugas ini tidak punya soal esai atau refleksi.</p></div>
+    </div>
+  );
+
+  const terlihat = aktif.js.filter(j => tampil === "semua" || j.belum || sesi[j.key]);
+  // Kelompok jawaban identik (hanya yang belum dinilai, minimal 2 siswa)
+  const grup = {};
+  if (tampil === "belum") terlihat.filter(j => j.belum).forEach(j => { const k = normalJawaban(j.teks) || "__kosong__"; (grup[k] = grup[k] || []).push(j); });
+  const kelompok = Object.entries(grup).filter(([, js]) => js.length > 1).map(([k, js]) => ({ k, js })).sort((a, b) => b.js.length - a.js.length);
+  const dalamKelompok = new Set(kelompok.flatMap(g => g.js.map(j => j.key)));
+  const tunggal = terlihat.filter(j => !dalamKelompok.has(j.key));
+
+  async function beriNilai(js, v, idFokus) {
+    const kom = js.length === 1 ? (komen[js[0].key] ?? js[0].r.komentarGuru ?? "") : "";
+    setErr(""); setSibuk(idFokus);
+    try {
+      await store.nilaiJawabanManual(js.map(j => ({ subId: j.sub.id, soalId: j.r.soalId || null, origIdx: j.r.origIdx })), v, kom);
+      setSesi(x => { const y = { ...x }; js.forEach(j => { y[j.key] = true; }); return y; });
+      // Lompat ke jawaban berikutnya yang belum dinilai
+      requestAnimationFrame(() => {
+        const semua = [...document.querySelectorAll(".gr-esai[data-belum='1']")];
+        const sekarang = document.getElementById(idFokus);
+        const next = semua.find(el => el !== sekarang && sekarang && (sekarang.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) || semua.find(el => el !== sekarang);
+        if (next) { next.scrollIntoView({ behavior: "smooth", block: "center" }); next.focus({ preventScroll: true }); }
+      });
+    } catch (e) { setErr("Gagal menyimpan nilai: " + (e?.message || "coba lagi")); }
+    finally { setSibuk(null); }
+  }
+
+  // Fungsi biasa (bukan komponen) supaya input "Lain" tidak kehilangan fokus saat mengetik
+  const tombolNilai = (js, idFokus, nilaiSekarang) => {
+    const key = js.length === 1 ? js[0].key : idFokus;
+    const vLain = lain[key] ?? "";
+    const okLain = vLain !== "" && Number(vLain) >= 0 && Number(vLain) <= 100;
+    return (
+      <div className="gr-nilai-row">
+        {NILAI_CEPAT.map(v => (
+          <button key={v} type="button" className={`gr-nb${nilaiSekarang === v ? " on" : ""}`} disabled={sibuk === idFokus} onClick={() => beriNilai(js, v, idFokus)} aria-label={`Beri nilai ${v}${js.length > 1 ? ` untuk ${js.length} siswa` : ""}`}>{v}</button>
+        ))}
+        <label className="gr-nb-lain"><span className="sr">Nilai lain</span>
+          <input type="number" min="0" max="100" inputMode="numeric" placeholder="Lain" value={vLain}
+            onChange={e => setLain(x => ({ ...x, [key]: e.target.value }))}
+            onKeyDown={e => { if (e.key === "Enter" && okLain) beriNilai(js, Number(vLain), idFokus); }} />
+        </label>
+        {vLain !== "" && <button type="button" className="gr-btn sm" disabled={!okLain || sibuk === idFokus} onClick={() => beriNilai(js, Number(vLain), idFokus)}>Simpan</button>}
+      </div>
+    );
+  };
+
+  const pct = total ? Math.round((total - belumTotal) / total * 100) : 100;
+  return (
+    <div className="page gr">
+      <button type="button" className="gr-link back" onClick={() => navigate("analisis-tugas", { tugasId: t.id })}><Ikon d={IKON.kiri} s={15} w={2.4} /> Analisis</button>
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">Nilai esai · {t.mapel} · Kelas {t.jenjang}</span>
+          <h1>{t.judul}</h1>
+        </div>
+        {NilaiEssayModal && <div className="gr-actions"><button type="button" className="gr-btn outline" onClick={() => setModeLama(true)}>Mode per siswa</button></div>}
+      </div>
+
+      <div className="gr-card gr-progres">
+        <div><b>{total - belumTotal} dari {total} jawaban dinilai</b><span className="gr-muted">{belumTotal ? `${belumTotal} lagi` : "Semua sudah dinilai"}</span></div>
+        <Bar v={pct} tone="solid" />
+      </div>
+
+      {perSoal.length > 1 && (
+        <div className="gr-seg scroll" role="tablist" aria-label="Pilih soal">
+          {perSoal.map(x => (
+            <button key={x.i} type="button" role="tab" aria-selected={aktif.i === x.i} className={aktif.i === x.i ? "on" : ""} onClick={() => setPilihSoal(x.i)}>Soal {x.i + 1}{x.belum ? ` · ${x.belum}` : " · selesai"}</button>
+          ))}
+        </div>
+      )}
+
+      <section className="gr-card gr-esai-soal">
+        <span className="gr-mono">Soal {aktif.i + 1} · {LABEL_TIPE[aktif.s.type]}</span>
+        <p>{aktif.s.pertanyaan}</p>
+        {aktif.s.kataKunci && <div className="gr-pedoman"><b>Kata kunci</b><span>{aktif.s.kataKunci}</span></div>}
+        {aktif.s.panduanNilai && <div className="gr-pedoman"><b>Panduan</b><span>{aktif.s.panduanNilai}</span></div>}
+        <span className="gr-muted">Nilai 60 ke atas dihitung benar. Setiap klik langsung tersimpan.</span>
+      </section>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg" role="tablist" aria-label="Jawaban yang ditampilkan">
+          <button type="button" role="tab" aria-selected={tampil === "belum"} className={tampil === "belum" ? "on" : ""} onClick={() => { setTampil("belum"); setSesi({}); }}>Belum dinilai · {aktif.belum}</button>
+          <button type="button" role="tab" aria-selected={tampil === "semua"} className={tampil === "semua" ? "on" : ""} onClick={() => setTampil("semua")}>Semua · {aktif.js.length}</button>
+        </div>
+        {err && <span className="gr-warn inline">{err}</span>}
+      </div>
+
+      {terlihat.length === 0 ? (
+        <div className="gr-card"><p className="gr-empty">Semua jawaban soal ini sudah dinilai.{perSoal.some(x => x.belum) ? " Pilih soal lain di atas." : ""}</p></div>
+      ) : (
+        <div className="gr-stack">
+          {kelompok.map(g => {
+            const id = `esai-g-${aktif.i}-${g.k.slice(0, 24)}`;
+            return (
+              <article key={g.k} id={id} className="gr-card gr-esai grup" data-belum={g.js.some(j => j.belum) ? "1" : "0"} tabIndex={-1}>
+                <header><b>{g.js.length} siswa menjawab sama</b><span className="gr-muted">{g.js.map(j => j.nama.split(" ")[0]).join(", ")}</span></header>
+                <IsiJawaban soal={aktif.s} r={g.js[0].r} />
+                {tombolNilai(g.js, id)}
+              </article>
+            );
+          })}
+          {tunggal.map(j => {
+            const id = `esai-${j.key.replace(/[^\w-]/g, "_")}`;
+            const dinilai = !j.belum;
+            const kOpen = komen[j.key] !== undefined;
+            return (
+              <article key={j.key} id={id} className={`gr-card gr-esai${dinilai ? " done" : ""}`} data-belum={j.belum ? "1" : "0"} tabIndex={-1}>
+                <header>
+                  <b>{j.nama}</b>
+                  {dinilai ? <span className={`gr-chip ${j.r.nilaiEssay >= 60 ? "teal" : "amber"}`}>Dinilai {j.r.nilaiEssay}</span> : <span className="gr-chip soft">Belum dinilai</span>}
+                </header>
+                <IsiJawaban soal={aktif.s} r={j.r} />
+                {tombolNilai([j], id, dinilai ? j.r.nilaiEssay : undefined)}
+                {kOpen ? (
+                  <div className="gr-komen">
+                    <label className="sr" htmlFor={`${id}-k`}>Komentar untuk {j.nama}</label>
+                    <input id={`${id}-k`} className="inp" value={komen[j.key]} onChange={e => setKomen(x => ({ ...x, [j.key]: e.target.value }))} placeholder="Komentar untuk siswa (terlihat di review tugas)" />
+                    {dinilai && <button type="button" className="gr-btn sm outline" disabled={sibuk === id} onClick={() => beriNilai([j], j.r.nilaiEssay, id)}>Simpan komentar</button>}
+                  </div>
+                ) : (
+                  <button type="button" className="gr-link" onClick={() => setKomen(x => ({ ...x, [j.key]: j.r.komentarGuru || "" }))}>{j.r.komentarGuru ? `Komentar: "${j.r.komentarGuru}"` : "Tambah komentar"}</button>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
+      {modeLama && NilaiEssayModal && <NilaiEssayModal tugas={t} store={store} onClose={() => setModeLama(false)} />}
     </div>
   );
 }
