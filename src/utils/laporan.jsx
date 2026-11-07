@@ -488,8 +488,12 @@ function exportLaporan(store, jenjang, mode = "kelas", periode = getPeriodeAktif
 export function LaporanModal({ store, onClose }) {
   const [jenjang, setJenjang] = useState("VII");
   const [mode, setMode] = useState("kelas");
-  const [periode, setPeriode] = useState(getPeriodeAktif());
-  const [jenisLaporan, setJenisLaporan] = useState("semester");
+  const [periode, setPeriode] = useState(() => (store.getActivePeriode ? store.getActivePeriode() : getPeriodeAktif()));
+  // Default jenis laporan mengikuti tanggal SAS: sebelum SAS → tengah semester, sesudahnya → semester
+  const [jenisLaporan, setJenisLaporan] = useState(() => {
+    const sas = store.getTanggalSAS ? store.getTanggalSAS() : null;
+    return sas && new Date() < new Date(`${sas}T00:00:00`) ? "tengahSemester" : "semester";
+  });
 
   const periodeOptions = getPeriodeOptions();
 

@@ -39,6 +39,9 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
 const auth = getAuth(firebaseApp);
 
+// Kriteria Ketercapaian Tujuan Pembelajaran — sama dengan KKTP di components/ui.jsx (rapor & laporan)
+const KKTP_TUGAS = 70;
+
 // ─── GURU UID (hardcoded, immutable) ───
 const GURU_UID = "bSfqRHsI3iadcjX56cShfDiuupq1";
 
@@ -1326,6 +1329,8 @@ function useStore() {
         updates[`nilaiAkhir/${key}/uas`] = r.uas;
         totalDelta += computeDelta(rec.uas, r.uas, NILAI_POIN_RATE.uas); // SAS = 100%
       }
+      // Asesmen Lanjutan: hanya untuk Rapor Perkembangan — tanpa poin, tidak masuk nilai akhir
+      if (typeof r.asesmenLanjutan === "number") updates[`nilaiAkhir/${key}/asesmenLanjutan`] = r.asesmenLanjutan;
       if (r.portofolio !== null) {
         updates[`nilaiAkhir/${key}/portofolio`] = r.portofolio;
         totalDelta += computeDelta(rec.portofolio, r.portofolio, NILAI_POIN_RATE.portofolio); // Portofolio = 10%
@@ -1630,6 +1635,12 @@ function useStore() {
       });
     }
   };
+  // Tanggal SAS per periode (YYYY-MM-DD) — dipakai untuk default jenis laporan & info di rapor siswa
+  const kunciPeriode = p => String(p || "").replace(/[.#$/[\]\s]/g, "_");
+  const getTanggalSAS = (periode = getActivePeriode()) => (semesterSettings.tanggalSAS || {})[kunciPeriode(periode)] || null;
+  const setTanggalSAS = async (periode, tanggal) => {
+    await update(ref(db, "settings/semester/tanggalSAS"), { [kunciPeriode(periode)]: tanggal || null });
+  };
   const isSemesterClosed = (periode) => {
     return (semesterSettings.closedPeriodes || []).includes(periode);
   };
@@ -1901,7 +1912,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -4356,8 +4367,8 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
   const [nilaiEssayTarget, setNilaiEssayTarget] = useState(null);
   const [hanyaKKM, setHanyaKKM] = useState(false);
   const [expandedSoal, setExpandedSoal] = useState(null); // soalIdx yang lagi di-expand untuk lihat distribusi
-  // Filter: kalau toggle "Hanya di bawah KKM (80)" aktif, cuma analisa submissions dengan nilai < 80
-  const subs = hanyaKKM ? allSubs.filter(s => (s.nilai || 0) < 80) : allSubs;
+  // Filter: kalau toggle "Hanya di bawah KKTP (70)" aktif, cuma analisa submissions dengan nilai < KKTP
+  const subs = hanyaKKM ? allSubs.filter(s => (s.nilai || 0) < KKTP_TUGAS) : allSubs;
   const total = subs.length;
   const totalAll = allSubs.length;
   const hasEssay = (t.soal || []).some(s => s.type === "essay");
@@ -4367,7 +4378,7 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
 
   const avgNilai = total > 0 ? Math.round(subs.reduce((a, s) => a + s.nilai, 0) / total) : 0;
   const feedback = total === 0
-    ? "Tidak ada siswa yang perlu perhatian khusus di bawah KKM. 👍"
+    ? "Tidak ada siswa yang perlu perhatian khusus di bawah KKTP."
     : avgNilai >= 85
       ? "Soal tergolong mudah dikuasai siswa. Pertimbangkan meningkatkan kompleksitas soal untuk menantang siswa lebih jauh."
       : avgNilai >= 65
@@ -4465,14 +4476,14 @@ function AnalisisTugasDetail({ store, tugasId, navigate, onBack }) {
 
       {/* Per soal — sorted sulit ke mudah + filter KKM + expand distribusi jawaban */}
       <div className="sh" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <h2>Per Soal {hanyaKKM && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--ink-3)" }}>· dari {total} siswa &lt; KKM</span>}</h2>
+        <h2>Per Soal {hanyaKKM && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--ink-3)" }}>· dari {total} siswa &lt; KKTP</span>}</h2>
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: hanyaKKM ? "var(--accent-2)" : "var(--ink-3)", fontWeight: hanyaKKM ? 700 : 500, padding: "5px 10px", borderRadius: 6, background: hanyaKKM ? "var(--accent-tint)" : "transparent", transition: "all .15s" }}>
           <input type="checkbox" checked={hanyaKKM} onChange={e => { setHanyaKKM(e.target.checked); setExpandedSoal(null); }} style={{ margin: 0, accentColor: "var(--accent-2)" }} />
-          Hanya siswa &lt; KKM (80)
+          Hanya siswa &lt; KKTP ({KKTP_TUGAS})
         </label>
       </div>
       {total === 0 ? (
-        <Card><div className="empty empty-box" style={{ padding: "24px 16px" }}><I n="check" s={28} style={{ color: "var(--good)" }} /><h3 style={{ color: "var(--good)" }}>Semua siswa di atas KKM</h3><p>Tidak ada siswa dengan nilai &lt; 80 untuk tugas ini.</p></div></Card>
+        <Card><div className="empty empty-box" style={{ padding: "24px 16px" }}><I n="check" s={28} style={{ color: "var(--good)" }} /><h3 style={{ color: "var(--good)" }}>Semua siswa mencapai KKTP</h3><p>Tidak ada siswa dengan nilai &lt; {KKTP_TUGAS} untuk tugas ini.</p></div></Card>
       ) : (
       <Card pad="none" style={{ overflow: "hidden", marginBottom: 16 }}>
         {soalStats.map((s, idx) => {
@@ -5587,6 +5598,18 @@ function ProfilGuru({ user, store, navigate }) {
                 Auto-detect: <b>{getPeriodeAktif()}</b>
                 {store.semesterSettings?.override && <> · <button onClick={() => store.setSemesterOverride(null)} style={{ fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Reset ke auto</button></>}
               </div>
+            </div>
+          </div>
+          {/* Tanggal SAS */}
+          <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>Tanggal SAS · {store.getActivePeriode()}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <input type="date" className="inp" style={{ width: "auto", fontSize: 13, padding: "6px 10px" }}
+                value={store.getTanggalSAS() || ""}
+                onChange={e => store.setTanggalSAS(store.getActivePeriode(), e.target.value).catch(err => alert("Gagal menyimpan tanggal SAS: " + (err?.message || "coba lagi")))} />
+              <span style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.5, flex: 1, minWidth: 200 }}>
+                Sebelum tanggal ini, laporan otomatis dibuat sebagai laporan tengah semester dan rapor siswa menampilkan jadwal SAS.
+              </span>
             </div>
           </div>
           {/* Tutup Semester */}

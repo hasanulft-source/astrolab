@@ -568,6 +568,7 @@ export async function downloadTemplateNilaiAkhir(store, mapel, jenjang, periode,
     { header: "Nama", key: "nama", width: 24 },
     ...babKolom.map((k, i) => ({ header: `[Sumatif] ${k}`, key: `bab_${i}`, width: 18 })),
     { header: "STS", key: "uts", width: 10 },
+    { header: "Asesmen Lanjutan", key: "lanjutan", width: 16 },
     { header: "SAS", key: "uas", width: 10 },
     ...kuisKolom.map((k, i) => ({ header: `[Kuis] ${k}`, key: `kuis_${i}`, width: 18 })),
     { header: "Portofolio", key: "portofolio", width: 12 },
@@ -578,7 +579,7 @@ export async function downloadTemplateNilaiAkhir(store, mapel, jenjang, periode,
 
   siswaList.forEach(s => {
     const rec = store.getNilaiAkhirRecord(s.id, mapel, jenjang, periode);
-    const row = { id: s.id, nama: s.nama, uts: rec.uts ?? "", uas: rec.uas ?? "", portofolio: rec.portofolio ?? "" };
+    const row = { id: s.id, nama: s.nama, uts: rec.uts ?? "", lanjutan: rec.asesmenLanjutan ?? "", uas: rec.uas ?? "", portofolio: rec.portofolio ?? "" };
     babKolom.forEach((k, i) => { row[`bab_${i}`] = rec.sumatif?.[k] ?? ""; });
     kuisKolom.forEach((k, i) => { row[`kuis_${i}`] = rec.kuis?.[k] ?? ""; });
     ws.addRow(row);
@@ -610,7 +611,7 @@ export async function parseNilaiAkhirExcel(file) {
     const siswaId = (row["ID Siswa"] || "").toString().trim();
     if (!siswaId) return null;
     const sumatif = {}, kuis = {};
-    let uts = null, uas = null, portofolio = null;
+    let uts = null, uas = null, portofolio = null, asesmenLanjutan = null;
     Object.keys(row).forEach(colName => {
       const raw = row[colName];
       if (raw === "" || raw === undefined || raw === null) return;
@@ -621,8 +622,9 @@ export async function parseNilaiAkhirExcel(file) {
       else if (colName === "STS" || colName === "UTS") uts = num;
       else if (colName === "SAS" || colName === "UAS") uas = num;
       else if (colName === "Portofolio") portofolio = num;
+      else if (colName === "Asesmen Lanjutan") asesmenLanjutan = num >= 0 && num <= 100 ? num : null;
     });
-    return { siswaId, sumatif, kuis, uts, uas, portofolio };
+    return { siswaId, sumatif, kuis, uts, uas, portofolio, asesmenLanjutan };
   }).filter(Boolean);
   return result;
 }

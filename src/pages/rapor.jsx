@@ -14,7 +14,7 @@ const MIN_TERISI = 3; // nilai sementara baru tampil setelah minimal 3 komponen 
 const sanitize = s => s.replace(/[.#$/[\]]/g, "-");
 
 // ─── Hitung (murni, bisa dites tanpa Firebase) ───
-export function buildRapor({ rec = {}, boosts = {}, tugas = [], subs = [], siswaId, mapel, jenjang, isSusulanAktif = () => false, tugasAvg = null }) {
+export function buildRapor({ rec = {}, boosts = {}, tugas = [], subs = [], siswaId, mapel, jenjang, isSusulanAktif = () => false, tugasAvg = null, tanggalSAS = null }) {
   const boostArr = Object.values(boosts || {});
   const boostOf = key => boostArr.filter(b => b.komponen === key).reduce((a, b) => a + (Number(b.nilai) || 0), 0);
   const nums = o => Object.values(o || {}).filter(v => typeof v === "number");
@@ -36,7 +36,9 @@ export function buildRapor({ rec = {}, boosts = {}, tugas = [], subs = [], siswa
   const det = {
     sumatif: sumatifVals.length ? `${sumatifVals.length} BAB dinilai` : "Belum dinilai",
     tugasAstrolab: relevan.length ? `${dikerjakan} dikerjakan${terlewatList.length ? ` · ${terlewatList.length} terlewat` : ""}` : "Belum ada tugas",
-    uts: "", uas: "Belum dilaksanakan", kuis: kuisVals.length ? `${kuisVals.length} kuis` : "Belum dinilai", portofolio: "Belum dinilai",
+    uts: "", uas: tanggalSAS && new Date() < new Date(`${tanggalSAS}T00:00:00`)
+      ? `Dijadwalkan ${new Date(`${tanggalSAS}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long" })}`
+      : "Belum dilaksanakan", kuis: kuisVals.length ? `${kuisVals.length} kuis` : "Belum dinilai", portofolio: "Belum dinilai",
   };
   const komponen = [
     { key: "sumatif", label: "Sumatif per BAB", bobot: 10, ...withBoost(avg(sumatifVals), "sumatif") },
@@ -173,6 +175,7 @@ export function RaporSiswaV2({ user, store, navigate }) {
     rapor[m] = buildRapor({
       rec: loaded[m].rec, boosts: loaded[m].boosts, tugas, subs, siswaId: user.id, mapel: m, jenjang: user.jenjang,
       isSusulanAktif: store.isSusulanAktif, tugasAvg: store.getTugasAstrolabAvg(user.id, m, user.jenjang),
+      tanggalSAS: store.getTanggalSAS ? store.getTanggalSAS(periode) : null,
     });
   });
   return <RaporView nama={user.nama} kelas={user.kelas || `Kelas ${user.jenjang}`} periode={periode} mapels={mapels} rapor={rapor} published={published}
