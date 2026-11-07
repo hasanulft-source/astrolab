@@ -23,6 +23,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
+import { DashboardGuruV2, AnalisisTugasV2 } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -778,6 +779,7 @@ function useStore() {
   }, []);
 
   const getAksesRequest = (tugasId, siswaId) => aksesRequests[`${tugasId}_${siswaId}`] || null;
+  const getAksesPending = () => Object.values(aksesRequests || {}).filter(r => r && r.status === "pending");
 
   const requestAkses = async (tugasId, siswaId, siswaName, tugasJudul) => {
     const key = `${tugasId}_${siswaId}`;
@@ -1912,7 +1914,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, addTugas, deleteTugas, updateTugas, duplicateTugas, getBankSoal, addBankSoal, updateBankSoal, deleteBankSoal, addBankSoalBulk, getSubs, addSub, kumpulkanTugas, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -8138,14 +8140,17 @@ function AppInner() {
   if (user) {
     const isGuru = user.role === "guru";
     if (isGuru) {
-      if (route === "home-guru") screen = <DashboardGuru store={store} navigate={navigate} />;
+      // Fase 3 (Nov 2026): layar guru baru. Versi lama tetap bisa dibuka lewat rute *-lama selama transisi.
+      if (route === "home-guru") screen = <DashboardGuruV2 store={store} navigate={navigate} hitungPerhatian={computePerluPerhatian} NilaiEssayModal={NilaiEssayModal} onTampilanLama={() => navigate("home-guru-lama")} />;
+      else if (route === "home-guru-lama") screen = <DashboardGuru store={store} navigate={navigate} />;
       else if (route === "tugas-guru") screen = <TugasGuru store={store} navigate={navigate} />;
       else if (route === "buat-tugas") screen = <BuatTugas store={store} navigate={navigate} presetAssignedTo={params.presetAssignedTo} presetJenjang={params.presetJenjang} />;
       else if (route === "edit-tugas") screen = <BuatTugas store={store} navigate={navigate} editId={params.tugasId} />;
       else if (route === "leaderboard") screen = <RankingScreen user={user} store={store} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
       else if (route === "kelas") screen = <KelasView store={store} navigate={navigate} />;
-      else if (route === "analisis-tugas") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
+      else if (route === "analisis-tugas") screen = <AnalisisTugasV2 store={store} tugasId={params.tugasId} navigate={navigate} NilaiEssayModal={NilaiEssayModal} IntervensiNilaiModal={IntervensiNilaiModal} onTampilanLama={() => navigate("analisis-tugas-lama", { tugasId: params.tugasId })} />;
+      else if (route === "analisis-tugas-lama") screen = <AnalisisTugasDetail store={store} tugasId={params.tugasId} navigate={navigate} onBack={() => { setRoute("home-guru"); setTimeout(() => { document.querySelector(".analisis-section")?.scrollIntoView({ behavior: "smooth" }); }, 100); }} />;
       else if (route === "badge-manager") screen = <BadgeManager store={store} />;
       else if (route === "bank-soal") screen = <BankSoal store={store} navigate={navigate} />;
       else if (route === "manajemen-siswa") screen = <ManajemenSiswa store={store} />;
