@@ -1296,3 +1296,285 @@ function LatihanManualModal({ store, defaultJenjang, onClose, onSuccess }) {
     </div>
   </div>;
 }
+
+// ─── GURU V2 (Fase 3, Nov 2026): Materi & Soal Latihan ─────────────────────────────
+// Sengaja TIDAK menambah import (aturan 4 import di file ini). Kelas gr-* berasal dari
+// styles/guru.css yang sudah dimuat global lewat pages/guru.jsx. Logika upload sama dengan
+// MateriPdfManager lama; versi lama tetap ada di route materi-manager-lama sampai cleanup.
+const tglPendek = ms => (ms ? new Date(ms).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "");
+const LABEL_TIPE = { pdf: "PDF", youtube: "Video", web: "Web" };
+
+function SyaratSelesai({ sec, setSec, auto, setAuto, web }) {
+  return (
+    <fieldset className="gr-mt-syarat">
+      <legend>Syarat selesai</legend>
+      <label className="gr-mt-durasi"><span>Durasi minimal</span><input className="inp" type="number" min={1} value={sec} onChange={e => setSec(e.target.value)} /><span>detik</span></label>
+      <label className="gr-check"><input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> Tandai selesai otomatis saat durasi tercapai</label>
+      {web && <p className="gr-muted">Disarankan untuk tautan web: isi halaman dari situs lain tidak bisa dilacak.</p>}
+    </fieldset>
+  );
+}
+
+function TambahMateriModal({ store, jenjang, daftar, onClose, onDone }) {
+  const [tipe, setTipe] = useState("pdf");
+  const [form, setForm] = useState({ judul: "", mapel: "IPA", jenjang, bab: "" });
+  const [pdf, setPdf] = useState(null);
+  const [url, setUrl] = useState("");
+  const [sec, setSec] = useState(30);
+  const [auto, setAuto] = useState(tipe === "web");
+  const [sibuk, setSibuk] = useState("");
+  const [galat, setGalat] = useState("");
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const babAda = [...new Set(daftar.filter(m => m.jenjang === form.jenjang && m.mapel === form.mapel).map(m => m.bab).filter(Boolean))].sort();
+  const ytId = tipe === "youtube" ? parseYoutubeId(url) : null;
+  const webUrl = tipe === "web" ? normalizeEmbedUrl(url) : null;
+  const siap = form.judul.trim() && form.bab.trim() && (tipe === "pdf" ? !!pdf : tipe === "youtube" ? !!ytId : !!webUrl);
+  async function simpan() {
+    const meta = { judul: form.judul.trim(), mapel: form.mapel, jenjang: form.jenjang, bab: form.bab.trim() };
+    meta.urutan = daftar.filter(m => m.mapel === meta.mapel && m.jenjang === meta.jenjang && m.bab === meta.bab).length;
+    const syarat = { watchSeconds: Math.max(1, Math.round(Number(sec) || 30)), autoDone: !!auto };
+    setGalat("");
+    try {
+      if (tipe === "youtube") { setSibuk("Menyimpan video…"); await store.addMateriYoutube({ ...meta, ...syarat }, ytId); }
+      else if (tipe === "web") { setSibuk("Menyimpan tautan…"); await store.addMateriWeb({ ...meta, ...syarat }, webUrl); }
+      else {
+        setSibuk("Memuat pembaca PDF…"); await loadPdfJs();
+        const { hdPages, loPages, numPages } = await pdfToImagesDual(pdf, (i, n) => setSibuk(`Mengubah halaman ${i} dari ${n}…`));
+        setSibuk(`Menyimpan ${numPages} halaman…`);
+        await store.addMateri(meta, hdPages, loPages);
+      }
+      onDone(`"${meta.judul}" ditambahkan ke ${meta.bab}.`);
+    } catch (e) { setGalat("Gagal menyimpan: " + (e?.message || "coba lagi")); setSibuk(""); }
+  }
+  const ganti = t => { setTipe(t); setUrl(""); setAuto(t === "web"); };
+  return (
+    <div className="modal-overlay" onClick={() => !sibuk && onClose()}>
+      <div className="modal gr-mt-modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-mt-j">
+        <h3 id="gr-mt-j">Tambah materi</h3>
+        <div className="gr-seg gr-mt-tipe" role="tablist" aria-label="Jenis materi">
+          {[["pdf", "PDF"], ["youtube", "Video YouTube"], ["web", "Tautan web"]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tipe === k} className={tipe === k ? "on" : ""} disabled={!!sibuk} onClick={() => ganti(k)}>{l}</button>)}
+        </div>
+        <div className="gr-mt-form">
+          <label className="lebar"><span>Judul</span><input className="inp" value={form.judul} onChange={e => set("judul", e.target.value)} placeholder="Contoh: Massa jenis benda" /></label>
+          <label><span>Mapel</span><select className="inp" value={form.mapel} onChange={e => set("mapel", e.target.value)}><option>IPA</option><option>Informatika</option></select></label>
+          <label><span>Kelas</span><select className="inp" value={form.jenjang} onChange={e => set("jenjang", e.target.value)}><option value="VII">Kelas VII</option><option value="VIII">Kelas VIII</option></select></label>
+          <label className="lebar"><span>Bab</span><input className="inp" list="gr-mt-bab" value={form.bab} onChange={e => set("bab", e.target.value)} placeholder="Pilih bab yang ada atau ketik baru" />
+            <datalist id="gr-mt-bab">{babAda.map(b => <option key={b} value={b} />)}</datalist>
+            {babAda.length > 0 && !babAda.includes(form.bab.trim()) && form.bab.trim() && <small className="gr-muted">Bab baru. Pastikan penulisannya sama kalau maksudnya bab yang sudah ada.</small>}
+          </label>
+          {tipe === "pdf" ? (
+            <label className={`lebar gr-pf-unggah ${pdf ? "ada" : ""}`}>
+              <span>{pdf ? pdf.name : "Pilih file PDF"}</span><small>{pdf ? `${(pdf.size / 1048576).toFixed(1)} MB · tiap halaman diubah jadi gambar` : "Tiap halaman diubah jadi gambar supaya ringan dibuka siswa"}</small>
+              <input type="file" accept=".pdf" disabled={!!sibuk} onChange={e => e.target.files[0] && setPdf(e.target.files[0])} />
+            </label>
+          ) : (
+            <label className="lebar"><span>{tipe === "youtube" ? "Link YouTube" : "Link halaman"}</span>
+              <input className="inp" value={url} onChange={e => setUrl(e.target.value)} placeholder={tipe === "youtube" ? "https://youtu.be/…" : "https://…"} />
+              {url.trim() && !(ytId || webUrl) && <small className="gr-mt-err">Link belum valid.</small>}
+            </label>
+          )}
+          {ytId && <div className="lebar gr-mt-prev"><iframe src={`https://www.youtube-nocookie.com/embed/${ytId}`} title="Pratinjau video" allowFullScreen /></div>}
+          {webUrl && <div className="lebar gr-mt-prev web"><iframe src={webUrl} title="Pratinjau halaman" /></div>}
+          {tipe !== "pdf" && <div className="lebar"><SyaratSelesai sec={sec} setSec={setSec} auto={auto} setAuto={setAuto} web={tipe === "web"} /></div>}
+        </div>
+        {sibuk && <p className="gr-mt-proses" role="status"><span className="spinner" /> {sibuk}</p>}
+        {galat && <p className="gr-warn" role="alert">{galat}</p>}
+        <div className="modal-actions">
+          <button type="button" className="btn btn-outline btn-sm" disabled={!!sibuk} onClick={onClose}>Batal</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!siap || !!sibuk} onClick={simpan}>{sibuk ? "Menyimpan…" : "Simpan"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DaftarMateriV2({ store, jenjang, onTambah, onLihat, onAtur, onHapus }) {
+  const semua = store.getMateriList();
+  const daftar = semua.filter(m => m.jenjang === jenjang);
+  const siswa = store.getAllSiswa(jenjang);
+  const n = siswa.length;
+  const grup = {};
+  daftar.forEach(m => { const mp = m.mapel || "Lainnya", b = m.bab || "Umum"; ((grup[mp] = grup[mp] || {})[b] = grup[mp][b] || []).push(m); });
+  if (!daftar.length) return (
+    <div className="gr-card gr-mt-kosong">
+      <b>Belum ada materi Kelas {jenjang}</b>
+      <p className="gr-muted">Unggah PDF, tempel link YouTube, atau tautan simulasi web. Materi tampil di menu Materi siswa dan bisa dipakai di Misi PJJ.</p>
+      <button type="button" className="gr-btn sm" onClick={onTambah}>Tambah materi</button>
+    </div>
+  );
+  return Object.keys(grup).sort().map(mp => (
+    <section key={mp} className="gr-mt-mapel">
+      <div className="gr-sh"><h2>{mp}</h2><span className="gr-muted">{Object.values(grup[mp]).flat().length} materi · {Object.keys(grup[mp]).length} bab</span></div>
+      <div className="gr-stack">
+        {Object.entries(grup[mp]).sort((a, b) => a[0].localeCompare(b[0], "id", { numeric: true })).map(([bab, items]) => (
+          <div key={bab} className="gr-card list">
+            <div className="gr-arsip-head"><b>{bab}</b><span className="gr-muted">{items.length} materi</span></div>
+            {items.sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(m => {
+              const t = m.tipe || "pdf";
+              const selesai = n ? siswa.filter(s => store.isMateriDoneFor && store.isMateriDoneFor(s.id, m.id)).length : 0;
+              const baru = m.createdAt && Date.now() - m.createdAt < 7 * 864e5;
+              const meta = t === "pdf" ? `${m.pageCount || 0} halaman` : `selesai setelah ${Number(m.watchSeconds) > 0 ? m.watchSeconds : 30} dtk${m.autoDone ? ", otomatis" : ""}`;
+              return (
+                <div key={m.id} className="gr-mt-row">
+                  <button type="button" className="gr-mt-main" onClick={() => onLihat(m)} title="Pratinjau seperti yang dilihat siswa">
+                    <span className={`gr-mt-tipe-ic ${t}`}><I n={t === "youtube" ? "play" : t === "web" ? "link2" : "fileText"} s={16} /></span>
+                    <span className="gr-mt-txt">
+                      <b>{m.judul}</b>
+                      <span>{LABEL_TIPE[t] || "PDF"} · {meta} · {tglPendek(m.createdAt)}{baru && <em> · baru</em>}</span>
+                    </span>
+                  </button>
+                  <div className="gr-mt-prog" title={`${selesai} dari ${n} siswa sudah menandai selesai`}>
+                    <span><b>{selesai}</b>/{n} selesai</span>
+                    <i><i style={{ width: `${n ? Math.round(selesai / n * 100) : 0}%` }} /></i>
+                  </div>
+                  <div className="gr-mt-act">
+                    {t !== "pdf" && <button type="button" className="gr-ib" onClick={() => onAtur(m)} aria-label={`Atur syarat selesai ${m.judul}`} title="Atur syarat selesai"><I n="clock" s={15} /></button>}
+                    <button type="button" className="gr-ib" onClick={() => onHapus(m)} aria-label={`Hapus ${m.judul}`} title="Hapus"><I n="trash" s={15} /></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </section>
+  ));
+}
+
+function LatihanV2({ store, jenjang, onHapus, toast }) {
+  const [buka, setBuka] = useState(() => new Set());
+  const grup = collectLatihanPool(store, jenjang);
+  const togel = k => setBuka(p => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
+  const keys = Object.keys(grup).sort();
+  if (!keys.length) return (
+    <div className="gr-card gr-mt-kosong">
+      <b>Belum ada soal latihan Kelas {jenjang}</b>
+      <p className="gr-muted">Soal pilihan ganda dari tugas yang tenggatnya sudah lewat akan masuk otomatis. Bisa juga tambah sendiri atau impor dari Excel.</p>
+    </div>
+  );
+  return keys.map(mp => {
+    const babs = Object.entries(grup[mp]).sort((a, b) => a[0].localeCompare(b[0], "id", { numeric: true }));
+    return (
+      <section key={mp} className="gr-mt-mapel">
+        <div className="gr-sh"><h2>{mp}</h2><span className="gr-muted">{babs.reduce((x, [, s]) => x + s.length, 0)} soal · {babs.length} bab</span></div>
+        <div className="gr-card list">
+          {babs.map(([bab, soal]) => {
+            const k = `${mp}||${bab}`, open = buka.has(k);
+            const up = soal.filter(s => s._sumber === "upload").length;
+            return (
+              <div key={bab} className={`gr-mt-bab ${open ? "open" : ""}`}>
+                <div className="gr-mt-bab-head">
+                  <button type="button" className="gr-mt-bab-btn" aria-expanded={open} onClick={() => togel(k)}>
+                    <b>{bab}</b>
+                    <span>{soal.length} soal · {soal.length - up} dari tugas · {up} ditambahkan</span>
+                  </button>
+                  <button type="button" className="gr-ib" title="Unduh Excel bab ini" aria-label={`Unduh soal ${bab}`} onClick={() => Promise.resolve().then(() => store.exportLatihanSoal(soal, { mapel: mp, bab, jenjang })).catch(e => toast("Gagal mengunduh: " + (e?.message || "coba lagi")))}><I n="download" s={15} /></button>
+                </div>
+                {open && (
+                  <ol className="gr-mt-soal">
+                    {soal.map((s, i) => (
+                      <li key={s.id || i} className={s._sumber === "upload" ? "up" : ""}>
+                        <div>
+                          <p>{s.pertanyaan}</p>
+                          <span className="kunci">Kunci {String.fromCharCode(65 + (s.jawaban || 0))}. {(s.opsi || [])[s.jawaban || 0]}</span>
+                        </div>
+                        {s._sumber === "upload" && s.id
+                          ? <button type="button" className="gr-ib" aria-label="Hapus soal" title="Hapus soal" onClick={() => onHapus(s)}><I n="trash" s={14} /></button>
+                          : <span className="gr-chip muted">dari tugas</span>}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  });
+}
+
+export function MateriGuruV2({ store, onTampilanLama }) {
+  const [tab, setTab] = useState("materi");
+  const [jenjang, setJenjang] = useState("VII");
+  const [tambah, setTambah] = useState(null); // "materi" | "manual" | "impor"
+  const [lihat, setLihat] = useState(null);
+  const [atur, setAtur] = useState(null);
+  const [hapus, setHapus] = useState(null); // { jenis: "materi"|"soal", item }
+  const [pesan, setPesan] = useState("");
+  const toast = m => { setPesan(m); setTimeout(() => setPesan(""), 2800); };
+  useEffect(() => { store.archiveOldMateri().catch(() => {}); }, []);
+  const semua = store.getMateriList();
+  const jumlahSoal = j => Object.values(collectLatihanPool(store, j)).reduce((n, b) => n + Object.values(b).reduce((x, a) => x + a.length, 0), 0);
+  const nMateri = j => semua.filter(m => m.jenjang === j).length;
+  if (lihat) {
+    const back = () => setLihat(null);
+    if (lihat.tipe === "youtube") return <YoutubeMateriViewer materi={lihat} store={store} user={null} onBack={back} />;
+    if (lihat.tipe === "web") return <WebMateriViewer materi={lihat} store={store} user={null} onBack={back} />;
+    return <MateriViewer materi={lihat} store={store} user={null} onBack={back} />;
+  }
+  async function konfirmasiHapus() {
+    const { jenis, item } = hapus; setHapus(null);
+    try {
+      if (jenis === "materi") { await store.deleteMateri(item.id); toast(`"${item.judul}" dihapus.`); }
+      else { await store.deleteLatihanSoal(item.id); toast("Soal dihapus."); }
+    } catch (e) { toast("Gagal menghapus: " + (e?.message || "coba lagi")); }
+  }
+  const hitung = tab === "materi" ? nMateri : jumlahSoal;
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">{semua.length} materi · {jumlahSoal("VII") + jumlahSoal("VIII")} soal latihan</span>
+          <h1>Materi & latihan</h1>
+        </div>
+        <div className="gr-actions">
+          {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Tampilan lama</button>}
+          {tab === "materi"
+            ? <button type="button" className="gr-btn" onClick={() => setTambah("materi")}>Tambah materi</button>
+            : <>
+                <button type="button" className="gr-btn outline" onClick={() => store.downloadTemplateSoal()}>Template</button>
+                <button type="button" className="gr-btn outline" onClick={() => setTambah("impor")}>Impor Excel</button>
+                <button type="button" className="gr-btn" onClick={() => setTambah("manual")}>Tambah soal</button>
+              </>}
+        </div>
+      </div>
+
+      <div className="gr-bar-row">
+        <div className="gr-seg" role="tablist" aria-label="Bagian">
+          <button type="button" role="tab" aria-selected={tab === "materi"} className={tab === "materi" ? "on" : ""} onClick={() => setTab("materi")}>Materi</button>
+          <button type="button" role="tab" aria-selected={tab === "latihan"} className={tab === "latihan" ? "on" : ""} onClick={() => setTab("latihan")}>Soal latihan</button>
+        </div>
+        <div className="gr-seg" role="tablist" aria-label="Pilih kelas">
+          {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => setJenjang(j)}>Kelas {j} · {hitung(j)}</button>)}
+        </div>
+      </div>
+
+      {tab === "latihan" && <p className="gr-muted gr-mt-info">Muncul di Latihan Mandiri siswa. Isinya soal pilihan ganda dari tugas yang tenggatnya sudah lewat, ditambah soal yang Anda masukkan sendiri. Soal dari tugas yang diarsipkan tidak ikut, supaya tidak bocor kalau tugasnya diterbitkan ulang.</p>}
+
+      {tab === "materi"
+        ? <DaftarMateriV2 store={store} jenjang={jenjang} onTambah={() => setTambah("materi")} onLihat={setLihat} onAtur={setAtur} onHapus={m => setHapus({ jenis: "materi", item: m })} />
+        : <LatihanV2 store={store} jenjang={jenjang} toast={toast} onHapus={s => setHapus({ jenis: "soal", item: s })} />}
+
+      {tambah === "materi" && <TambahMateriModal store={store} jenjang={jenjang} daftar={semua} onClose={() => setTambah(null)} onDone={m => { setTambah(null); toast(m); }} />}
+      {tambah === "impor" && <LatihanUploadModal store={store} defaultJenjang={jenjang} onClose={() => setTambah(null)} onSuccess={m => { setTambah(null); toast(m); }} />}
+      {tambah === "manual" && <LatihanManualModal store={store} defaultJenjang={jenjang} onClose={() => setTambah(null)} onSuccess={() => { setTambah(null); toast("Soal ditambahkan."); }} />}
+      {atur && <WatchSettingsModal materi={atur} store={store} onClose={() => setAtur(null)} />}
+      {hapus && (
+        <div className="modal-overlay" onClick={() => setHapus(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-mt-h">
+            <h3 id="gr-mt-h">{hapus.jenis === "materi" ? `Hapus "${hapus.item.judul}"?` : "Hapus soal latihan ini?"}</h3>
+            <p>{hapus.jenis === "materi"
+              ? "Siswa tidak bisa membuka materi ini lagi, dan materi ini hilang dari Misi PJJ yang memakainya. Tidak bisa dibatalkan."
+              : String(hapus.item.pertanyaan || "").slice(0, 140)}</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setHapus(null)}>Batal</button>
+              <button type="button" className="btn btn-danger btn-sm" onClick={konfirmasiHapus}>Hapus</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pesan && <div className="gr-toast" role="status">{pesan}</div>}
+    </div>
+  );
+}

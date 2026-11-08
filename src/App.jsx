@@ -15,7 +15,7 @@ import { getLevel, TierIcon, BadgeIcon, AUTO_BADGES, MANUAL_BADGES, ALL_BADGES, 
 import { downloadTemplateSandbox, importSandboxFromExcel, downloadTemplateSoal, exportNilai, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, backupFromStore, importSoalFromExcel, parseNilaiAkhirExcel, exportLatihanSoal } from './utils/excel';
 import { LaporanModal } from './utils/laporan';
 import { ChatScreen } from './pages/chat';
-import { LatihanMandiri, MateriManager } from './pages/materi';
+import { LatihanMandiri, MateriManager, MateriGuruV2 } from './pages/materi';
 import { Welcome } from './pages/welcome';
 import { RaporSiswaV2 } from './pages/rapor';
 import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, HasilTugas } from './pages/siswa';
@@ -8160,7 +8160,8 @@ function AppInner() {
       else if (route === "nilai-akhir") screen = <NilaiAkhirPage store={store} />;
       else if (route === "profil-guru") screen = <ProfilGuruV2 user={user} store={store} navigate={navigate} ResetModal={ResetSemesterModal} onTampilanLama={() => navigate("profil-guru-lama")} />;
       else if (route === "profil-guru-lama") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
-      else if (route === "materi-manager") screen = <MateriManager store={store} navigate={navigate} />;
+      else if (route === "materi-manager") screen = <MateriGuruV2 store={store} onTampilanLama={() => navigate("materi-manager-lama")} />;
+      else if (route === "materi-manager-lama") screen = <MateriManager store={store} navigate={navigate} />;
       else if (route === "mission-guru") screen = <MissionGuru store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;
     } else {
