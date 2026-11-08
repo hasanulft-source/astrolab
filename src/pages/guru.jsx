@@ -1970,3 +1970,257 @@ export function ProfilGuruV2({ user, store, navigate, ResetModal, onTampilanLama
     </div>
   );
 }
+
+// ─── MISI PJJ (Mission Mode) ─────────────────────────────────────────────────
+// Config: missionMode/{jenjang} lewat store.saveMissionConfig (sama dengan versi lama).
+// Kehadiran: missionAttendance/{jenjang}/{sessionId}/{siswaId}. sessionId = waktu sesi diaktifkan.
+const IKM = { atas: "M6 15l6-6 6 6", bawah: "M6 9l6 6 6-6", hapus: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13", tugas: "M6 3h9l3 3v15H6zM9 11h6M9 15h6", materi: "M4 5h7a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4zM20 5h-7a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h7z" };
+const jamTgl = ms => new Date(ms).toLocaleString("id-ID", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+const jam = ms => new Date(ms).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+function infoMisi(m, store) {
+  if (m.tipe === "tugas") {
+    const t = (store.getTugasSemua ? store.getTugasSemua() : store.getTugas()).find(x => x.id === m.refId);
+    if (!t) return { judul: "(tugas sudah dihapus)", meta: "Tugas", hilang: true };
+    return { judul: t.judul, meta: `Tugas · ${(t.soal || []).length} soal${t.arsip ? " · diarsipkan" : ""}`, hilang: !!t.arsip };
+  }
+  const x = store.getMateriList().find(y => y.id === m.refId);
+  if (!x) return { judul: "(materi sudah dihapus)", meta: "Materi", hilang: true };
+  return { judul: x.judul, meta: `Materi · ${x.tipe === "youtube" ? "Video" : x.tipe === "web" ? "Web" : "PDF"}${x.bab ? " · " + x.bab : ""}` };
+}
+
+export function hitungPantauMisi(store, jenjang) {
+  const misi = store.getMission(jenjang) || {};
+  const daftar = misi.misi || [];
+  const wajib = daftar.filter(m => m.wajib);
+  const siswa = store.getAllSiswa(jenjang);
+  const att = misi.sessionId ? store.getAttendance(jenjang, misi.sessionId) : {};
+  const baris = siswa.map(s => {
+    const status = wajib.map(m => store.isMisiSelesai(m, s.id));
+    const selesai = status.filter(Boolean).length;
+    const hadir = att[s.id] || null;
+    const lengkap = !!hadir && selesai === wajib.length;
+    return { siswa: s, status, selesai, hadir, lengkap, grup: !hadir ? "absen" : lengkap ? "lengkap" : "proses" };
+  });
+  const urut = { absen: 0, proses: 1, lengkap: 2 };
+  baris.sort((a, b) => urut[a.grup] - urut[b.grup] || a.selesai - b.selesai || String(a.siswa.nama).localeCompare(String(b.siswa.nama), "id"));
+  const perMisi = daftar.map(m => ({ m, n: siswa.filter(s => store.isMisiSelesai(m, s.id)).length }));
+  return {
+    misi, wajib, n: siswa.length, baris, perMisi,
+    hadir: baris.filter(b => b.hadir).length, lengkap: baris.filter(b => b.lengkap).length, absen: baris.filter(b => !b.hadir).length,
+  };
+}
+
+function PilihMisiModal({ store, jenjang, sudah, onTambah, onClose }) {
+  const [tipe, setTipe] = useState("tugas");
+  const [cari, setCari] = useState("");
+  const q = cari.trim().toLowerCase();
+  const tugas = store.getTugas().filter(t => t.jenjang === jenjang && t.status !== "scheduled").sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const materi = store.getMateriList().filter(m => m.jenjang === jenjang);
+  const list = (tipe === "tugas" ? tugas : materi).filter(x => !q || `${x.judul} ${x.materi || x.bab || ""}`.toLowerCase().includes(q));
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal gr-mi-pilih" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-mi-pj">
+        <h3 id="gr-mi-pj">Tambah misi · Kelas {jenjang}</h3>
+        <div className="gr-seg gr-mt-tipe" role="tablist">
+          <button type="button" role="tab" aria-selected={tipe === "tugas"} className={tipe === "tugas" ? "on" : ""} onClick={() => setTipe("tugas")}>Tugas · {tugas.length}</button>
+          <button type="button" role="tab" aria-selected={tipe === "materi"} className={tipe === "materi" ? "on" : ""} onClick={() => setTipe("materi")}>Materi · {materi.length}</button>
+        </div>
+        <input className="inp" value={cari} onChange={e => setCari(e.target.value)} placeholder={`Cari ${tipe}…`} aria-label={`Cari ${tipe}`} />
+        <div className="gr-mi-opsi">
+          {list.length === 0 ? <p className="gr-muted" style={{ padding: 16, textAlign: "center" }}>{q ? "Tidak ada yang cocok." : `Belum ada ${tipe} untuk Kelas ${jenjang}.`}</p>
+            : list.map(x => {
+              const ada = sudah.has(`${tipe}_${x.id}`);
+              const meta = tipe === "tugas" ? [x.mapel, `${(x.soal || []).length} soal`, x.materi].filter(Boolean).join(" · ") : [x.tipe === "youtube" ? "Video" : x.tipe === "web" ? "Web" : "PDF", x.bab].filter(Boolean).join(" · ");
+              return (
+                <button key={x.id} type="button" disabled={ada} className={ada ? "ada" : ""} onClick={() => onTambah({ tipe, refId: x.id })}>
+                  <span><b>{x.judul}</b><small>{meta}</small></span>
+                  <i>{ada ? "Sudah" : "Tambah"}</i>
+                </button>
+              );
+            })}
+        </div>
+        <div className="modal-actions"><button type="button" className="btn btn-primary btn-sm" onClick={onClose}>Selesai</button></div>
+      </div>
+    </div>
+  );
+}
+
+function RiwayatMisi({ store, jenjang, sesiAktif }) {
+  const riwayat = store.getRiwayatMisi ? store.getRiwayatMisi(jenjang) : {};
+  const n = store.getAllSiswa(jenjang).length;
+  const sesi = Object.entries(riwayat).map(([id, rec]) => {
+    const r = Object.values(rec || {});
+    return { id, mulai: Number(id) || 0, hadir: r.length, lengkap: r.filter(x => x.lengkap).length, akhir: Math.max(0, ...r.map(x => x.waktu || 0)) };
+  }).sort((a, b) => b.mulai - a.mulai);
+  if (!sesi.length) return <div className="gr-card gr-mt-kosong"><b>Belum ada riwayat sesi</b><p className="gr-muted">Setiap kali Mission Mode diaktifkan, kehadiran siswa tercatat sebagai satu sesi.</p></div>;
+  return (
+    <div className="gr-card list">
+      {sesi.map(s => (
+        <div key={s.id} className="gr-mi-sesi">
+          <div><b>{s.mulai ? jamTgl(s.mulai) : `Sesi ${s.id}`}</b>{s.id === sesiAktif && <span className="gr-chip teal">berjalan</span>}</div>
+          <span><b>{s.hadir}</b>/{n} hadir</span>
+          <span><b>{s.lengkap}</b> lengkap saat konfirmasi</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function MisiGuruV2({ store, onTampilanLama }) {
+  const [jenjang, setJenjang] = useState("VII");
+  const [tab, setTab] = useState("atur");
+  const [draf, setDraf] = useState(null); // null = belum diubah, ikut data tersimpan
+  const [pilih, setPilih] = useState(false);
+  const [tanya, setTanya] = useState(null); // "akhiri" | { pindah: j }
+  const [filter, setFilter] = useState("semua");
+  const [sibuk, setSibuk] = useState(false);
+  const [pesan, setPesan] = useState("");
+  const toast = m => { setPesan(m); setTimeout(() => setPesan(""), 2800); };
+
+  const tersimpan = store.getMission(jenjang) || {};
+  const aktif = !!tersimpan.active;
+  const isi = draf || { judul: tersimpan.judul || "", instruksi: tersimpan.instruksi || "", misi: tersimpan.misi || [] };
+  const ubah = fn => setDraf(fn(isi));
+  const p = hitungPantauMisi(store, jenjang);
+  const selesaiPer = Object.fromEntries(p.perMisi.map(x => [x.m.key, x.n]));
+
+  function gantiKelas(j) { if (j === jenjang) return; if (draf) { setTanya({ pindah: j }); return; } setJenjang(j); setFilter("semua"); }
+  async function simpan(ekstra = {}) {
+    setSibuk(true);
+    try {
+      await withTimeout(store.saveMissionConfig(jenjang, { judul: isi.judul.trim(), instruksi: isi.instruksi.trim(), misi: isi.misi.map((m, i) => ({ ...m, urutan: i })), ...ekstra }));
+      setDraf(null);
+      toast(ekstra.active === true ? `Sesi PJJ Kelas ${jenjang} dimulai.` : ekstra.active === false ? "Sesi diakhiri." : "Pengaturan disimpan.");
+    } catch (e) { toast("Gagal menyimpan: " + (e?.message || "coba lagi")); }
+    setSibuk(false);
+  }
+  const tambah = ({ tipe, refId }) => ubah(d => d.misi.some(m => m.tipe === tipe && m.refId === refId) ? d : { ...d, misi: [...d.misi, { key: `${tipe}_${refId}`, tipe, refId, wajib: true, urutan: d.misi.length }] });
+  const geser = (i, arah) => ubah(d => { const a = [...d.misi], j = i + arah; if (j < 0 || j >= a.length) return d; [a[i], a[j]] = [a[j], a[i]]; return { ...d, misi: a }; });
+  function salinAbsen() {
+    const nama = p.baris.filter(b => !b.hadir).map((b, i) => `${i + 1}. ${b.siswa.nama}`).join("\n");
+    const teks = `Belum konfirmasi hadir PJJ Kelas ${jenjang}${tersimpan.judul ? ` (${tersimpan.judul})` : ""}:\n${nama}`;
+    navigator.clipboard?.writeText(teks).then(() => toast(`${p.absen} nama disalin.`), () => toast("Tidak bisa menyalin di browser ini."));
+  }
+  const tampil = p.baris.filter(b => filter === "semua" || b.grup === filter);
+
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">Mission Mode · pembelajaran jarak jauh</span>
+          <h1>Misi PJJ</h1>
+        </div>
+        {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Tampilan lama</button>}
+      </div>
+
+      <div className="gr-seg" role="tablist" aria-label="Pilih kelas" style={{ alignSelf: "flex-start" }}>
+        {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => gantiKelas(j)}>Kelas {j}{store.isMissionActive(j) && <span className="gr-mi-dot" aria-label="aktif" />}</button>)}
+      </div>
+
+      <section className={`gr-mi-status ${aktif ? "on" : ""}`}>
+        <div className="gr-mi-st-txt">
+          <span className="gr-mi-st-lbl">{aktif ? "Sesi berjalan" : "Tidak ada sesi"}</span>
+          <b>{aktif ? (tersimpan.judul || `PJJ Kelas ${jenjang}`) : `Mission Mode Kelas ${jenjang} mati`}</b>
+          <span>{aktif
+            ? `Dimulai ${tersimpan.sessionId ? jamTgl(Number(tersimpan.sessionId)) : ""} · ${p.hadir}/${p.n} hadir · ${p.lengkap} lengkap`
+            : "Saat aktif, siswa kelas ini langsung melihat daftar misi ketika membuka aplikasi."}</span>
+        </div>
+        {aktif
+          ? <button type="button" className="gr-btn outline" disabled={sibuk} onClick={() => setTanya("akhiri")}>Akhiri sesi</button>
+          : <button type="button" className="gr-btn" disabled={sibuk || !isi.misi.length} title={!isi.misi.length ? "Tambah minimal satu misi dulu" : undefined} onClick={() => simpan({ active: true })}>{draf ? "Simpan & mulai sesi" : "Mulai sesi"}</button>}
+      </section>
+
+      <div className="gr-seg" role="tablist" aria-label="Bagian" style={{ alignSelf: "flex-start" }}>
+        {[["atur", `Atur misi${draf ? " •" : ""}`], ["pantau", `Pantau siswa${aktif ? ` · ${p.hadir}/${p.n}` : ""}`], ["riwayat", "Riwayat"]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
+      </div>
+
+      {tab === "atur" && (
+        <div className="gr-mi-atur">
+          <section className="gr-card gr-mi-form">
+            <label><span>Judul kegiatan</span><input className="inp" value={isi.judul} onChange={e => ubah(d => ({ ...d, judul: e.target.value }))} placeholder="Contoh: PJJ Senin — Massa jenis" /></label>
+            <label><span>Petunjuk untuk siswa</span><textarea className="inp" rows={3} value={isi.instruksi} onChange={e => ubah(d => ({ ...d, instruksi: e.target.value }))} placeholder="Contoh: Tonton videonya dulu, lalu kerjakan kuis. Konfirmasi hadir setelah semua misi wajib selesai." /></label>
+          </section>
+          <section className="gr-card list">
+            <div className="gr-arsip-head"><b>Daftar misi · {isi.misi.length}</b><button type="button" className="gr-btn sm outline" onClick={() => setPilih(true)}>Tambah misi</button></div>
+            {isi.misi.length === 0 ? <p className="gr-muted" style={{ padding: "18px 16px" }}>Belum ada misi. Tambahkan tugas yang sudah terbit atau materi yang sudah diunggah.</p>
+              : isi.misi.map((m, i) => {
+                const f = infoMisi(m, store), n = selesaiPer[m.key];
+                return (
+                  <div key={m.key} className={`gr-mi-row ${f.hilang ? "hilang" : ""}`}>
+                    <span className="gr-mi-no">{i + 1}</span>
+                    <span className={`gr-mt-tipe-ic ${m.tipe === "tugas" ? "" : "web"}`}><Ikon d={m.tipe === "tugas" ? IKM.tugas : IKM.materi} s={16} /></span>
+                    <span className="gr-mt-txt"><b>{f.judul}</b><span>{f.meta}{n != null && p.n ? ` · ${n}/${p.n} siswa selesai` : ""}</span></span>
+                    <button type="button" className={`gr-mi-wajib ${m.wajib ? "on" : ""}`} aria-pressed={m.wajib} onClick={() => ubah(d => ({ ...d, misi: d.misi.map(x => x.key === m.key ? { ...x, wajib: !x.wajib } : x) }))} title="Klik untuk mengganti">{m.wajib ? "Wajib" : "Opsional"}</button>
+                    <span className="gr-mi-gerak">
+                      <button type="button" className="gr-ib" disabled={i === 0} aria-label="Naikkan" onClick={() => geser(i, -1)}><Ikon d={IKM.atas} s={15} /></button>
+                      <button type="button" className="gr-ib" disabled={i === isi.misi.length - 1} aria-label="Turunkan" onClick={() => geser(i, 1)}><Ikon d={IKM.bawah} s={15} /></button>
+                      <button type="button" className="gr-ib" aria-label={`Hapus ${f.judul} dari misi`} onClick={() => ubah(d => ({ ...d, misi: d.misi.filter(x => x.key !== m.key) }))}><Ikon d={IKM.hapus} s={15} /></button>
+                    </span>
+                  </div>
+                );
+              })}
+          </section>
+          <div className={`gr-mi-simpan ${draf ? "kotor" : ""}`}>
+            <span>{draf ? (aktif ? "Perubahan belum disimpan. Siswa masih melihat versi sebelumnya." : "Perubahan belum disimpan.") : "Semua perubahan tersimpan."}</span>
+            {draf && <button type="button" className="gr-btn outline sm" disabled={sibuk} onClick={() => setDraf(null)}>Batalkan</button>}
+            {draf && <button type="button" className="gr-btn sm" disabled={sibuk} onClick={() => simpan()}>{sibuk ? "Menyimpan…" : "Simpan"}</button>}
+          </div>
+        </div>
+      )}
+
+      {tab === "pantau" && (!tersimpan.sessionId || !aktif ? (
+        <div className="gr-card gr-mt-kosong"><b>Sesi belum berjalan</b><p className="gr-muted">Mulai sesi untuk memantau kehadiran. Sesi sebelumnya bisa dilihat di tab Riwayat.</p></div>
+      ) : (
+        <>
+          <div className="gr-tiles">
+            <div><span>Sudah konfirmasi hadir</span><b>{p.hadir}<small>/{p.n}</small></b><small>{p.n ? Math.round(p.hadir / p.n * 100) : 0}% kelas</small></div>
+            <div><span>Misi wajib lengkap</span><b>{p.lengkap}</b><small>{p.wajib.length} misi wajib</small></div>
+            <div><span>Belum hadir</span><b>{p.absen}</b>{p.absen > 0 ? <button type="button" className="gr-link" onClick={salinAbsen}>Salin nama untuk WA</button> : <small>Semua sudah hadir</small>}</div>
+          </div>
+          {p.perMisi.length > 0 && (
+            <section className="gr-card gr-mi-permisi">
+              <h2 className="gr-h2">Penyelesaian per misi</h2>
+              {p.perMisi.map(({ m, n }) => (
+                <div key={m.key}><span>{infoMisi(m, store).judul}{!m.wajib && <em> · opsional</em>}</span><i><i style={{ width: `${p.n ? n / p.n * 100 : 0}%` }} /></i><b>{n}/{p.n}</b></div>
+              ))}
+            </section>
+          )}
+          <div className="gr-seg gr-mi-filter" role="tablist" aria-label="Saring siswa" style={{ alignSelf: "flex-start" }}>
+            {[["semua", "Semua", p.n], ["absen", "Belum hadir", p.absen], ["proses", "Belum lengkap", p.hadir - p.lengkap], ["lengkap", "Lengkap", p.lengkap]].map(([k, l, n]) => <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l} · {n}</button>)}
+          </div>
+          <div className="gr-card list">
+            {tampil.length === 0 ? <p className="gr-muted" style={{ padding: 16 }}>Tidak ada siswa di kelompok ini.</p> : tampil.map(b => (
+              <div key={b.siswa.id} className="gr-mi-siswa">
+                <span className="gr-mi-nama"><b>{b.siswa.nama}</b><small>{b.hadir ? `Hadir ${jam(b.hadir.waktu)}` : "Belum konfirmasi hadir"}</small></span>
+                <span className="gr-mi-titik" aria-label={`${b.selesai} dari ${p.wajib.length} misi wajib selesai`}>{b.status.map((ok, i) => <i key={i} className={ok ? "ok" : ""} />)}<small>{b.selesai}/{p.wajib.length}</small></span>
+                <span className={`gr-chip ${b.grup === "lengkap" ? "teal" : b.grup === "proses" ? "amber" : "muted"}`}>{b.grup === "lengkap" ? "Lengkap" : b.grup === "proses" ? "Belum lengkap" : "Belum hadir"}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ))}
+
+      {tab === "riwayat" && <RiwayatMisi store={store} jenjang={jenjang} sesiAktif={aktif ? tersimpan.sessionId : null} />}
+
+      {pilih && <PilihMisiModal store={store} jenjang={jenjang} sudah={new Set(isi.misi.map(m => m.key))} onTambah={tambah} onClose={() => setPilih(false)} />}
+      {tanya && (
+        <div className="modal-overlay" onClick={() => setTanya(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-mi-t">
+            <h3 id="gr-mi-t">{tanya === "akhiri" ? "Akhiri sesi PJJ?" : "Tinggalkan perubahan?"}</h3>
+            <p>{tanya === "akhiri"
+              ? `Siswa Kelas ${jenjang} tidak lagi melihat Mission Mode. Kehadiran sesi ini (${p.hadir} siswa) tetap tersimpan di Riwayat. Kalau diaktifkan lagi, sesi baru dimulai dan siswa perlu konfirmasi hadir ulang.`
+              : `Perubahan misi Kelas ${jenjang} belum disimpan dan akan hilang kalau pindah ke Kelas ${tanya.pindah}.`}</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setTanya(null)}>Batal</button>
+              {tanya === "akhiri"
+                ? <button type="button" className="btn btn-primary btn-sm" onClick={() => { setTanya(null); simpan({ active: false }); }}>Akhiri sesi</button>
+                : <button type="button" className="btn btn-primary btn-sm" onClick={() => { const j = tanya.pindah; setTanya(null); setDraf(null); setJenjang(j); setFilter("semua"); }}>Buang & pindah</button>}
+            </div>
+          </div>
+        </div>
+      )}
+      {pesan && <div className="gr-toast" role="status">{pesan}</div>}
+    </div>
+  );
+}
