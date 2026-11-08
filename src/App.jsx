@@ -22,7 +22,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
-import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat, KelasV2, BadgeGuruV2 } from './pages/guru';
+import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat, KelasV2, BadgeGuruV2, ProfilGuruV2 } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -1701,6 +1701,13 @@ function useStore() {
       });
     }
   };
+  // Kebalikan closeSemester — dulu periode yang terlanjur ditutup tidak bisa dibuka dari aplikasi
+  const bukaSemester = async (periode) => {
+    const closed = semesterSettings.closedPeriodes || [];
+    if (closed.includes(periode)) {
+      await update(ref(db, "settings/semester"), { closedPeriodes: closed.filter(p => p !== periode) });
+    }
+  };
   // Tanggal SAS per periode (YYYY-MM-DD) — dipakai untuk default jenis laporan & info di rapor siswa
   const kunciPeriode = p => String(p || "").replace(/[.#$/[\]\s]/g, "_");
   const getTanggalSAS = (periode = getActivePeriode()) => (semesterSettings.tanggalSAS || {})[kunciPeriode(periode)] || null;
@@ -1978,7 +1985,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -8151,7 +8158,8 @@ function AppInner() {
       else if (route === "laporan-guru") screen = <LaporanGuruV2 store={store} LaporanDetailModal={LaporanDetailModal} onTampilanLama={() => navigate("laporan-guru-lama")} />;
       else if (route === "laporan-guru-lama") screen = <LaporanGuru store={store} />;
       else if (route === "nilai-akhir") screen = <NilaiAkhirPage store={store} />;
-      else if (route === "profil-guru") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
+      else if (route === "profil-guru") screen = <ProfilGuruV2 user={user} store={store} navigate={navigate} ResetModal={ResetSemesterModal} onTampilanLama={() => navigate("profil-guru-lama")} />;
+      else if (route === "profil-guru-lama") screen = <ProfilGuru user={user} store={store} navigate={navigate} />;
       else if (route === "materi-manager") screen = <MateriManager store={store} navigate={navigate} />;
       else if (route === "mission-guru") screen = <MissionGuru store={store} navigate={navigate} />;
       else screen = <DashboardGuru store={store} navigate={navigate} />;

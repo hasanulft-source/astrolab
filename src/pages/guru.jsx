@@ -8,7 +8,7 @@ import { verifikasiSandbox, normal } from "../utils/rumus";
 import { exportNilai, backupFromStore } from "../utils/excel";
 import { LaporanModal } from "../utils/laporan";
 import { deadlineEnd } from "./siswa";
-import { uid, fmtLastSeen } from "../utils/helpers";
+import { uid, fmtLastSeen, withTimeout, getPeriodeAktif, getPeriodeOptions } from "../utils/helpers";
 import { Confirm, Avatar } from "../components/visual";
 import { getLevel, TierIcon, BadgeIcon, AUTO_BADGES, MANUAL_BADGES } from "../components/gamification";
 import "../styles/guru.css";
@@ -1745,6 +1745,224 @@ export function BadgeGuruV2({ store, onTampilanLama }) {
             <div className="modal-actions">
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setCabut(null)}>Batal</button>
               <button type="button" className="btn btn-danger btn-sm" onClick={async () => { try { await store.removeBadge(aktif.id, cabut.id); kabar(`${cabut.name} dicabut.`); } catch (e) { kabar("Gagal: " + (e?.message || "coba lagi")); } setCabut(null); }}>Cabut badge</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PROFIL GURU ─────────────────────────────────────────────────────────────
+// Data diri tetap di localStorage (sama seperti versi lama, kunci astrolab.profil.<id>).
+// Pengaturan semester menulis ke settings/semester lewat store. ResetSemesterModal masih di App → props.
+const WARNA_FOTO = ["#0d6b7a", "#1e40af", "#7c3aed", "#b45309", "#0f766e", "#c2410c", "#be185d", "#065f46", "#1e3a5f", "#4a1d96"];
+const FIELD_PROFIL = [
+  { k: "mapel", l: "Mata pelajaran" },
+  { k: "jabatan", l: "Jabatan" },
+  { k: "sekolah", l: "Sekolah", lebar: true },
+  { k: "tahunMulai", l: "Mulai mengajar", ket: v => { const n = new Date().getFullYear() - Number(v); return Number(v) > 1900 && n > 0 ? `${n} tahun` : null; } },
+  { k: "nip", l: "NIP", mono: true },
+];
+// Selisih hari kalender (zona lokal) dari hari ini ke "YYYY-MM-DD"
+export function hariMenuju(tgl, kini = new Date()) {
+  if (!tgl || !/^\d{4}-\d{2}-\d{2}$/.test(tgl)) return null;
+  const [y, m, d] = tgl.split("-").map(Number);
+  const a = new Date(kini.getFullYear(), kini.getMonth(), kini.getDate());
+  return Math.round((new Date(y, m - 1, d) - a) / HARI);
+}
+const tglLengkap = tgl => { const [y, m, d] = tgl.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
+
+function FotoProfilModal({ store, user, nama, adaFoto, onClose }) {
+  const [sibuk, setSibuk] = useState(false);
+  const [galat, setGalat] = useState("");
+  const id = user.uid || user.id;
+  async function simpan(data) {
+    setSibuk(true); setGalat("");
+    try { await withTimeout(store.savePhoto(id, data)); onClose(); }
+    catch (e) { setGalat("Gagal menyimpan foto: " + (e?.message || "coba lagi")); setSibuk(false); }
+  }
+  function pilihWarna(warna) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" rx="100" fill="${warna}"/><text x="100" y="130" text-anchor="middle" font-family="system-ui,sans-serif" font-size="80" font-weight="700" fill="#fff">${inisial(nama)}</text></svg>`;
+    simpan("data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg))));
+  }
+  function unggah(e) {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { setGalat("Ukuran foto maksimal 5 MB."); return; }
+    const r = new FileReader();
+    r.onload = ev => simpan(ev.target.result);
+    r.readAsDataURL(f);
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-foto-j">
+        <h3 id="gr-foto-j">Ganti foto profil</h3>
+        <p className="gr-muted" style={{ marginBottom: 12 }}>Pilih avatar berwarna dengan inisial, atau unggah foto.</p>
+        <div className="gr-pf-warna" role="group" aria-label="Avatar berwarna">
+          {WARNA_FOTO.map(w => <button key={w} type="button" disabled={sibuk} style={{ background: w }} onClick={() => pilihWarna(w)} aria-label={`Avatar warna ${w}`}>{inisial(nama)}</button>)}
+        </div>
+        <label className="gr-pf-unggah">
+          <span>{sibuk ? "Menyimpan…" : "Unggah foto dari perangkat"}</span><small>JPG atau PNG, maks 5 MB</small>
+          <input type="file" accept="image/*" disabled={sibuk} onChange={unggah} />
+        </label>
+        {galat && <p className="gr-warn" style={{ marginTop: 10 }}>{galat}</p>}
+        <div className="modal-actions">
+          {adaFoto && <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--bad)", marginRight: "auto" }} disabled={sibuk} onClick={() => simpan(null)}>Hapus foto</button>}
+          <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>Tutup</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ProfilGuruV2({ user, store, navigate, ResetModal, onTampilanLama }) {
+  const photo = store.getPhoto(user.uid || user.id);
+  const kunci = `astrolab.profil.${user.id}`;
+  const bawaan = { nama: user.nama, mapel: user.mapel || "IPA & Informatika", sekolah: "SMP Negeri 15 Banda Aceh", nip: "199911022024211003", jabatan: "Guru Mapel", tahunMulai: "2024", motto: "" };
+  const [profil, setProfil] = useState(() => { try { const s = localStorage.getItem(kunci); return s ? { ...bawaan, ...JSON.parse(s) } : bawaan; } catch { return bawaan; } });
+  const [form, setForm] = useState(null); // null = tidak sedang mengedit
+  const [foto, setFoto] = useState(false);
+  const [reset, setReset] = useState(false);
+  const [tanya, setTanya] = useState(null); // "tutup" | "buka"
+  const [sibuk, setSibuk] = useState("");
+  const [galat, setGalat] = useState("");
+
+  const periode = store.getActivePeriode();
+  const otomatis = getPeriodeAktif();
+  const ditimpa = !!store.semesterSettings?.override;
+  const tertutup = store.isSemesterClosed(periode);
+  const sas = store.getTanggalSAS();
+  const sisa = hariMenuju(sas);
+
+  const ubah = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  function simpanProfil() {
+    const data = { ...form, nama: form.nama.trim() || profil.nama };
+    try { localStorage.setItem(kunci, JSON.stringify(data)); } catch { /* mode privat: tetap tampil sesi ini */ }
+    setProfil(data); setForm(null);
+  }
+  async function jalankan(label, fn) {
+    setSibuk(label); setGalat("");
+    try { await withTimeout(fn()); }
+    catch (e) { setGalat(e?.message?.includes("PERMISSION_DENIED") ? "Akses ditolak. Cek Rules Firebase untuk settings/semester." : "Gagal menyimpan: " + (e?.message || "coba lagi")); }
+    setSibuk("");
+  }
+
+  return (
+    <div className="page gr">
+      <div className="gr-head">
+        <div>
+          <span className="gr-mono">Periode aktif · {periode}</span>
+          <h1>Profil & semester</h1>
+        </div>
+        {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Tampilan lama</button>}
+      </div>
+
+      <div className="gr-cols">
+        <div className="gr-main">
+          <section className="gr-card gr-pf-id">
+            <button type="button" className="gr-pf-foto" onClick={() => setFoto(true)} aria-label="Ganti foto profil">
+              {photo ? <img src={photo} alt="" /> : <span>{inisial(profil.nama)}</span>}
+              <i aria-hidden="true">Ganti</i>
+            </button>
+            <div className="gr-pf-nama">
+              <b>{profil.nama}</b>
+              <span>{[profil.jabatan, profil.sekolah].filter(Boolean).join(" · ")}</span>
+              {profil.motto && <q>{profil.motto}</q>}
+            </div>
+          </section>
+
+          <section className="gr-card gr-pf-data">
+            <div className="gr-sh">
+              <h2>Data diri</h2>
+              {!form && <button type="button" className="gr-link" onClick={() => setForm(profil)}>Ubah</button>}
+            </div>
+            {form ? (
+              <form className="gr-pf-form" onSubmit={e => { e.preventDefault(); simpanProfil(); }}>
+                <label className="lebar"><span>Nama</span><input className="inp" value={form.nama} onChange={e => ubah("nama", e.target.value)} required /></label>
+                {FIELD_PROFIL.map(f => (
+                  <label key={f.k} className={f.lebar ? "lebar" : ""}><span>{f.l}</span>
+                    <input className="inp" value={form[f.k] || ""} inputMode={f.k === "nip" || f.k === "tahunMulai" ? "numeric" : undefined} style={f.mono ? { fontFamily: "var(--mono)" } : undefined} onChange={e => ubah(f.k, e.target.value)} />
+                  </label>
+                ))}
+                <label className="lebar"><span>Motto</span><textarea className="inp" rows={2} value={form.motto || ""} placeholder="Kalimat favorit (opsional)" onChange={e => ubah("motto", e.target.value)} /></label>
+                <div className="lebar gr-pf-aksi">
+                  <button type="button" className="gr-btn outline sm" onClick={() => setForm(null)}>Batal</button>
+                  <button type="submit" className="gr-btn sm">Simpan</button>
+                </div>
+              </form>
+            ) : (
+              <dl className="gr-pf-dl">
+                {FIELD_PROFIL.map(f => {
+                  const v = profil[f.k]; const ket = v && f.ket ? f.ket(v) : null;
+                  return <div key={f.k} className={f.lebar ? "lebar" : ""}><dt>{f.l}</dt><dd className={f.mono ? "mono" : ""}>{v || <span className="kosong">Belum diisi</span>}{ket && <small> · {ket}</small>}</dd></div>;
+                })}
+              </dl>
+            )}
+            <p className="gr-muted gr-pf-cat">Data diri hanya tersimpan di browser perangkat ini. Di perangkat lain, isian kembali ke bawaan.</p>
+          </section>
+        </div>
+
+        <div className="gr-side">
+          <section className="gr-card gr-pf-sem" aria-busy={!!sibuk}>
+            <div className="gr-sh"><h2>Semester</h2>{sibuk && <span className="gr-muted">{sibuk}…</span>}</div>
+
+            <div className="gr-pf-blok">
+              <label htmlFor="gr-periode" className="gr-sub">Periode aktif</label>
+              <label className="gr-select"><select id="gr-periode" value={periode} disabled={!!sibuk} onChange={e => { const v = e.target.value; jalankan("Menyimpan periode", () => store.setSemesterOverride(v === otomatis ? null : v)); }}>
+                {getPeriodeOptions().map(p => <option key={p} value={p}>{p}</option>)}
+              </select></label>
+              <p className="gr-muted">{ditimpa
+                ? <>Diatur manual. Menurut kalender seharusnya <b>{otomatis}</b>. <button type="button" className="gr-link" disabled={!!sibuk} onClick={() => jalankan("Menyimpan periode", () => store.setSemesterOverride(null))}>Kembali ke otomatis</button></>
+                : <>Mengikuti kalender sekolah, berganti otomatis tiap semester.</>}</p>
+            </div>
+
+            <div className="gr-pf-blok">
+              <label htmlFor="gr-sas" className="gr-sub">Tanggal SAS</label>
+              <input id="gr-sas" type="date" className="inp gr-pf-tgl" value={sas || ""} disabled={!!sibuk} onChange={e => { const v = e.target.value; jalankan("Menyimpan tanggal SAS", () => store.setTanggalSAS(periode, v)); }} />
+              {sas ? (
+                <div className={`gr-pf-sas ${sisa != null && sisa < 0 ? "lewat" : sisa != null && sisa <= 7 ? "dekat" : ""}`}>
+                  <b>{sisa > 0 ? `${sisa} hari lagi` : sisa === 0 ? "Hari ini" : "Sudah lewat"}</b>
+                  <span>{tglLengkap(sas)}</span>
+                </div>
+              ) : <p className="gr-warn inline">Belum diatur. Laporan akan dianggap laporan akhir semester.</p>}
+              <p className="gr-muted">Sebelum tanggal ini, laporan dibuat sebagai laporan tengah semester dan rapor siswa menampilkan jadwal SAS.</p>
+            </div>
+
+            <div className="gr-pf-blok">
+              <span className="gr-sub">Status periode</span>
+              <div className="gr-pf-status">
+                <span className={`gr-chip ${tertutup ? "muted" : "teal"}`}>{tertutup ? "Ditutup" : "Berjalan"}</span>
+                {tertutup
+                  ? <button type="button" className="gr-btn outline sm" disabled={!!sibuk} onClick={() => setTanya("buka")}>Buka kembali</button>
+                  : <button type="button" className="gr-btn outline sm" disabled={!!sibuk} onClick={() => setTanya("tutup")}>Tutup periode</button>}
+              </div>
+              <p className="gr-muted">{tertutup ? "Siswa tidak bisa mengerjakan tugas dari periode ini." : "Tutup setelah nilai akhir dan rapor selesai. Siswa tidak bisa lagi mengerjakan tugas periode ini."}</p>
+            </div>
+            {galat && <p className="gr-warn" role="alert">{galat}</p>}
+          </section>
+
+          <section className="gr-card gr-pf-bahaya">
+            <h2 className="gr-h2">Reset semester</h2>
+            <p>Menghapus semua jawaban, poin, streak, badge, pengumuman, jatah susulan, dan chat. Akun siswa, tugas, arsip, dan nilai akhir tetap ada. Tidak bisa dibatalkan.</p>
+            <button type="button" className="gr-btn sm gr-pf-merah" onClick={() => setReset(true)}>Reset semester…</button>
+          </section>
+        </div>
+      </div>
+
+      {foto && <FotoProfilModal store={store} user={user} nama={profil.nama} adaFoto={!!photo} onClose={() => setFoto(false)} />}
+      {reset && ResetModal && <ResetModal store={store} onClose={() => setReset(false)} />}
+      {tanya && (
+        <div className="modal-overlay" onClick={() => setTanya(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-per-j">
+            <h3 id="gr-per-j">{tanya === "tutup" ? `Tutup ${periode}?` : `Buka kembali ${periode}?`}</h3>
+            <p>{tanya === "tutup"
+              ? "Siswa tidak bisa lagi mengerjakan atau mengumpulkan tugas dari periode ini. Nilai yang sudah masuk tidak berubah. Periode bisa dibuka kembali dari halaman ini."
+              : "Siswa bisa kembali mengerjakan tugas periode ini yang tenggatnya belum lewat."}</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setTanya(null)}>Batal</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => { const t = tanya; setTanya(null); jalankan(t === "tutup" ? "Menutup periode" : "Membuka periode", () => t === "tutup" ? store.closeSemester(periode) : store.bukaSemester(periode)); }}>
+                {tanya === "tutup" ? "Tutup periode" : "Buka kembali"}
+              </button>
             </div>
           </div>
         </div>

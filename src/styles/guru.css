@@ -360,3 +360,65 @@
   .gr-soal-row .pct{width:auto;margin-left:auto}
   .gr-soal-row .no{width:auto}
 }
+
+/* Profil & semester */
+.gr-pf-id{display:flex;align-items:center;gap:18px;padding:20px}
+.gr-pf-foto{all:unset;cursor:pointer;position:relative;flex:none;width:76px;height:76px;border-radius:50%;overflow:hidden;background:var(--accent);display:grid;place-items:center}
+.gr-pf-foto img{width:100%;height:100%;object-fit:cover}
+.gr-pf-foto>span{color:#fff;font-weight:800;font-size:26px;font-family:var(--font)}
+.gr-pf-foto i{position:absolute;inset:auto 0 0 0;padding:4px 0 6px;text-align:center;font-style:normal;font-size:10.5px;font-weight:700;color:#fff;background:rgba(14,42,51,.62);opacity:0;transition:opacity .15s}
+.gr-pf-foto:hover i,.gr-pf-foto:focus-visible i{opacity:1}
+.gr-pf-foto:focus-visible{outline:2px solid var(--accent-mid);outline-offset:3px}
+@media(hover:none){.gr-pf-foto i{opacity:1}}
+.gr-pf-nama{display:flex;flex-direction:column;gap:3px;min-width:0}
+.gr-pf-nama b{font-size:20px;font-weight:800;letter-spacing:-.01em;line-height:1.25}
+.gr-pf-nama>span{font-size:13px;color:var(--ink-3)}
+.gr-pf-nama q{margin-top:6px;font-size:13px;color:var(--accent-2);line-height:1.5}
+.gr-pf-data,.gr-pf-sem,.gr-pf-bahaya{padding:16px 18px}
+.gr-pf-dl{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;margin:0}
+.gr-pf-dl>div,.gr-pf-form>label{display:flex;flex-direction:column;gap:3px;min-width:0}
+.gr-pf-dl .lebar,.gr-pf-form .lebar{grid-column:1/-1}
+.gr-pf-dl dt,.gr-pf-form span{font-size:12px;color:var(--ink-3)}
+.gr-pf-dl dd{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.gr-pf-dl dd.mono{font-family:var(--mono);font-weight:500;font-size:13.5px}
+.gr-pf-dl dd small{font-weight:500;color:var(--ink-3);font-size:12.5px;font-family:var(--font)}
+.gr-pf-dl .kosong{font-weight:500;color:var(--ink-4)}
+.gr-pf-form{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.gr-pf-form .inp{font-size:14px}
+.gr-pf-aksi{display:flex;justify-content:flex-end;gap:8px}
+.gr-pf-cat{margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);font-size:12px}
+.gr-pf-blok{display:flex;flex-direction:column;gap:7px;padding:14px 0}
+.gr-pf-blok+.gr-pf-blok{border-top:1px solid var(--line-soft)}
+.gr-pf-sem .gr-sh{margin-bottom:0}
+.gr-pf-blok .gr-select select{width:100%}
+.gr-pf-blok .gr-muted{font-size:12px;line-height:1.5}
+.gr-pf-blok .gr-link{font-size:12px}
+.gr-pf-tgl{height:38px;font-size:14px;max-width:220px}
+.gr-pf-sas{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;padding:9px 12px;border-radius:10px;background:var(--accent-tint)}
+.gr-pf-sas b{font-size:15px;font-weight:800;color:var(--accent-2);font-variant-numeric:tabular-nums}
+.gr-pf-sas span{font-size:12.5px;color:var(--ink-2)}
+.gr-pf-sas.dekat{background:var(--warn-bg)}.gr-pf-sas.dekat b{color:#8A4208}
+.gr-pf-sas.lewat{background:var(--line-soft)}.gr-pf-sas.lewat b{color:var(--ink-3)}
+.gr-pf-status{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.gr-pf-bahaya{border-color:#F2C4C4}
+.gr-pf-bahaya .gr-h2{color:var(--bad)}
+.gr-pf-bahaya p{margin:8px 0 12px;font-size:12.5px;color:var(--ink-2);line-height:1.55}
+.gr-btn.gr-pf-merah{background:var(--surface);color:var(--bad);border:1px solid #F2C4C4}
+.gr-btn.gr-pf-merah:hover{background:var(--bad-bg)}
+.gr-pf-warna{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;justify-items:center}
+.gr-pf-warna button{all:unset;cursor:pointer;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;font-family:var(--font)}
+.gr-pf-warna button:hover{transform:scale(1.06)}
+.gr-pf-warna button:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px}
+.gr-pf-warna button:disabled{opacity:.5;cursor:wait}
+.gr-pf-unggah{position:relative;display:flex;flex-direction:column;gap:2px;margin-top:14px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:10px;cursor:pointer}
+.gr-pf-unggah:hover{border-color:var(--accent);background:var(--accent-tint)}
+.gr-pf-unggah span{font-size:13px;font-weight:700;color:var(--accent)}
+.gr-pf-unggah small{font-size:12px;color:var(--ink-3)}
+.gr-pf-unggah input{position:absolute;inset:0;opacity:0;cursor:pointer}
+@media(max-width:600px){
+  .gr-pf-id{padding:16px;gap:14px}
+  .gr-pf-foto{width:64px;height:64px}
+  .gr-pf-nama b{font-size:18px}
+  .gr-pf-dl,.gr-pf-form{grid-template-columns:1fr}
+  .gr-pf-tgl{max-width:none}
+}
