@@ -298,3 +298,4 @@
 .sw-tiles b .sr-streak > span{display:inline;font-size:inherit;font-weight:800;color:var(--ink)}
 .rk-me div b .sr-medal{display:inline-grid;font-family:var(--font);letter-spacing:0;text-transform:none;color:#fff}
 .sw-sbx-pg{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px dashed var(--line)}
+.sw-tiles .streak .pf-api-next{display:block;margin-top:4px;font-size:11.5px;line-height:1.35;color:var(--ink-3)}

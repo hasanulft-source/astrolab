@@ -176,7 +176,8 @@ export async function createWelcomeScene({ canvas, pane, ui, lowPower = false })
     // teal fin with logo
     box(1.1, 13.6, 6.2, COL.deep, 1.5, 0, -0.6, { rad: 0.1 });
     const logo = canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#ffffff'; rr(g, 18, 18, 220, 220, 40); g.fill(); drawLogo(g, 128, 124, 210); });
-    screen(2.0, 2.0, logo, 2.06, 10.8, -0.6, Math.PI / 2);
+    // transparent: sudut kanvas di luar kotak putih ber-alpha 0; tanpa ini dirender hitam (bingkai hitam di sekitar logo)
+    screen(2.0, 2.0, logo, 2.06, 10.8, -0.6, Math.PI / 2, { transparent: true });
     // wordmark on tower +z face
     const word = canvasTex(1024, 256, (g, w, h) => { g.clearRect(0, 0, w, h); g.fillStyle = HEX.teal9; g.font = `800 170px ${FD}`; g.textBaseline = 'middle'; g.fillText('astrolab', 24, 128); });
     screen(4.8, 1.2, word, -2.1, 10.9, 4.06, 0, { transparent: true });

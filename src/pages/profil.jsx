@@ -3,7 +3,7 @@
 // dan dikirim lewat props supaya tidak ada perubahan pada alur laporan.
 import { useState } from "react";
 import { I } from "../components/icons";
-import { Avatar } from "../components/visual";
+import { Avatar, infoTingkatApi } from "../components/visual";
 import { BadgeIcon, ALL_BADGES, PoinChart } from "../components/gamification";
 import { withTimeout } from "../utils/helpers";
 import { KKTP, Page, Card, Items, Item, Button, StatusChip } from "../components/ui";
@@ -99,7 +99,11 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
           <div><span>Ranking kelas</span><b className={myRank ? "pf-rank" : "none"}>{myRank ? <>{myRank.rank <= 3 && <Medal rank={myRank.rank} size="sm" />}#{myRank.rank}</> : "Belum ada"}</b></div>
           <div><span>Total poin</span><b>{fmt(poin)}</b></div>
           <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
-          <div className="streak"><span>Streak</span><b><StreakValue streak={stats.streak || 0} /></b></div>
+          <div className="streak"><span>Streak</span><b><StreakValue streak={stats.streak || 0} /></b><small className="pf-api-next">{(() => {
+            const a = infoTingkatApi(stats.streak || 0);
+            if (!stats.streak) return "Kumpulkan tugas tepat waktu untuk menyalakan api";
+            return a.berikut ? `${a.sisa} tugas tepat waktu lagi ke api ${a.berikut.nama}` : `Api ${a.kini.nama}, tingkat tertinggi`;
+          })()}</small></div>
         </div>
 
         <button type="button" className="pf-rapor" onClick={() => navigate("rapor")}>

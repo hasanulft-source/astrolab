@@ -19,6 +19,13 @@ export const FLAME_TIERS = [
 export function getFlameTheme(streak) {
   return FLAME_TIERS.find(t => (streak || 0) >= t.min) || FLAME_TIERS[FLAME_TIERS.length - 1];
 }
+// Untuk teks motivasi: tingkat sekarang, tingkat berikutnya, dan sisa hari
+export function infoTingkatApi(streak) {
+  const n = streak || 0;
+  const kini = getFlameTheme(n);
+  const naik = [...FLAME_TIERS].reverse().find(t => t.min > n) || null;
+  return { kini, berikut: naik, sisa: naik ? naik.min - n : 0 };
+}
 const KILAU_POS = [[41, 6, 1], [6, 10, 0.75], [43, 36, 0.6]];
 const bintang = (x, y, k) => `M${x} ${y - 4 * k}l${1.1 * k} ${2.9 * k} ${2.9 * k} ${1.1 * k}-${2.9 * k} ${1.1 * k}L${x} ${y + 4 * k}l-${1.1 * k}-${2.9 * k}-${2.9 * k}-${1.1 * k} ${2.9 * k}-${1.1 * k}z`;
 export function FlameAnimated({ size = 44, streak = 1 }) {

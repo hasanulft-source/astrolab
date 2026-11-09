@@ -270,7 +270,7 @@ const Kepala = ({ judul, kanan }) => (
 );
 
 // ─── Dashboard Guru ───
-export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayModal, onTampilanLama }) {
+export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayModal }) {
   const [jenjang, setJenjang] = useState("VII");
   const [laporan, setLaporan] = useState(false);
   const [esaiTugas, setEsaiTugas] = useState(null);
@@ -447,7 +447,6 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
         </div>
       </div>
 
-      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
       {urung && (
         <div className="gr-toast act" role="status">
           <span>{urung.p.siswa.namaDisplay || urung.p.siswa.nama} ditandai selesai ditindaklanjuti</span>
@@ -532,7 +531,7 @@ function KartuSandbox({ a }) {
   );
 }
 
-export function AnalisisTugasV2({ store, tugasId, navigate, NilaiEssayModal, IntervensiNilaiModal, onTampilanLama }) {
+export function AnalisisTugasV2({ store, tugasId, navigate, NilaiEssayModal, IntervensiNilaiModal }) {
   const [hanyaBawah, setHanyaBawah] = useState(false);
   const [buka, setBuka] = useState(null);
   const [semua, setSemua] = useState(false);
@@ -650,7 +649,6 @@ export function AnalisisTugasV2({ store, tugasId, navigate, NilaiEssayModal, Int
         </div>
       </>)}
 
-      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
       {esai && NilaiEssayModal && <NilaiEssayModal tugas={t} store={store} onClose={() => setEsai(false)} />}
       {ubah && IntervensiNilaiModal && <IntervensiNilaiModal tugas={t} store={store} onClose={() => setUbah(false)} />}
     </div>
@@ -695,7 +693,7 @@ export function hitungDaftarTugas(store, jenjang, { tab = "berjalan", personalSa
   return { hitung, personal, tampil };
 }
 
-export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManagerModal, onTampilanLama }) {
+export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManagerModal }) {
   const [jenjang, setJenjang] = useState("VII");
   const [tab, setTab] = useState("berjalan");
   const [personalSaja, setPersonalSaja] = useState(false);
@@ -791,7 +789,6 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
         </div>
       )}
 
-      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
       {toast && <div className="gr-toast" role="status">{toast}</div>}
       {hapus && <Confirm title={`Hapus "${hapus.judul}"?`} desc="Tugas dihapus permanen. Poin siswa yang sudah mengerjakan tidak berubah." onOk={() => { store.deleteTugas(hapus.id); setHapus(null); kabar("Tugas dihapus."); }} onCancel={() => setHapus(null)} />}
       {nilaiT && IntervensiNilaiModal && <IntervensiNilaiModal tugas={nilaiT} store={store} onClose={() => setNilaiT(null)} />}
@@ -813,7 +810,7 @@ function waktuLalu(ts, now = Date.now()) {
   return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export function LaporanGuruV2({ store, LaporanDetailModal, onTampilanLama }) {
+export function LaporanGuruV2({ store, LaporanDetailModal }) {
   const [status, setStatus] = useState("baru");
   const [kategori, setKategori] = useState("semua");
   const [pilih, setPilih] = useState(null);
@@ -875,7 +872,6 @@ export function LaporanGuruV2({ store, LaporanDetailModal, onTampilanLama }) {
         </div>
       )}
 
-      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
       {pilih && LaporanDetailModal && <LaporanDetailModal report={pilih} store={store} kategoriLabel={KATEGORI_LAPOR} onClose={() => setPilih(null)} onDelete={() => { setHapus(pilih); setPilih(null); }} />}
       {hapus && <Confirm title="Hapus laporan?" desc="Laporan dihapus permanen dan tidak bisa dikembalikan." onOk={async () => { await store.deleteReport(hapus.id); setHapus(null); }} onCancel={() => setHapus(null)} />}
     </div>
@@ -883,7 +879,7 @@ export function LaporanGuruV2({ store, LaporanDetailModal, onTampilanLama }) {
 }
 
 // ─── Manajemen siswa (guru) ───
-export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, AuditPoinGanda, cetakKartu, withTimeout, onTampilanLama }) {
+export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, AuditPoinGanda, cetakKartu, withTimeout }) {
   const [jenjang, setJenjang] = useState("VII");
   const [cari, setCari] = useState("");
   const [tambah, setTambah] = useState(false);
@@ -969,7 +965,6 @@ export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, Au
         </section>
       )}
 
-      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
       {toast && <div className="gr-toast" role="status">{toast}</div>}
       {reset && (
         <div className="modal-overlay" onClick={() => setReset(null)}>
@@ -1534,7 +1529,7 @@ export function hitungKelas(store, jenjang, now = Date.now()) {
   return { baris, aktivitas, total: siswa.length };
 }
 
-export function KelasV2({ store, navigate, onTampilanLama }) {
+export function KelasV2({ store, navigate }) {
   const [jenjang, setJenjang] = useState("VII");
   const [urut, setUrut] = useState("nama");
   const [cari, setCari] = useState("");
@@ -1605,13 +1600,12 @@ export function KelasV2({ store, navigate, onTampilanLama }) {
         </div>
       )}
       <p className="gr-muted">Rata-rata = nilai tugas Astrolab yang dinilai. Pengumpulan = tugas yang dikumpulkan dibanding tugas yang tenggatnya sudah lewat (tugas berjalan yang belum dikumpulkan tidak dihitung). Amber = di bawah KKTP {KKTP} atau pengumpulan di bawah 70%.</p>
-      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
     </div>
   );
 }
 
 // ─── Badge (guru): beri satu badge ke banyak siswa sekaligus, atau kelola per siswa ───
-export function BadgeGuruV2({ store, onTampilanLama }) {
+export function BadgeGuruV2({ store }) {
   const [mode, setMode] = useState("beri");
   const [jenjang, setJenjang] = useState("VII");
   const [badge, setBadge] = useState(null);
@@ -1735,7 +1729,6 @@ export function BadgeGuruV2({ store, onTampilanLama }) {
         </div>
       )}
 
-      {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Buka tampilan lama</button>}
       {toast && <div className="gr-toast" role="status">{toast}</div>}
       {cabut && aktif && (
         <div className="modal-overlay" onClick={() => setCabut(null)}>
@@ -1815,7 +1808,7 @@ function FotoProfilModal({ store, user, nama, adaFoto, onClose }) {
   );
 }
 
-export function ProfilGuruV2({ user, store, navigate, ResetModal, onTampilanLama }) {
+export function ProfilGuruV2({ user, store, navigate, ResetModal }) {
   const photo = store.getPhoto(user.uid || user.id);
   const kunci = `astrolab.profil.${user.id}`;
   const bawaan = { nama: user.nama, mapel: user.mapel || "IPA & Informatika", sekolah: "SMP Negeri 15 Banda Aceh", nip: "199911022024211003", jabatan: "Guru Mapel", tahunMulai: "2024", motto: "" };
@@ -1854,7 +1847,6 @@ export function ProfilGuruV2({ user, store, navigate, ResetModal, onTampilanLama
           <span className="gr-mono">Periode aktif · {periode}</span>
           <h1>Profil & semester</h1>
         </div>
-        {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Tampilan lama</button>}
       </div>
 
       <div className="gr-cols">
@@ -2067,7 +2059,7 @@ function RiwayatMisi({ store, jenjang, sesiAktif }) {
   );
 }
 
-export function MisiGuruV2({ store, onTampilanLama }) {
+export function MisiGuruV2({ store }) {
   const [jenjang, setJenjang] = useState("VII");
   const [tab, setTab] = useState("atur");
   const [draf, setDraf] = useState(null); // null = belum diubah, ikut data tersimpan
@@ -2111,7 +2103,6 @@ export function MisiGuruV2({ store, onTampilanLama }) {
           <span className="gr-mono">Mission Mode · pembelajaran jarak jauh</span>
           <h1>Misi PJJ</h1>
         </div>
-        {onTampilanLama && <button type="button" className="gr-old" onClick={onTampilanLama}>Tampilan lama</button>}
       </div>
 
       <div className="gr-seg" role="tablist" aria-label="Pilih kelas" style={{ alignSelf: "flex-start" }}>
