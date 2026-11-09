@@ -1,45 +1,50 @@
 // Astrolab — Visual/presentational components
 // Extracted from App.jsx (Wave 1 Step 4)
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { I } from './icons';
 
+// ─── Api Kristal (Nov 2026) ───
+// 6 tingkat, naik tiap 10 hari, puncak di 50. Tiap tingkat: warna baru + detail tambahan
+// (kilau → cahaya → warna kosmik), jadi naik tingkat terasa. Angka TIDAK digambar di dalam api;
+// angka selalu ditulis di sebelah ikon oleh pemanggil.
+export const FLAME_TIERS = [
+  { min: 50, nama: "Kosmik",       kiri: ["#22d3ee", "#8b5cf6"], kanan: ["#7c3aed", "#db2777"], atas: ["#fde68a", "#f0abfc"], inti: "#fff7ed", kilau: "#fbbf24", cahaya: "rgba(217,70,239,.45)", nKilau: 3 },
+  { min: 40, nama: "Magenta",      kiri: ["#f9a8d4", "#ec4899"], kanan: ["#be185d", "#831843"], atas: ["#fce7f3", "#f9a8d4"], inti: "#fdf2f8", kilau: "#f472b6", cahaya: "rgba(236,72,153,.38)", nKilau: 2 },
+  { min: 30, nama: "Ungu",         kiri: ["#c4b5fd", "#8b5cf6"], kanan: ["#6d28d9", "#4c1d95"], atas: ["#ede9fe", "#c4b5fd"], inti: "#f5f3ff", kilau: "#a78bfa", cahaya: null, nKilau: 2 },
+  { min: 20, nama: "Biru listrik", kiri: ["#93c5fd", "#3b82f6"], kanan: ["#1d4ed8", "#1e3a8a"], atas: ["#dbeafe", "#93c5fd"], inti: "#eff6ff", kilau: "#60a5fa", cahaya: null, nKilau: 1 },
+  { min: 10, nama: "Cyan",         kiri: ["#67e8f9", "#06b6d4"], kanan: ["#0891b2", "#155e75"], atas: ["#cffafe", "#67e8f9"], inti: "#ecfeff", kilau: null, cahaya: null, nKilau: 0 },
+  { min: 0,  nama: "Biru muda",    kiri: ["#bae6fd", "#7dd3fc"], kanan: ["#38bdf8", "#0369a1"], atas: ["#f0f9ff", "#bae6fd"], inti: "#f0f9ff", kilau: null, cahaya: null, nKilau: 0 },
+];
 export function getFlameTheme(streak) {
-  // Skala energy: cyan light → cyan intense → violet → magenta plasma
-  if (streak >= 300) return { outer: ["#f0abfc","#c026d3","#6b21a8"], inner: ["#fdf4ff","#f0abfc"], text: "#fff", glow: "rgba(192,38,211,.55)" };
-  if (streak >= 200) return { outer: ["#e879f9","#9333ea","#4c1d95"], inner: ["#faf5ff","#e9d5ff"], text: "#fff", glow: "rgba(147,51,234,.5)" };
-  if (streak >= 100) return { outer: ["#c4b5fd","#7c3aed","#3730a3"], inner: ["#f5f3ff","#c4b5fd"], text: "#fff", glow: "rgba(124,58,237,.45)" };
-  if (streak >= 60)  return { outer: ["#67e8f9","#0891b2","#164e63"], inner: ["#ecfeff","#a5f3fc"], text: "#fff", glow: "rgba(6,182,212,.5)" };
-  if (streak >= 30)  return { outer: ["#8AF7FF","#00CFFF","#006CFF"], inner: ["#E8FFFF","#8AF7FF"], text: "#fff", glow: "rgba(0,207,255,.55)" };
-  if (streak >= 20)  return { outer: ["#a5f3fc","#22d3ee","#0e7490"], inner: ["#ecfeff","#a5f3fc"], text: "#0e7490", glow: "rgba(34,211,238,.45)" };
-  if (streak >= 10)  return { outer: ["#bef4fb","#67e8f9","#0891b2"], inner: ["#ecfeff","#bef4fb"], text: "#155e75", glow: "rgba(103,232,249,.4)" };
-  if (streak >= 7)   return { outer: ["#cffafe","#a5f3fc","#22d3ee"], inner: ["#ecfeff","#cffafe"], text: "#155e75", glow: "rgba(165,243,252,.4)" };
-  return              { outer: ["#e0f2fe","#7dd3fc","#0284c7"], inner: ["#f0f9ff","#e0f2fe"], text: "#075985", glow: "rgba(125,211,252,.35)" };
+  return FLAME_TIERS.find(t => (streak || 0) >= t.min) || FLAME_TIERS[FLAME_TIERS.length - 1];
 }
+const KILAU_POS = [[41, 6, 1], [6, 10, 0.75], [43, 36, 0.6]];
+const bintang = (x, y, k) => `M${x} ${y - 4 * k}l${1.1 * k} ${2.9 * k} ${2.9 * k} ${1.1 * k}-${2.9 * k} ${1.1 * k}L${x} ${y + 4 * k}l-${1.1 * k}-${2.9 * k}-${2.9 * k}-${1.1 * k} ${2.9 * k}-${1.1 * k}z`;
 export function FlameAnimated({ size = 44, streak = 1 }) {
   const t = getFlameTheme(streak);
-  const oid = `fo${streak}`, iid = `fi${streak}`;
-  const fs = streak >= 100 ? 9 : streak >= 10 ? 11 : 13;
-  const ty = Math.round(size * 0.73);
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const g = k => `fk${uid}${k}`;
+  const hidup = size >= 28;
   return (
-    <svg width={size} height={Math.round(size * 1.17)} viewBox="0 0 48 56" className="flame-animated">
+    <svg width={size} height={Math.round(size * 1.17)} viewBox="0 -4 48 56" className={`flame-animated${hidup ? " hidup" : ""}`} role="img" aria-label={`Api streak tingkat ${t.nama}`}>
       <defs>
-        <linearGradient id={oid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={t.outer[0]} />
-          <stop offset="60%" stopColor={t.outer[1]} />
-          <stop offset="100%" stopColor={t.outer[2]} />
-        </linearGradient>
-        <linearGradient id={iid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={t.inner[0]} />
-          <stop offset="100%" stopColor={t.inner[1]} />
-        </linearGradient>
+        <linearGradient id={g("l")} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.kiri[0]} /><stop offset="1" stopColor={t.kiri[1]} /></linearGradient>
+        <linearGradient id={g("r")} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.kanan[0]} /><stop offset="1" stopColor={t.kanan[1]} /></linearGradient>
+        <linearGradient id={g("t")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={t.atas[0]} /><stop offset="1" stopColor={t.atas[1]} /></linearGradient>
+        {t.cahaya && <radialGradient id={g("c")}><stop offset="0" stopColor={t.cahaya} /><stop offset="1" stopColor={t.cahaya} stopOpacity="0" /></radialGradient>}
       </defs>
-      {/* outer — 3-tip classic flame */}
-      <path d={`M24 2 C22 9,18 12,15 17 C12 21,11 25,13 29 C10 25,7 23,7 30 C7 41,15 53,24 54 C33 53,41 41,41 30 C41 23,38 25,35 29 C37 25,36 21,33 17 C30 12,26 9,24 2Z`} fill={`url(#${oid})`} />
-      {/* inner glow */}
-      <path className="flame-inner" d="M24 15 C22 20,19 24,19 30 C19 37,21 42,24 44 C27 42,29 37,29 30 C29 24,26 20,24 15Z" fill={`url(#${iid})`} opacity="0.85" />
-      {/* number */}
-      <text x="24" y="41" textAnchor="middle" fontFamily="DM Mono,monospace" fontWeight="700" fontSize={fs} fill={t.text} style={{ userSelect: "none" }}>{streak}</text>
+      {t.cahaya && <circle cx="24" cy="28" r="24" fill={`url(#${g("c")})`} />}
+      <path d="M24 2L13 17L8 30L14 42L24 47L24 23Z" fill={`url(#${g("l")})`} />
+      <path d="M24 2L35 17L40 30L34 42L24 47L24 23Z" fill={`url(#${g("r")})`} />
+      <path d="M24 2L13 17L24 23Z" fill={`url(#${g("t")})`} />
+      <path d="M24 2L35 17L24 23Z" fill={t.kiri[1]} opacity=".8" />
+      <path d="M24 23L30 32L24 43L18 32Z" fill={t.inti} />
+      <path d="M24 23L30 32L24 43Z" fill={t.kanan[0]} opacity=".28" />
+      {t.min >= 50 && <path d="M13 17L8 30L14 26Z M35 17L40 30L34 26Z" fill="#fff" opacity=".22" />}
+      {t.kilau && KILAU_POS.slice(0, t.nKilau).map(([x, y, k], i) => (
+        <path key={i} className="fk-kilau" style={{ animationDelay: `${i * 0.6}s` }} d={bintang(x, y, k)} fill={t.kilau} />
+      ))}
     </svg>
   );
 }

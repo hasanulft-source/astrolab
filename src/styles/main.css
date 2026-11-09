@@ -302,7 +302,13 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
   60% { transform: scale(1.4) rotate(180deg); opacity: 1; }
   100% { transform: scale(0.8) rotate(360deg); opacity: 0; }
 }
-.flame-animated{animation:flame-flicker 1.4s ease-in-out infinite;transform-origin:center bottom;}
+.flame-animated{display:inline-block;vertical-align:middle;flex:none}
+/* Api Kristal: "bernapas" pelan hanya di ukuran besar; kilau berkedip di semua ukuran ≥ tingkat 20 */
+.flame-animated.hidup{animation:fk-napas 2.4s ease-in-out infinite;transform-origin:50% 88%}
+@keyframes fk-napas{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+.flame-animated .fk-kilau{animation:fk-kilau 1.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes fk-kilau{0%,100%{opacity:.35;transform:scale(.7)}50%{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){.flame-animated.hidup,.flame-animated .fk-kilau{animation:none}}
 .flame-inner{animation:flame-glow 1.4s ease-in-out infinite;}
 .podium-1{animation:podium-glow 2s ease-in-out infinite;}
 
