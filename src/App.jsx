@@ -22,7 +22,7 @@ import { BerandaSiswa, DaftarTugasSiswa, DetailTugasSiswa, ReviewTugasSiswa, Has
 import { RankingScreen } from './pages/ranking';
 import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
-import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat, KelasV2, BadgeGuruV2, ProfilGuruV2, MisiGuruV2 } from './pages/guru';
+import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat, KelasV2, BadgeGuruV2, ProfilGuruV2, MisiGuruV2, TempelNilaiModal } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 
 // ─── FIREBASE CONFIG ───
@@ -6721,6 +6721,7 @@ function NilaiAkhirPage({ store }) {
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // rows hasil parse, nunggu konfirmasi
+  const [tempel, setTempel] = useState(false); // modal tempel nilai (mis. SAS dari CBT)
   const [toast, setToast] = useState("");
 
   const siswaList = store.getAllSiswa(jenjang);
@@ -6884,6 +6885,9 @@ function NilaiAkhirPage({ store }) {
         <button className="btn btn-soft btn-sm" onClick={handleDownloadTemplate} disabled={downloading}>
           <I n="download" s={12} /> {downloading ? "Menyiapkan..." : "Download Template"}
         </button>
+        <button className="btn btn-soft btn-sm" onClick={() => setTempel(true)} title="Tempel nama + nilai dari Excel CBT atau file lain">
+          <I n="list" s={12} /> Tempel Nilai
+        </button>
         <label className="btn btn-soft btn-sm" style={{ cursor: "pointer", margin: 0 }}>
           <I n="upload" s={12} /> Import Excel
           <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => handleImportFile(e.target.files[0], () => { e.target.value = ""; })} />
@@ -6893,6 +6897,7 @@ function NilaiAkhirPage({ store }) {
         </button>
       </div>
 
+      {tempel && <TempelNilaiModal store={store} mapel={mapel} jenjang={jenjang} periode={periode} siswaList={siswaList} kolomSumatif={babKolom} kolomKuis={kuisKolom} onClose={() => setTempel(false)} onSelesai={m => { setTempel(false); showToast(m); }} />}
       {siswaList.length === 0 ? (
         <Card><div className="empty">Belum ada siswa di kelas {jenjang}.</div></Card>
       ) : (

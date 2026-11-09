@@ -2224,3 +2224,184 @@ export function MisiGuruV2({ store, onTampilanLama }) {
     </div>
   );
 }
+
+// ─── TEMPEL NILAI (SAS dari CBT, dll.) ───────────────────────────────────────
+// Guru copy 2+ kolom (nama … nilai) dari file apa pun lalu tempel. Tidak bergantung format ekspor CBT.
+// Penyimpanan lewat store.bulkImportNilaiAkhir yang sudah ada (atomik, poin ikut aturan nilai manual).
+const SINGKATAN = { m: "muhammad", muh: "muhammad", moh: "muhammad", muhd: "muhammad", mhd: "muhammad", mohd: "muhammad", moch: "muhammad", mochammad: "muhammad", mohammad: "muhammad", muhamad: "muhammad", muhammmad: "muhammad", nur: "nur", siti: "siti", st: "siti" };
+export function normNama(s) {
+  return String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z\s.]/g, " ").replace(/\./g, " ").split(/\s+/).filter(Boolean)
+    .map(t => SINGKATAN[t] || t).join(" ");
+}
+const bigram = s => { const a = new Map(), t = ` ${s} `; for (let i = 0; i < t.length - 1; i++) { const g = t.slice(i, i + 2); a.set(g, (a.get(g) || 0) + 1); } return a; };
+function dice(a, b) {
+  if (!a || !b) return 0; if (a === b) return 1;
+  const A = bigram(a), B = bigram(b); let sama = 0, n = 0;
+  A.forEach((v, g) => { sama += Math.min(v, B.get(g) || 0); n += v; }); B.forEach(v => { n += v; });
+  return (2 * sama) / n;
+}
+// Skor kemiripan 0–1. Token persis + bigram, plus pengecekan "semua token pendek ada di yang panjang"
+// (CBT sering memotong nama: "Naila Fatin" vs "Naila Fatin Zahira").
+export function skorNama(a, b) {
+  const x = normNama(a), y = normNama(b);
+  if (!x || !y) return 0; if (x === y) return 1;
+  const tx = x.split(" "), ty = y.split(" ");
+  const [pendek, panjang] = tx.length <= ty.length ? [tx, ty] : [ty, tx];
+  const subset = pendek.every(t => panjang.some(u => u === t || (t.length === 1 && u[0] === t)));
+  return Math.max(dice(x, y), subset && pendek.length >= 2 ? 0.9 : subset ? 0.7 : 0);
+}
+const angkaSel = c => { const v = String(c || "").trim().replace(",", "."); return /^\d{1,3}(\.\d+)?$/.test(v) ? Number(v) : null; };
+const hurufSel = c => String(c || "").replace(/[^a-z]/gi, "").length;
+const bukanNama = c => /^(vii|viii|ix|kelas|l|p)\b/i.test(String(c).trim()) || /^[\d\s./-]+$/.test(String(c).trim());
+// Dua mode: (1) tabel dari Excel (ada tab) → kolom nilai & nama ditentukan per KOLOM, bukan per baris,
+// supaya sel nilai yang kosong tidak diam-diam mengambil angka dari kolom lain (mis. "Benar");
+// (2) teks bebas "Nama 85" / "Nama; 85" per baris.
+export function parseTempelNilai(teks) {
+  const lines = String(teks || "").split(/\r?\n/).map((l, i) => ({ l, i })).filter(x => x.l.trim());
+  if (!lines.length) return [];
+  if (lines.some(x => x.l.includes("\t"))) {
+    const rows = lines.map(x => ({ no: x.i + 1, c: x.l.split("\t").map(v => v.trim()) }));
+    const lebar = Math.max(...rows.map(r => r.c.length));
+    const head = rows.findIndex(r => r.c.some(c => /^(nama|nilai|skor|score|total|nilai akhir)/i.test(c)) && !r.c.some(c => angkaSel(c) != null));
+    const data = head >= 0 ? rows.slice(head + 1) : rows.filter(r => r.c.some(c => angkaSel(c) != null) || r.c.length > 1);
+    let kN = -1, kA = -1;
+    if (head >= 0) {
+      const h = rows[head].c;
+      h.forEach((c, k) => { if (/(nilai|skor|score|total)/i.test(c)) kN = k; });
+      kA = h.findIndex(c => /nama/i.test(c));
+    }
+    if (kN < 0) { // kolom paling kanan yang angkanya muncul di ≥60% baris
+      for (let k = lebar - 1; k >= 0; k--) { const n = data.filter(r => angkaSel(r.c[k]) != null).length; if (n >= Math.max(1, data.length * 0.6)) { kN = k; break; } }
+    }
+    if (kA < 0) { let best = -1; for (let k = 0; k < lebar; k++) { if (k === kN) continue; const h = data.reduce((a, r) => a + (bukanNama(r.c[k] || "1") ? 0 : hurufSel(r.c[k])), 0); if (h > best) { best = h; kA = k; } } }
+    return data.map(r => {
+      const nama = (r.c[kA] || "").trim(); if (!nama || !/[a-z]{2,}/i.test(nama)) return null;
+      const mentah = r.c[kN] ?? "", nilai = angkaSel(mentah);
+      if (nilai == null) return { baris: r.no, nama, nilai: null, galat: mentah ? "Nilai tidak terbaca" : "Nilai kosong" };
+      return { baris: r.no, nama, nilai, galat: nilai > 100 ? "Nilai di luar 0–100" : null };
+    }).filter(Boolean);
+  }
+  const hasil = [];
+  lines.forEach(({ l, i }) => {
+    const t = l.trim();
+    const m = t.match(/^(?:\d+[.)]?\s+)?(.*?[a-zA-Z].*?)\s*(?:[;,]|\s)\s*(\d{1,3}(?:[.,]\d+)?)$/);
+    if (!m) { if (hasil.length && /[a-z]{2,}/i.test(t)) hasil.push({ baris: i + 1, nama: t.replace(/^\d+[.)]?\s+/, ""), nilai: null, galat: "Nilai kosong" }); return; }
+    const nilai = Number(m[2].replace(",", "."));
+    hasil.push({ baris: i + 1, nama: m[1].replace(/[;,]$/, "").trim(), nilai, galat: nilai > 100 ? "Nilai di luar 0–100" : null });
+  });
+  return hasil;
+}
+export function cocokkanTempel(baris, siswaList) {
+  return baris.map(b => {
+    const kandidat = siswaList.map(s => ({ s, skor: skorNama(b.nama, s.nama) })).sort((p, q) => q.skor - p.skor);
+    const [k1, k2] = kandidat;
+    const yakin = k1 && k1.skor >= 0.86 && (!k2 || k1.skor - k2.skor >= 0.08);
+    const mungkin = k1 && k1.skor >= 0.6;
+    return { ...b, siswaId: yakin || mungkin ? k1.s.id : "", status: yakin ? (k1.skor === 1 ? "pas" : "mirip") : mungkin ? "cek" : "tidak" };
+  });
+}
+
+export function TempelNilaiModal({ store, mapel, jenjang, periode, siswaList, kolomSumatif = [], kolomKuis = [], onClose, onSelesai }) {
+  const [target, setTarget] = useState("uas");
+  const [teks, setTeks] = useState("");
+  const [baris, setBaris] = useState(null); // hasil pencocokan, bisa diedit
+  const [sibuk, setSibuk] = useState(false);
+  const [galat, setGalat] = useState("");
+  const pilihan = [["uas", "SAS"], ["uts", "STS"], ["asesmenLanjutan", "Asesmen Lanjutan"], ["portofolio", "Portofolio"],
+    ...kolomSumatif.map(k => [`sumatif:${k}`, `Sumatif · ${k}`]), ...kolomKuis.map(k => [`kuis:${k}`, `Kuis · ${k}`])];
+  const labelTarget = (pilihan.find(p => p[0] === target) || [])[1];
+  const nilaiLama = id => {
+    const r = store.getNilaiAkhirRecord(id, mapel, jenjang, periode);
+    if (target.startsWith("sumatif:")) return (r.sumatif || {})[target.slice(8)];
+    if (target.startsWith("kuis:")) return (r.kuis || {})[target.slice(5)];
+    return r[target];
+  };
+  function periksa() {
+    const p = parseTempelNilai(teks);
+    if (!p.length) { setGalat("Tidak ada baris yang terbaca. Pastikan tiap baris berisi nama dan nilai."); return; }
+    setGalat(""); setBaris(cocokkanTempel(p, siswaList));
+  }
+  const nama = Object.fromEntries(siswaList.map(s => [s.id, s.nama]));
+  const hitungId = {}; (baris || []).forEach(b => { if (b.siswaId && !b.galat) hitungId[b.siswaId] = (hitungId[b.siswaId] || 0) + 1; });
+  const siap = (baris || []).filter(b => b.siswaId && !b.galat && hitungId[b.siswaId] === 1);
+  const ganda = (baris || []).filter(b => b.siswaId && hitungId[b.siswaId] > 1).length;
+  const tanpa = (baris || []).filter(b => !b.siswaId && !b.galat).length;
+  const belum = siswaList.filter(s => !hitungId[s.id]);
+  const rendah = baris && baris.length >= 5 && baris.filter(b => b.status === "pas" || b.status === "mirip").length / baris.length < 0.5;
+  const gantiSiswa = (i, id) => setBaris(bs => bs.map((b, k) => k === i ? { ...b, siswaId: id, status: id ? "manual" : "tidak" } : b));
+
+  async function simpan() {
+    setSibuk(true); setGalat("");
+    const rows = siap.map(b => {
+      const r = { siswaId: b.siswaId, uts: null, uas: null, portofolio: null, sumatif: {}, kuis: {} };
+      if (target.startsWith("sumatif:")) r.sumatif = { [target.slice(8)]: b.nilai };
+      else if (target.startsWith("kuis:")) r.kuis = { [target.slice(5)]: b.nilai };
+      else r[target] = b.nilai;
+      return r;
+    });
+    try { const n = await withTimeout(store.bulkImportNilaiAkhir(rows, mapel, jenjang, periode)); onSelesai(`${n} nilai ${labelTarget} tersimpan.`); }
+    catch (e) { setGalat("Gagal menyimpan: " + (e?.message || "cek koneksi")); setSibuk(false); }
+  }
+
+  const STATUS = { pas: ["Cocok", "teal"], mirip: ["Mirip", "teal"], cek: ["Cek lagi", "amber"], manual: ["Dipilih", "soft"], tidak: ["Tidak cocok", "muted"] };
+  return (
+    <div className="modal-overlay" onClick={() => !sibuk && onClose()}>
+      <div className="modal gr-tn" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-tn-j">
+        <h3 id="gr-tn-j">Tempel nilai</h3>
+        <p className="gr-tn-konteks"><b>{mapel} · Kelas {jenjang}</b> · {periode}</p>
+        <label className="gr-tn-target"><span>Masukkan ke</span>
+          <select className="inp" value={target} disabled={sibuk} onChange={e => setTarget(e.target.value)}>{pilihan.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        </label>
+        {!baris ? (
+          <>
+            <textarea className="inp gr-tn-teks" rows={9} value={teks} onChange={e => setTeks(e.target.value)} autoFocus
+              placeholder={"Copy kolom nama sampai kolom nilai dari Excel hasil CBT, lalu tempel di sini.\n\nContoh:\n1\tAldi Firmansyah\tVII-3\t82\n2\tDara Puspita\tVII-3\t90,5"} />
+            <p className="gr-muted gr-tn-ket">Boleh ikut kolom nomor, NIS, kelas, atau jumlah benar. Ikutkan baris judul kolom supaya kolom Nilai dan Nama terdeteksi pasti; tanpa judul, kolom nilai diambil dari kolom angka paling kanan.</p>
+            {galat && <p className="gr-warn" role="alert">{galat}</p>}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>Batal</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={!teks.trim()} onClick={periksa}>Periksa</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="gr-tn-ring">
+              <span><b>{siap.length}</b> siap disimpan</span>
+              {siap.some(b => b.status === "cek") && <span className="w"><b>{siap.filter(b => b.status === "cek").length}</b> perlu dicek namanya</span>}
+              {tanpa > 0 && <span className="w"><b>{tanpa}</b> belum dipasangkan</span>}
+              {ganda > 0 && <span className="w"><b>{ganda}</b> baris ganda</span>}
+              {belum.length > 0 && <span><b>{belum.length}</b> siswa tanpa nilai</span>}
+            </div>
+            {rendah && <p className="gr-warn">Sebagian besar nama tidak cocok. Pastikan data yang ditempel memang Kelas {jenjang}.</p>}
+            <div className="gr-tn-list">
+              {baris.map((b, i) => {
+                const lama = b.siswaId ? nilaiLama(b.siswaId) : null;
+                const dobel = b.siswaId && hitungId[b.siswaId] > 1;
+                const [lbl, tone] = b.galat ? [b.galat, "amber"] : dobel ? ["Ganda", "amber"] : STATUS[b.status];
+                return (
+                  <div key={i} className={`gr-tn-row ${b.galat || dobel || !b.siswaId ? "bermasalah" : ""}`}>
+                    <span className="gr-tn-asal" title={`Baris ${b.baris}`}>{b.nama}</span>
+                    <select className="inp" value={b.siswaId} onChange={e => gantiSiswa(i, e.target.value)} aria-label={`Pasangkan ${b.nama}`}>
+                      <option value="">— pilih siswa —</option>
+                      {siswaList.map(s => <option key={s.id} value={s.id}>{s.nama}</option>)}
+                    </select>
+                    <span className="gr-tn-nilai">{typeof lama === "number" && lama !== b.nilai && <s>{lama}</s>}<b>{b.nilai ?? "–"}</b></span>
+                    <span className={`gr-chip ${tone}`}>{lbl}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {belum.length > 0 && <details className="gr-tn-belum"><summary>{belum.length} siswa Kelas {jenjang} tidak ada di data yang ditempel</summary><p>{belum.map(s => s.nama).join(", ")}</p></details>}
+            <p className="gr-muted gr-tn-ket">Nilai yang dicoret adalah nilai lama yang akan diganti. Baris ganda, belum dipasangkan, atau bermasalah tidak ikut disimpan. Poin siswa ikut aturan nilai manual.</p>
+            {galat && <p className="gr-warn" role="alert">{galat}</p>}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline btn-sm" disabled={sibuk} onClick={() => setBaris(null)}>Ubah teks</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={!siap.length || sibuk} onClick={simpan}>{sibuk ? "Menyimpan…" : `Simpan ${siap.length} nilai ${labelTarget}`}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -576,3 +576,32 @@
   .gr-mi-sesi>div{grid-area:t}.gr-mi-sesi>span:nth-of-type(1){grid-area:h}.gr-mi-sesi>span:nth-of-type(2){grid-area:l}
   .gr-mi-simpan{flex-wrap:wrap}.gr-mi-simpan span{flex-basis:100%}
 }
+
+/* Tempel nilai */
+.modal.gr-tn{max-width:640px;max-height:92vh;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.gr-tn-konteks{margin:-4px 0 0;font-size:13px;color:var(--ink-3)}
+.gr-tn-konteks b{color:var(--accent-2)}
+.gr-tn-target{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.gr-tn-target select{flex:1;max-width:280px}
+.gr-tn-teks{font-family:var(--mono);font-size:12.5px;line-height:1.6;resize:vertical;min-height:170px}
+.gr-tn-ket{font-size:12px;line-height:1.5;margin:0}
+.gr-tn-ring{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--ink-3)}
+.gr-tn-ring b{color:var(--ink);font-size:14px}
+.gr-tn-ring .w b{color:#8A4208}
+.gr-tn-list{flex:1;min-height:120px;overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px}
+.gr-tn-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) 64px 86px;align-items:center;gap:10px;padding:7px 10px}
+.gr-tn-row+.gr-tn-row{border-top:1px solid var(--line-soft)}
+.gr-tn-row.bermasalah{background:#FFF8EC}
+.gr-tn-asal{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.gr-tn-row select{height:32px;font-size:12.5px;padding:0 8px;min-width:0}
+.gr-tn-nilai{display:flex;align-items:baseline;justify-content:flex-end;gap:6px;font-variant-numeric:tabular-nums}
+.gr-tn-nilai b{font-size:14px}
+.gr-tn-nilai s{font-size:12px;color:var(--ink-4)}
+.gr-tn-row .gr-chip{justify-self:end}
+.gr-tn-belum{font-size:12.5px;color:var(--ink-2)}
+.gr-tn-belum summary{cursor:pointer;font-weight:600}
+.gr-tn-belum p{margin:6px 0 0;line-height:1.55;color:var(--ink-3)}
+@media(max-width:600px){
+  .gr-tn-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"asal nilai" "pilih chip";row-gap:5px}
+  .gr-tn-asal{grid-area:asal}.gr-tn-nilai{grid-area:nilai}.gr-tn-row select{grid-area:pilih}.gr-tn-row .gr-chip{grid-area:chip}
+}
