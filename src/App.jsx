@@ -11,7 +11,9 @@ import "./styles/main.css";
 import { I } from './components/icons';
 import { shuffle, fmtDl, uid, compressImage, getPeriodeAktif, getPeriodeOptions, withTimeout, fuzzyMatchText, genSiswaId, getFirstName, genPassword } from './utils/helpers';
 import { Avatar, Confirm, LogoBold, Card } from './components/visual';
-import { ALL_BADGES, checkAutoBadges } from './components/gamification';
+import { ALL_BADGES, checkAutoBadges, getLevel, TIERS } from './components/gamification';
+import { hitungRekapKelas, kunciPeriode } from './utils/rekap-hitung';
+import { RekapStory, RekapGuruPanel, RekapOtomatis } from './pages/rekap';
 import { downloadTemplateSandbox, importSandboxFromExcel, downloadTemplateSoal, downloadTemplateNilaiAkhir, exportRekapNilaiAkhir, importSoalFromExcel, parseNilaiAkhirExcel, exportLatihanSoal } from './utils/excel';
 import { ChatScreen } from './pages/chat';
 import { LatihanMandiri, MateriGuruV2 } from './pages/materi';
@@ -1956,6 +1958,70 @@ function useStore() {
   }, [currentUser?.role]);
   const isMateriDoneFor = (siswaId, materiId) => !!(missionMateriDoneAll[siswaId] && missionMateriDoneAll[siswaId][materiId]);
 
+  // ─── REKAP SEMESTER ───
+  // rekap/{siswaId}/{kunciPeriode} = snapshot beku (dibuat guru saat Terbitkan, lihat utils/rekap-hitung.js).
+  // Guru me-listen seluruh node, siswa hanya miliknya sendiri (rules). Siswa hanya boleh menulis dilihatAt.
+  const [rekapData, setRekapData] = useState({});
+  useEffect(() => {
+    if (!currentUser?.id) { setRekapData({}); return; }
+    const path = currentUser.role === "guru" ? "rekap" : `rekap/${currentUser.id}`;
+    const u = onValue(ref(db, path), snap => setRekapData(snap.val() || {}), () => setRekapData({}));
+    return () => u();
+  }, [currentUser?.id, currentUser?.role]);
+  const getRekapSaya = () => (currentUser?.role === "guru" ? {} : rekapData);
+  const getRekapSemua = () => (currentUser?.role === "guru" ? rekapData : {});
+  const tandaiRekapDilihat = async (pk) => {
+    if (!currentUser?.id || currentUser.role === "guru") return;
+    await set(ref(db, `rekap/${currentUser.id}/${pk}/dilihatAt`), Date.now());
+  };
+  const levelRekap = (poin) => {
+    const lv = getLevel(poin || 0);
+    return { nama: lv.tierName, sub: String(lv.name || "").split(" ").slice(1).join(" "), tier: Math.max(0, TIERS.findIndex(t => t.id === lv.tierId)) };
+  };
+  const MAPEL_JENJANG = j => (j === "VII" ? ["IPA", "Informatika"] : ["IPA"]);
+  const hitungRekap = (jenjang, periode = getActivePeriode()) => hitungRekapKelas({
+    periode,
+    siswa: getAllSiswa(jenjang).map(s => ({ id: s.id, nama: s.nama, jenjang: s.jenjang, kelas: s.kelas || "" })),
+    tugas: tugas,
+    subs: subsLive.current.length ? subsLive.current : subs,
+    stats: { ...stats, ...statsLive.current },
+    badges: badgesData,
+    namaBadge: id => ALL_BADGES.find(b => b.id === id)?.name || null,
+    nilaiAkhir: sid => MAPEL_JENJANG(jenjang).map(m => { const r = getNilaiAkhirRecord(sid, m, jenjang, periode); return { mapel: m, sts: r.uts, sas: r.uas }; }),
+    materiSelesai: sid => Object.values(missionMateriDoneAll[sid] || {}).filter(Boolean).length,
+    level: levelRekap,
+  });
+  // Status per kelas untuk panel guru di Nilai Akhir
+  const statusRekap = (jenjang) => {
+    const periode = getActivePeriode(), pk = kunciPeriode(periode), list = getAllSiswa(jenjang);
+    const mapel = MAPEL_JENJANG(jenjang);
+    const kurang = list.filter(s => mapel.some(m => typeof getNilaiAkhirRecord(s.id, m, jenjang, periode).uas !== "number"));
+    const snap = list.map(s => rekapData[s.id]?.[pk]).filter(Boolean);
+    return {
+      jenjang, jumlah: list.length, sasLengkap: list.length - kurang.length, sasKurang: kurang.map(s => s.nama),
+      terbitAt: snap.length ? Math.min(...snap.map(r => r.terbitAt || Date.now())) : null,
+      dilihat: snap.filter(r => r.dilihatAt).length, jumlahRekap: snap.length,
+    };
+  };
+  const terbitkanRekap = async (jenjang, ulang = false) => {
+    const periode = getActivePeriode(), pk = kunciPeriode(periode);
+    const { hasil } = hitungRekap(jenjang, periode);
+    const now = Date.now(), patch = {};
+    for (const [sid, r] of Object.entries(hasil)) {
+      const lama = rekapData[sid]?.[pk];
+      // JSON round-trip membuang undefined (Firebase menolak undefined)
+      patch[`rekap/${sid}/${pk}`] = JSON.parse(JSON.stringify({ ...r, terbitAt: (ulang && lama?.terbitAt) || now, dihitungAt: now, dilihatAt: lama?.dilihatAt || null }));
+    }
+    if (ulang) getAllSiswa(jenjang).forEach(s => { if (!hasil[s.id] && rekapData[s.id]?.[pk]) patch[`rekap/${s.id}/${pk}`] = null; });
+    if (Object.keys(patch).length) await update(ref(db), patch);
+    return Object.keys(hasil).length;
+  };
+  const tarikRekap = async (jenjang) => {
+    const pk = kunciPeriode(getActivePeriode()), patch = {};
+    getAllSiswa(jenjang).forEach(s => { if (rekapData[s.id]?.[pk]) patch[`rekap/${s.id}/${pk}`] = null; });
+    if (Object.keys(patch).length) await update(ref(db), patch);
+  };
+
   // Kehadiran: /missionAttendance/{jenjang}/{sessionId}/{siswaId} = { nama, selesaiWajib, totalWajib, lengkap, waktu }
   const [missionAttendance, setMissionAttendance] = useState({});
   useEffect(() => {
@@ -1984,7 +2050,7 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, getRekapSaya, getRekapSemua, tandaiRekapDilihat, hitungRekap, statusRekap, terbitkanRekap, tarikRekap, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -5111,6 +5177,7 @@ function NilaiAkhirPage({ store }) {
   const [exporting, setExporting] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // rows hasil parse, nunggu konfirmasi
   const [tempel, setTempel] = useState(false); // modal tempel nilai (mis. SAS dari CBT)
+  const [pratinjauRekap, setPratinjauRekap] = useState(null); // { daftar:[snapshot], pilih: snapshot|null }
   const [toast, setToast] = useState("");
 
   const siswaList = store.getAllSiswa(jenjang);
@@ -5286,6 +5353,32 @@ function NilaiAkhirPage({ store }) {
         </button>
       </div>
 
+      <div style={{ marginBottom: 14 }}>
+        <RekapGuruPanel
+          periode={store.getActivePeriode()}
+          kelas={["VII", "VIII"].map(j => ({ ...store.statusRekap(j), label: `Kelas ${j}` }))}
+          onPratinjau={async j => { const { hasil } = store.hitungRekap(j); const daftar = Object.values(hasil).sort((a, b) => String(a.nama).localeCompare(String(b.nama), "id")); if (!daftar.length) throw new Error(`belum ada siswa Kelas ${j} yang mengumpulkan tugas semester ini`); setPratinjauRekap({ daftar, pilih: null }); }}
+          onTerbitkan={async (j, ulang) => { const n = await store.terbitkanRekap(j, ulang); showToast(`Rekap ${n} siswa Kelas ${j} ${ulang ? "dihitung ulang" : "diterbitkan"}.`); }}
+          onTarik={async j => { await store.tarikRekap(j); showToast(`Rekap Kelas ${j} ditarik.`); }}
+        />
+      </div>
+      {pratinjauRekap && !pratinjauRekap.pilih && (
+        <div className="modal-overlay" onClick={() => setPratinjauRekap(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="pr-j" style={{ maxWidth: 420 }}>
+            <h3 id="pr-j">Pratinjau rekap siswa</h3>
+            <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: -4 }}>Dihitung dari data sekarang. Belum disimpan dan belum terlihat siswa.</p>
+            <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid var(--line-soft)", borderRadius: 10 }}>
+              {pratinjauRekap.daftar.map(r => (
+                <button key={r.id} type="button" onClick={() => setPratinjauRekap(p => ({ ...p, pilih: r }))} style={{ all: "unset", cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 10, width: "100%", boxSizing: "border-box", padding: "10px 14px", borderBottom: "1px solid var(--line-soft)", fontSize: 13.5 }}>
+                  <b style={{ fontWeight: 600 }}>{r.nama}</b><span style={{ color: "var(--accent)", fontWeight: 700, fontSize: 12.5 }}>{r.gelar?.nama}</span>
+                </button>
+              ))}
+            </div>
+            <div className="modal-actions"><button type="button" className="btn btn-outline btn-sm" onClick={() => setPratinjauRekap(null)}>Tutup</button></div>
+          </div>
+        </div>
+      )}
+      {pratinjauRekap?.pilih && <RekapStory data={pratinjauRekap.pilih} onTutup={() => setPratinjauRekap(p => ({ ...p, pilih: null }))} />}
       {tempel && <TempelNilaiModal store={store} mapel={mapel} jenjang={jenjang} periode={periode} siswaList={siswaList} kolomSumatif={babKolom} kolomKuis={kuisKolom} onClose={() => setTempel(false)} onSelesai={m => { setTempel(false); showToast(m); }} />}
       {siswaList.length === 0 ? (
         <Card><div className="empty">Belum ada siswa di kelas {jenjang}.</div></Card>
@@ -6280,6 +6373,7 @@ function AppInner() {
         <footer className="footer">Our Classroom · <b>© 2026 M. Hasanul Fatta</b> — All rights reserved</footer>
         {!hideNav && <BottomNav user={user} route={route} navigate={navigate} store={store} />}
       </div>}
+    {user && user.role !== "guru" && <RekapOtomatis store={store} tahan={showPushPrompt || route === "kerjakan"} />}
     <NotifToastContainer notifs={notifs} onDismiss={dismissNotif} />
     {/* Push notification permission prompt — shows every login until allowed */}
     {showPushPrompt && (

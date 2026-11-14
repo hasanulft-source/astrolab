@@ -1,0 +1,147 @@
+/* ─── Rekap Semester ─── (prefix rp-) */
+.rp-overlay{position:fixed;inset:0;z-index:1000;background:#020E12;display:grid;place-items:center;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+.rp-layar{position:relative;width:100%;height:100%;max-width:440px;max-height:900px;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation;cursor:pointer;background:#02141A;isolation:isolate;color:#fff;font-family:"Plus Jakarta Sans",system-ui,sans-serif}
+@media (min-width:480px) and (min-height:700px){.rp-layar{height:min(900px,calc(100vh - 40px));aspect-ratio:9/18;width:auto;border-radius:28px;box-shadow:0 0 0 1px rgba(255,255,255,.08),0 40px 90px rgba(0,0,0,.6),0 0 80px rgba(20,163,184,.18)}}
+.rp-langit{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+.rp-tint{position:absolute;inset:0;z-index:1;transition:background .8s ease;pointer-events:none}
+.rp-isi [hidden]{display:none!important}
+.rp-bar{position:absolute;left:12px;right:12px;top:12px;z-index:5;display:flex;gap:4px}
+.rp-bar i{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.25);overflow:hidden}
+.rp-bar b{display:block;height:100%;width:0;background:#fff;box-shadow:0 0 6px #fff}
+.rp-kepala{position:absolute;left:14px;right:8px;top:22px;z-index:6;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.85)}
+.rp-kepala span{margin-left:auto;font-family:"DM Mono",monospace;letter-spacing:.05em;opacity:.7}
+.rp-tutup{all:unset;cursor:pointer;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;font-size:14px;color:#fff;background:rgba(255,255,255,.1)}
+.rp-tutup:focus-visible,.rp-btn:focus-visible{outline:2px solid #8FD1CF;outline-offset:2px}
+.rp-kartu{position:absolute;inset:0;z-index:3;padding:84px 24px 44px;display:flex;flex-direction:column;justify-content:center;gap:14px;overflow:hidden}
+.rp-kartu h2{margin:0;font-size:28px;line-height:1.12;letter-spacing:-.025em;text-wrap:balance;color:#fff}
+.rp-kartu p{margin:0;font-size:14.5px;line-height:1.5;color:rgba(255,255,255,.82)}
+.rp-lbl{font-family:"DM Mono",monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--aksen,#8FD1CF)}
+.rp-angka{font-size:120px;font-weight:800;line-height:.82;letter-spacing:-.06em;font-variant-numeric:tabular-nums;background:linear-gradient(180deg,#fff 30%,var(--aksen,#8FD1CF));-webkit-background-clip:text;background-clip:text;color:transparent}
+.rp-angka small{font-size:24px;letter-spacing:-.01em;-webkit-text-fill-color:#fff;margin-left:6px}
+.rp-chip{align-self:flex-start;display:inline-flex;padding:8px 13px;border-radius:99px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);font-size:13px;font-weight:700}
+.rp-tap{position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.5);z-index:5;pointer-events:none}
+.rp-kartu.on .m{animation:rp-masuk .75s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d,0s)}
+.rp-kartu.on .m.z{animation-name:rp-zoom}
+.rp-kartu.on .m.slam{animation:rp-slam .6s cubic-bezier(.3,1.6,.5,1) both;animation-delay:var(--d,0s)}
+@keyframes rp-masuk{from{opacity:0;transform:translateY(26px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@keyframes rp-zoom{from{opacity:0;transform:scale(.3) rotate(-12deg)}to{opacity:1;transform:none}}
+@keyframes rp-slam{from{opacity:0;transform:scale(2.2)}to{opacity:1;transform:none}}
+@keyframes rp-mekar{from{transform:scale(0);opacity:0}}
+/* intro */
+.rp-season{font-size:13px;font-weight:800;letter-spacing:.28em;text-transform:uppercase;color:#8FD1CF;text-align:center}
+.rp-judul{font-size:58px;font-weight:800;line-height:.9;letter-spacing:-.05em;text-transform:uppercase;text-align:center}
+.rp-judul em{font-style:normal;display:block;background:linear-gradient(90deg,#8FD1CF,#F5B544);-webkit-background-clip:text;background-clip:text;color:transparent}
+.rp-logo-intro{align-self:center;filter:drop-shadow(0 0 30px rgba(143,209,207,.6))}
+.rp-mulai{align-self:center;margin-top:10px;padding:12px 22px;border-radius:99px;border:1.5px solid rgba(143,209,207,.6);font-size:12px;font-weight:800;letter-spacing:.2em;text-transform:uppercase}
+.rp-kartu.on .rp-mulai{animation:rp-masuk .75s both 1.3s,rp-denyut 1.8s ease-in-out infinite 2s}
+@keyframes rp-denyut{50%{box-shadow:0 0 0 8px rgba(143,209,207,.12),0 0 24px rgba(143,209,207,.4)}}
+/* jam */
+.rp-jam{width:190px;height:190px;align-self:center;overflow:visible}
+.rp-kartu.on .rp-jam .busur{animation:rp-gores 1.4s cubic-bezier(.3,.7,.2,1) both .3s;filter:drop-shadow(0 0 6px currentColor)}
+@keyframes rp-gores{from{stroke-dashoffset:var(--pj)}}
+/* api */
+.rp-api{align-self:center;position:relative}
+.rp-api::after{content:"";position:absolute;inset:20% 10% -10%;background:radial-gradient(closest-side,var(--aksen),transparent);filter:blur(18px);opacity:.7;z-index:-1}
+.rp-kartu.on .rp-api svg{animation:rp-napas 2.2s ease-in-out infinite 1s}
+@keyframes rp-napas{50%{transform:scale(1.06) translateY(-4px)}}
+/* emblem */
+.rp-emblem{position:relative;height:200px;display:grid;place-items:center}
+.rp-emblem>div{position:absolute;display:flex;flex-direction:column;align-items:center;gap:10px}
+.rp-emblem b{font-size:16px;letter-spacing:.06em;text-transform:uppercase}
+.rp-kartu.on .rp-emblem .lama{animation:rp-keluar 1s ease both 1.2s}
+.rp-kartu.on .rp-emblem .baru{animation:rp-naikRank 1.1s cubic-bezier(.3,1.5,.5,1) both 1.9s}
+@keyframes rp-keluar{to{opacity:0;transform:scale(.6) translateY(30px);filter:blur(6px)}}
+@keyframes rp-naikRank{from{opacity:0;transform:scale(.3) translateY(-30px)}to{opacity:1;transform:none}}
+.rp-naik{align-self:center;font-family:"DM Mono",monospace;font-size:12px;letter-spacing:.2em;color:#F5B544;text-transform:uppercase}
+/* badge */
+.rp-badge{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 10px}
+.rp-badge div{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;font-weight:700;text-align:center}
+.rp-badge svg{filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
+/* delta */
+.rp-delta{display:flex;align-items:flex-end;gap:20px;height:170px}
+.rp-delta div{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%}
+.rp-delta i{display:block;width:100%;border-radius:14px 14px 4px 4px;background:rgba(255,255,255,.18);height:var(--h);border:1px solid rgba(255,255,255,.2)}
+.rp-delta div:last-child i{background:linear-gradient(180deg,#fff,var(--aksen))}
+.rp-kartu.on .rp-delta i{animation:rp-tumbuh 1.1s cubic-bezier(.2,.8,.2,1) both var(--d);transform-origin:bottom}
+@keyframes rp-tumbuh{from{transform:scaleY(0)}}
+.rp-delta b{font-size:30px;font-weight:800}
+.rp-delta span{font-family:"DM Mono",monospace;font-size:11px;opacity:.7}
+/* radar */
+.rp-radar{overflow:visible}
+.rp-kartu.on .rp-radar .bentuk{animation:rp-mekar 1.2s cubic-bezier(.2,1.3,.4,1) both .4s;transform-origin:center;transform-box:fill-box}
+.rp-radar text{font-family:"Plus Jakarta Sans",sans-serif;font-size:9px;font-weight:700;fill:rgba(255,255,255,.8);letter-spacing:.04em}
+.rp-radar text.kuat{fill:#F5B544}
+/* gelar */
+.rp-peti{align-self:center;position:relative;width:200px;height:220px;display:grid;place-items:center}
+.rp-peti .cincin{position:absolute;inset:0;overflow:visible}
+.rp-peti .isi{filter:drop-shadow(0 0 8px #F5B544)}
+.rp-peti.mengisi .segel{animation:rp-getar .12s linear infinite}
+@keyframes rp-getar{25%{transform:translate(1px,-1px) rotate(1deg)}75%{transform:translate(-1px,1px) rotate(-1deg)}}
+.rp-peti.terbuka .segel{animation:rp-mekar .9s cubic-bezier(.2,1.5,.4,1) both}
+.rp-tahan{align-self:center;font-family:"DM Mono",monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#F5B544}
+.rp-hasil{display:flex;flex-direction:column;gap:10px}
+.rp-gelar{font-size:46px;font-weight:800;line-height:.95;letter-spacing:-.04em;text-align:center;background:linear-gradient(180deg,#FFF6DF,#F5B544 70%,#D9822B);-webkit-background-clip:text;background-clip:text;color:transparent}
+/* kartu pemain */
+.rp-pemain-wrap{perspective:900px;align-self:center;width:100%}
+.rp-pemain{position:relative;border-radius:22px;padding:18px;background:linear-gradient(160deg,#0F4F5A,#08272E 70%);border:1px solid rgba(255,255,255,.18);transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .15s;overflow:hidden;display:flex;flex-direction:column;gap:12px;box-shadow:0 30px 60px rgba(0,0,0,.5);cursor:default}
+.rp-pemain .holo{position:absolute;inset:0;background:linear-gradient(115deg,transparent 20%,rgba(143,209,207,.35) 35%,rgba(245,181,68,.35) 45%,rgba(255,138,101,.3) 55%,transparent 70%);background-size:250% 250%;background-position:var(--hx,0%) var(--hy,0%);mix-blend-mode:screen;pointer-events:none}
+.rp-kartu.on .rp-pemain .holo{animation:rp-holo 4s ease-in-out infinite}
+@keyframes rp-holo{50%{background-position:100% 100%}}
+.rp-pemain .atas{display:flex;align-items:center;gap:12px;position:relative}
+.rp-pemain .av{width:50px;height:50px;flex:none;border-radius:14px;display:grid;place-items:center;font-weight:800;font-size:17px;background:linear-gradient(135deg,#8FD1CF,#14A3B8);color:#062a30}
+.rp-pemain .atas b{display:block;font-size:17px}
+.rp-pemain .atas span{font-size:11.5px;opacity:.7}
+.rp-pemain .emb{margin-left:auto}
+.rp-pemain .gelar-bar{position:relative;display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:12px;background:linear-gradient(90deg,#F5B544,#D9822B);color:#2B1A05;font-weight:800;font-size:16px}
+.rp-pemain .gelar-bar small{font-family:"DM Mono",monospace;font-size:10px;letter-spacing:.14em;font-weight:500}
+.rp-pemain .stat{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rp-pemain .stat div{padding:10px 6px;border-radius:12px;background:rgba(255,255,255,.07);display:flex;flex-direction:column;gap:2px;text-align:center;min-width:0}
+.rp-pemain .stat b{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-pemain .stat span{font-size:10px;opacity:.7;line-height:1.2}
+.rp-pemain .kaki{position:relative;display:flex;justify-content:space-between;align-items:center;font-family:"DM Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.65}
+.rp-aksi-akhir{display:flex;gap:8px}
+.rp-btn{all:unset;cursor:pointer;flex:1;text-align:center;padding:12px;border-radius:99px;border:1.5px solid rgba(255,255,255,.4);font-weight:800;font-size:13px;color:#fff}
+.rp-btn.utama{background:#fff;color:#0a525c;border-color:#fff}
+.rp-btn:disabled{opacity:.6;cursor:wait}
+@media (prefers-reduced-motion:reduce){.rp-kartu.on *,.rp-kartu.on .m{animation:none!important}}
+
+/* riwayat di profil siswa */
+.rp-riwayat{display:flex;flex-direction:column;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#0a525c,#06323a);color:#fff}
+.rp-riwayat-head{display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px 6px}
+.rp-riwayat-head b{font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+.rp-riwayat-head span{font-family:"DM Mono",monospace;font-size:11.5px;opacity:.7}
+.rp-riwayat-row{all:unset;cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 16px}
+.rp-riwayat-row+.rp-riwayat-row{border-top:1px solid rgba(255,255,255,.1)}
+.rp-riwayat-row:hover{background:rgba(255,255,255,.06)}
+.rp-riwayat-row:focus-visible{outline:2px solid #8FD1CF;outline-offset:-2px}
+.rp-riwayat-ikon{width:38px;height:38px;flex:none;border-radius:10px;background:rgba(255,255,255,.1);display:grid;place-items:center}
+.rp-riwayat-teks{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.rp-riwayat-teks b{font-size:14.5px}
+.rp-riwayat-teks small{font-size:12px;opacity:.75}
+.rp-baru{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#2B1A05;background:#F5B544;padding:3px 8px;border-radius:99px}
+.rp-putar{font-size:12px;font-weight:800;padding:7px 12px;border-radius:99px;background:#fff;color:#0a525c}
+
+/* panel guru (latar terang, ikut token aplikasi) */
+.rp-guru{border:1px solid var(--line,#DDE6E8);border-radius:14px;background:var(--surface,#fff);overflow:hidden}
+.rp-guru header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line-soft,#E6EDEE)}
+.rp-guru header b{display:block;font-size:15px}
+.rp-guru header span{font-size:12px;color:var(--ink-3,#6F8A90)}
+.rp-guru header small{font-size:12px;color:var(--accent,#0d6b7a)}
+.rp-guru-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 18px}
+.rp-guru-row+.rp-guru-row{border-top:1px solid var(--line-soft,#E6EDEE)}
+.rp-guru-row .kls{font-size:15px}
+.rp-guru-row .info{display:flex;flex-direction:column;gap:2px;min-width:0;align-items:flex-start}
+.rp-guru-row .info span{font-size:13px;font-weight:700}
+.rp-guru-row .info .ok{color:var(--accent,#0d6b7a)}
+.rp-guru-row .info .kurang{color:#B45309}
+.rp-guru-row .info small{font-size:12px;color:var(--ink-3,#6F8A90);line-height:1.4}
+.rp-guru-row .info .daftar{color:var(--ink-2,#3D5257)}
+.rp-guru-row .aksi{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.rp-gbtn{all:unset;cursor:pointer;font-size:12.5px;font-weight:700;padding:7px 12px;border-radius:99px;border:1.5px solid var(--line,#B9CFD3);color:var(--accent,#0d6b7a);white-space:nowrap}
+.rp-gbtn.utama{background:var(--accent,#0d6b7a);border-color:var(--accent,#0d6b7a);color:#fff}
+.rp-gbtn:disabled{opacity:.5;cursor:wait}
+.rp-gbtn:focus-visible,.rp-link:focus-visible{outline:2px solid var(--accent-mid,#14A3B8);outline-offset:2px}
+.rp-link{all:unset;cursor:pointer;font-size:12px;font-weight:600;color:var(--accent,#0d6b7a);text-decoration:underline}
+.rp-guru .catat{margin:0;padding:10px 18px 14px;font-size:12px;color:var(--ink-3,#6F8A90);line-height:1.5;background:var(--surface-alt,#F4F7F8)}
+.rp-galat{margin:0;padding:10px 18px;font-size:12.5px;color:var(--bad,#B42318)}
+@media (max-width:600px){.rp-guru-row{grid-template-columns:1fr;gap:8px}.rp-guru-row .aksi{justify-content:flex-start}}

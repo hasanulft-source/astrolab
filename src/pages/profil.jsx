@@ -8,6 +8,7 @@ import { BadgeIcon, ALL_BADGES, PoinChart } from "../components/gamification";
 import { withTimeout } from "../utils/helpers";
 import { KKTP, Page, Card, Items, Item, Button, StatusChip } from "../components/ui";
 import { Medal, LevelStrip, StreakValue } from "../components/seru";
+import { RiwayatRekap, RekapStory, daftarRekap } from "./rekap";
 import "../styles/siswa.css";
 
 const PRESETS = ["#0d6b7a", "#1e40af", "#7c3aed", "#b45309", "#0f766e", "#c2410c", "#be185d", "#065f46", "#1e3a5f", "#4a1d96"];
@@ -18,6 +19,8 @@ const BADGE_LIMIT = 8;
 
 export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
   const stats = store.getStats(user.id);
+  const rekapList = daftarRekap(store.getRekapSaya?.());
+  const [putarRekap, setPutarRekap] = useState(null);
   const lb = store.getLeaderboard(user.jenjang);
   const myRank = lb.find(s => s.id === user.id);
   const subs = store.getSubs().filter(s => s.siswaId === user.id);
@@ -105,6 +108,9 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
             return a.berikut ? `${a.sisa} tugas tepat waktu lagi ke api ${a.berikut.nama}` : `Api ${a.kini.nama}, tingkat tertinggi`;
           })()}</small></div>
         </div>
+
+        <RiwayatRekap daftar={rekapList} onBuka={k => setPutarRekap(rekapList.find(r => r.kunci === k) || null)} />
+        {putarRekap && <RekapStory data={putarRekap.data} onTutup={() => { if (!putarRekap.dilihatAt) store.tandaiRekapDilihat?.(putarRekap.kunci).catch(() => {}); setPutarRekap(null); }} />}
 
         <button type="button" className="pf-rapor" onClick={() => navigate("rapor")}>
           <span className="pf-rapor-ic"><I n="award" s={20} /></span>
