@@ -1,0 +1,175 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1')"
+      }
+    },
+    "accounts": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "tugas": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "submissions": {
+      ".read": "auth != null",
+      "$subId": {
+        ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || (!data.exists() && root.child('users').child(auth.uid).child('id').val() === newData.child('siswaId').val()))"
+      }
+    },
+    "stats": {
+      ".read": "auth != null",
+      "$siswaId": {
+        ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)"
+      }
+    },
+    "messages": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$threadId": {
+        "$msgKey": {
+          ".write": "auth != null && ((!data.exists() && newData.hasChildren(['fromId', 'toId', 'text', 'ts']) && root.child('users').child(auth.uid).child('id').val() === newData.child('fromId').val()) || (data.exists() && root.child('users').child(auth.uid).child('id').val() === data.child('toId').val() && newData.child('fromId').val() === data.child('fromId').val() && newData.child('toId').val() === data.child('toId').val() && newData.child('text').val() === data.child('text').val()))"
+        }
+      }
+    },
+    "aksesRequests": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "broadcasts": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "presence": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "photos": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || auth.uid === $uid)"
+      }
+    },
+    "badges": {
+      ".read": "auth != null",
+      "$siswaId": {
+        ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)"
+      }
+    },
+    "fcmTokens": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "reports": {
+      ".read": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$reportId": {
+        ".write": "auth != null && ((!data.exists() && newData.hasChildren(['kategori', 'deskripsi', 'pelaporId', 'pelaporNama', 'jenjang', 'createdAt', 'status']) && root.child('users').child(auth.uid).child('id').val() === newData.child('pelaporId').val()) || auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1')"
+      }
+    },
+    "nilaiAkhir": {
+      ".read": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$key": {
+        ".read": "auth != null && data.child('siswaId').val() === root.child('users').child(auth.uid).child('id').val()"
+      }
+    },
+    "nilaiBoost": {
+      ".read": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$groupKey": {
+        ".read": "auth != null"
+      }
+    },
+    "nilaiPublish": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "susulan": {
+      ".read": "auth != null",
+      "$key": {
+        ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+      }
+    },
+    "materiLatihan": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "materiPages": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "materiPagesLo": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "latihanSoal": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "latihanProgress": {
+      "$siswaId": {
+        ".read": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)",
+        ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)"
+      }
+    },
+    "missionMode": {
+  ".read": "auth != null",
+  ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+},
+"missionMateriDone": {
+  ".read": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+  "$siswaId": {
+    ".read": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)",
+    ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)"
+  }
+},
+"missionAttendance": {
+  ".read": "auth != null",
+  "$jenjang": { "$sessionId": { "$siswaId": {
+    ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)"
+  } } }
+},
+    "settings": {
+      ".read": "auth != null",
+      "semester": {
+        ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+        "tanggalSAS": {
+          "$periode": {
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/))"
+          }
+        }
+      }
+    },
+    "tindakLanjut": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "rankSnapshots": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "rekap": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$siswaId": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('id').val() === $siswaId",
+        "$periode": {
+          "dilihatAt": {
+            ".write": "auth != null && root.child('users').child(auth.uid).child('id').val() === $siswaId && data.parent().exists() && newData.isNumber()"
+          }
+        }
+      }
+    },
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}
