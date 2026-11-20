@@ -17,6 +17,17 @@ export function useUjianStore(fb, currentUser, ext = {}) {
   const myId = currentUser?.id || null;
   const myJenjang = currentUser?.jenjang || null;
 
+  // onValue yang pasang ulang sendiri kalau ditolak/putus (mis. rules belum di-publish, token login kedaluwarsa).
+  // Firebase membatalkan listener PERMANEN saat permission denied — tanpa ini layar diam sampai di-reload.
+  function dengar(path, onData, onGagal) {
+    let unsub = () => {}, mati = false, t = null;
+    const pasang = () => {
+      unsub = onValue(ref(db, path), onData, () => { onGagal && onGagal(); if (!mati) t = setTimeout(pasang, 5000); });
+    };
+    pasang();
+    return () => { mati = true; clearTimeout(t); unsub(); };
+  }
+
   // Selisih jam perangkat vs jam server Firebase (timer ujian pakai jam server)
   const [offset, setOffset] = useState(0);
   useEffect(() => onValue(ref(db, ".info/serverTimeOffset"), s => setOffset(Number(s.val()) || 0)), []);
@@ -25,7 +36,7 @@ export function useUjianStore(fb, currentUser, ext = {}) {
   const [aktifMap, setAktifMap] = useState({});
   useEffect(() => {
     if (!myId) { setAktifMap({}); return; }
-    return onValue(ref(db, "ujianAktif"), s => setAktifMap(s.val() || {}), () => setAktifMap({}));
+    return dengar("ujianAktif", s => setAktifMap(s.val() || {}), () => setAktifMap({}));
   }, [myId]);
 
   // ─── GURU ───
@@ -33,8 +44,8 @@ export function useUjianStore(fb, currentUser, ext = {}) {
   const [kunciSemua, setKunciSemua] = useState({});
   useEffect(() => {
     if (!isGuru) { setSemua({}); setKunciSemua({}); return; }
-    const u1 = onValue(ref(db, "ujian"), s => setSemua(s.val() || {}), () => setSemua({}));
-    const u2 = onValue(ref(db, "ujianKunci"), s => setKunciSemua(s.val() || {}), () => setKunciSemua({}));
+    const u1 = dengar("ujian", s => setSemua(s.val() || {}));
+    const u2 = dengar("ujianKunci", s => setKunciSemua(s.val() || {}));
     return () => { u1(); u2(); };
   }, [isGuru]);
 
@@ -46,9 +57,9 @@ export function useUjianStore(fb, currentUser, ext = {}) {
     if (!isGuru || !pantauId) return;
     const set = k => s => setPantau(p => ({ ...p, [k]: s.val() || {} }));
     const u = [
-      onValue(ref(db, `ujianJawaban/${pantauId}`), set("jawaban"), () => {}),
-      onValue(ref(db, `ujianLog/${pantauId}`), set("log"), () => {}),
-      onValue(ref(db, `ujianHasil/${pantauId}`), set("hasil"), () => {}),
+      dengar(`ujianJawaban/${pantauId}`, set("jawaban")),
+      dengar(`ujianLog/${pantauId}`, set("log")),
+      dengar(`ujianHasil/${pantauId}`, set("hasil")),
     ];
     return () => u.forEach(f => f());
   }, [isGuru, pantauId]);
@@ -133,20 +144,20 @@ export function useUjianStore(fb, currentUser, ext = {}) {
   useEffect(() => {
     setUjianSaya(null);
     if (!idSaya) return;
-    return onValue(ref(db, `ujian/${idSaya}`), s => setUjianSaya(s.exists() ? { id: idSaya, ...s.val() } : null), () => setUjianSaya(null));
+    return dengar(`ujian/${idSaya}`, s => setUjianSaya(s.exists() ? { id: idSaya, ...s.val() } : null), () => setUjianSaya(null));
   }, [idSaya]);
   const [jawabanSaya, setJawabanSaya] = useState(null);
   useEffect(() => {
     setJawabanSaya(null);
     if (!idSaya || !myId) return;
-    return onValue(ref(db, `ujianJawaban/${idSaya}/${myId}`), s => setJawabanSaya(s.val() || {}), () => setJawabanSaya({}));
+    return dengar(`ujianJawaban/${idSaya}/${myId}`, s => setJawabanSaya(s.val() || {}));
   }, [idSaya, myId]);
   const terbit = !!ujianSaya?.hasilTerbit;
   const [hasilSaya, setHasilSaya] = useState(null);
   useEffect(() => {
     setHasilSaya(null);
     if (!idSaya || !myId || !terbit) return;
-    return onValue(ref(db, `ujianHasil/${idSaya}/${myId}`), s => setHasilSaya(s.val()), () => setHasilSaya(null));
+    return dengar(`ujianHasil/${idSaya}/${myId}`, s => setHasilSaya(s.val()));
   }, [idSaya, myId, terbit]);
 
   const jRef = () => ref(db, `ujianJawaban/${idSaya}/${myId}`);
