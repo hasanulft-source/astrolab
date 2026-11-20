@@ -332,6 +332,7 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
           <button type="button" onClick={() => exportNilai(store, jenjang)}>Export nilai</button>
           <button type="button" onClick={() => navigate("materi-manager")}>Materi</button>
           <button type="button" onClick={() => navigate("mission-guru")}>Misi PJJ{store.isMissionActive && store.isMissionActive(jenjang) ? " · aktif" : ""}</button>
+          <button type="button" onClick={() => navigate("ujian-guru")}>Mode Ujian{store.getUjianList && store.getUjianList().some(u => u.status === "aktif") ? " · berjalan" : ""}</button>
           <button type="button" onClick={() => backupFromStore(store)}>Backup</button>
         </div>
       </div>

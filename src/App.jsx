@@ -25,6 +25,8 @@ import { ProfilSiswaV2 } from './pages/profil';
 import { MisiSiswa, MisiModal } from './pages/misi';
 import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, ManajemenSiswaV2, ArsipTugas, PilihDariArsipModal, NilaiEsaiCepat, KelasV2, BadgeGuruV2, ProfilGuruV2, MisiGuruV2, TempelNilaiModal } from './pages/guru';
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
+import { useUjianStore } from './utils/ujian-store';
+import { UjianGuru, UjianSiswa, BannerUjianSiswa } from './pages/ujian';
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -2050,7 +2052,10 @@ function useStore() {
     return false;
   };
 
-  return { getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, getRekapSaya, getRekapSemua, tandaiRekapDilihat, hitungRekap, statusRekap, terbitkanRekap, tarikRekap, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  // ─── MODE UJIAN (utils/ujian-store.js) ───
+  const ujianStore = useUjianStore({ db, ref, onValue, update, push, serverTimestamp }, currentUser, { callPush, guruId: () => fbGuru?.id || "fata" });
+
+  return { ...ujianStore, getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, getRekapSaya, getRekapSemua, tandaiRekapDilihat, hitungRekap, statusRekap, terbitkanRekap, tarikRekap, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -6221,6 +6226,9 @@ class ErrorBoundary extends Component {
 }
 
 
+// Link khusus ujian (dipakai Safe Exam Browser di lab): ...vercel.app/?ujian → siswa langsung ke ruang ujian
+const ruteAwalSiswa = () => { try { return new URLSearchParams(window.location.search).has("ujian") ? "ujian" : "home"; } catch { return "home"; } };
+
 function AppInner() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -6252,7 +6260,7 @@ function AppInner() {
             const u = { ...profile, uid: firebaseUser.uid, namaDisplay };
             setUser(u);
             store.setCurrentUser(u);
-            setRoute(profile.role === "guru" ? "home-guru" : "home");
+            setRoute(profile.role === "guru" ? "home-guru" : ruteAwalSiswa());
             setTimeout(() => setOnline(firebaseUser.uid), 500);
           } else {
             await signOut(auth);
@@ -6273,7 +6281,7 @@ function AppInner() {
 
   function handleLogin(u) {
     setUser(u);
-    setRoute(u.role === "guru" ? "home-guru" : "home");
+    setRoute(u.role === "guru" ? "home-guru" : ruteAwalSiswa());
     setTimeout(() => setOnline(u.uid), 500);
   }
 
@@ -6312,7 +6320,7 @@ function AppInner() {
     };
   }, [user]);
   if (store.loading || authLoading) return <><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%)", gap: 14 }}><LogoBold size={72} onDark /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
-  const hideNav = route === "kerjakan";
+  const hideNav = route === "kerjakan" || route === "ujian";
   let screen = null;
   if (user) {
     const isGuru = user.role === "guru";
@@ -6334,6 +6342,7 @@ function AppInner() {
       else if (route === "profil-guru") screen = <ProfilGuruV2 user={user} store={store} navigate={navigate} ResetModal={ResetSemesterModal} />;
       else if (route === "materi-manager") screen = <MateriGuruV2 store={store} />;
       else if (route === "mission-guru") screen = <MisiGuruV2 store={store} />;
+      else if (route === "ujian-guru") screen = <UjianGuru store={store} />;
       else screen = <DashboardGuruV2 store={store} navigate={navigate} hitungPerhatian={computePerluPerhatian} NilaiEssayModal={NilaiEssayModal} />;
     } else {
       if (route === "home") screen = <BerandaSiswa user={user} store={store} navigate={navigate} MissionModal={MisiModal} />;
@@ -6346,6 +6355,7 @@ function AppInner() {
       else if (route === "rapor") screen = <RaporSiswaV2 user={user} store={store} navigate={navigate} />;
       else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
       else if (route === "mission") screen = <MisiSiswa user={user} store={store} navigate={navigate} />;
+      else if (route === "ujian") screen = <UjianSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;
       else screen = <BerandaSiswa user={user} store={store} navigate={navigate} MissionModal={MisiModal} />;
     }
@@ -6368,15 +6378,15 @@ function AppInner() {
         </header>
         <div className="body">
           <Sidebar user={user} route={route} navigate={navigate} onLogout={handleLogout} store={store} />
-          <main className="main">{screen}</main>
+          <main className="main">{user.role !== "guru" && <BannerUjianSiswa store={store} route={route} navigate={navigate} />}{screen}</main>
         </div>
         <footer className="footer">Our Classroom · <b>© 2026 M. Hasanul Fatta</b> — All rights reserved</footer>
         {!hideNav && <BottomNav user={user} route={route} navigate={navigate} store={store} />}
       </div>}
-    {user && user.role !== "guru" && <RekapOtomatis store={store} tahan={showPushPrompt || route === "kerjakan"} />}
+    {user && user.role !== "guru" && <RekapOtomatis store={store} tahan={showPushPrompt || route === "kerjakan" || route === "ujian"} />}
     <NotifToastContainer notifs={notifs} onDismiss={dismissNotif} />
     {/* Push notification permission prompt — shows every login until allowed */}
-    {showPushPrompt && (
+    {showPushPrompt && route !== "ujian" && (
       <div className="modal-overlay" onClick={dismissPushPrompt} style={{ zIndex: 9999 }}>
         <div className="modal" style={{ maxWidth: 360, textAlign: "center" }} onClick={e => e.stopPropagation()}>
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #0d6b7a 0%, #0a8a7a 100%)", color: "#fff", display: "grid", placeItems: "center", margin: "0 auto 14px", fontSize: 28 }}>

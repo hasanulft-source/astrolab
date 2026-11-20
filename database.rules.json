@@ -167,6 +167,51 @@
         }
       }
     },
+    "ujian": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$ujianId": {
+        ".read": "auth != null && data.exists() && data.child('status').val() !== 'draf' && data.child('jenjang').val() === root.child('users').child(auth.uid).child('jenjang').val()"
+      }
+    },
+    "ujianAktif": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "ujianKunci": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+    },
+    "ujianJawaban": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$ujianId": {
+        "$siswaId": {
+          ".read": "auth != null && root.child('users').child(auth.uid).child('id').val() === $siswaId",
+          ".write": "auth != null && root.child('users').child(auth.uid).child('id').val() === $siswaId && root.child('ujian').child($ujianId).child('status').val() !== 'draf' && root.child('ujian').child($ujianId).child('jenjang').val() === root.child('users').child(auth.uid).child('jenjang').val() && !data.child('submittedAt').exists() && now <= root.child('ujian').child($ujianId).child('berakhirAt').val() + 60000"
+        }
+      }
+    },
+    "ujianLog": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$ujianId": {
+        "$siswaId": {
+          "$logId": {
+            ".write": "auth != null && root.child('users').child(auth.uid).child('id').val() === $siswaId && !data.exists() && newData.hasChildren(['jenis', 't'])"
+          }
+        }
+      }
+    },
+    "ujianHasil": {
+      ".read": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
+      "$ujianId": {
+        "$siswaId": {
+          ".read": "auth != null && root.child('users').child(auth.uid).child('id').val() === $siswaId && root.child('ujian').child($ujianId).child('hasilTerbit').val() === true"
+        }
+      }
+    },
     "$other": {
       ".read": false,
       ".write": false
