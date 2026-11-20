@@ -643,7 +643,21 @@ export function BannerUjianSiswa({ store, route, navigate }) {
   const u = store.getUjianSaya();
   const j = store.getJawabanUjianSaya();
   const now = useDetik(store, !!u && u.status === "aktif");
-  if (!u || route === "ujian" || u.status !== "aktif" || j?.submittedAt) return null;
+  if (!u || route === "ujian") return null;
+  // Setelah ujian: pita "nilai sudah terbit" sampai siswa membukanya sekali
+  if (u.status !== "aktif" || j?.submittedAt) {
+    const kunciLihat = `astrolab.ujianDilihat.${u.id}`;
+    let dilihat = false;
+    try { dilihat = !!localStorage.getItem(kunciLihat); } catch {}
+    if (!u.hasilTerbit || !j?.mulaiAt || dilihat) return null;
+    return (
+      <div className="uj-banner hasil" role="status">
+        <I n="award" s={18} />
+        <span>Nilai <b>{u.judul}</b> sudah terbit</span>
+        <button type="button" onClick={() => navigate("ujian")}>Lihat nilai</button>
+      </div>
+    );
+  }
   const sisa = (u.berakhirAt || 0) - now;
   if (sisa <= 0) return null;
   return (
@@ -949,6 +963,7 @@ function LayarUjian({ u, j, user, store, now }) {
 }
 
 function SelesaiUjian({ u, j, hasil, navigate, habis }) {
+  useEffect(() => { if (u.hasilTerbit && hasil) { try { localStorage.setItem(`astrolab.ujianDilihat.${u.id}`, "1"); } catch {} } }, [u.id, u.hasilTerbit, !!hasil]);
   const total = (u.soal || []).length;
   const dijawab = Object.values(j.answers || {}).filter(terjawab).length;
   const dikunci = j.cara === "dikunci guru";

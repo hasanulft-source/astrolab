@@ -174,3 +174,4 @@
 .uj-belum button{all:unset;cursor:pointer;width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:700;background:var(--warn-bg);color:var(--warn);border:1.5px solid var(--warn)}
 .uj-layar .modal-overlay{z-index:600}
 .uj-gbr-aksi{display:flex;gap:14px;margin-top:6px}
+.uj-banner.hasil{background:var(--accent-tint);border-bottom-color:var(--accent-soft);color:var(--accent-2)}
