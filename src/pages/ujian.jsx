@@ -473,7 +473,7 @@ function PantauUjian({ u, lap, store, id, log, namaDari, toast }) {
       <div className="gr-card list">
         {baris.length === 0 ? <p className="gr-muted" style={{ padding: 16 }}>Tidak ada siswa di kelompok ini.</p> : baris.map(b => (
           <div key={b.siswa.id} className={`uj-siswa ${b.keluar >= 3 || b.hbBasi ? "waspada" : ""}`}>
-            <span className="uj-siswa-nama"><b>{b.siswa.nama}</b><small>{b.mulaiAt ? `Mulai ${fmtJam(b.mulaiAt)}${b.selesaiAt ? ` · selesai ${fmtJam(b.selesaiAt)}` : ""}` : "Belum masuk"}</small></span>
+            <span className="uj-siswa-nama"><b>{b.siswa.nama}</b><small>{!b.mulaiAt ? "Belum masuk" : `Mulai ${fmtJam(b.mulaiAt)}${b.j?.submittedAt ? ` · ${b.cara === "dikunci guru" ? "dikunci guru" : b.cara === "waktu habis" ? "terkumpul otomatis (waktu habis)" : "dikumpulkan siswa"} ${fmtJam(b.j.submittedAt)}` : ""}`}</small></span>
             <span className="uj-siswa-prog" aria-label={`${b.dijawab} dari ${total} soal dijawab`}><i><i style={{ width: `${total ? b.dijawab / total * 100 : 0}%` }} /></i><small>{b.dijawab}/{total}</small></span>
             <span className="uj-siswa-chip">
               {b.hbBasi && <span className="gr-chip amber">Tidak merespons</span>}
@@ -481,13 +481,13 @@ function PantauUjian({ u, lap, store, id, log, namaDari, toast }) {
               <span className={`gr-chip ${b.status === "mengerjakan" ? "teal" : b.status === "belum" ? "muted" : b.status === "dikunci" ? "amber" : "muted"}`}>{LABEL_STATUS[b.status]}</span>
             </span>
             <span className="uj-siswa-aksi">
-              {u.status === "aktif" && b.status === "mengerjakan" && <button type="button" className="gr-btn sm outline" disabled={sibukId === b.siswa.id} onClick={() => aksi(() => store.kunciSiswaUjian(id, b.siswa.id), b.siswa.id, `Pengerjaan ${b.siswa.nama} dikunci.`)}>Kunci</button>}
-              {u.status === "aktif" && b.j?.submittedAt && <button type="button" className="gr-btn sm outline" disabled={sibukId === b.siswa.id} onClick={() => aksi(() => store.bukaKunciSiswaUjian(id, b.siswa.id), b.siswa.id, `${b.siswa.nama} bisa melanjutkan.`)}>Buka kunci</button>}
+              {u.status === "aktif" && b.status === "mengerjakan" && <button type="button" className="gr-btn sm outline" disabled={sibukId === b.siswa.id} onClick={() => { if (window.confirm(`Kunci pengerjaan ${b.siswa.nama}? Layar ujiannya langsung ditutup; jawaban yang sudah tersimpan tetap dinilai.`)) aksi(() => store.kunciSiswaUjian(id, b.siswa.id), b.siswa.id, `Pengerjaan ${b.siswa.nama} dikunci.`); }}>Kunci</button>}
+              {u.status === "aktif" && b.j?.submittedAt && <button type="button" className="gr-btn sm outline" disabled={sibukId === b.siswa.id} onClick={() => aksi(() => store.bukaKunciSiswaUjian(id, b.siswa.id), b.siswa.id, `${b.siswa.nama} bisa melanjutkan.`)} title="Siswa bisa membuka layar ujian lagi dan melanjutkan selama waktu masih ada">{b.cara === "dikunci guru" ? "Buka kunci" : "Izinkan lanjut"}</button>}
             </span>
           </div>
         ))}
       </div>
-      <p className="gr-muted">"Keluar" dicatat kalau siswa meninggalkan layar ujian lebih dari 2 detik (pindah aplikasi/tab/jendela). Ini tanda untuk dicek, bukan bukti curang. "Kunci" menghentikan pengerjaan siswa itu; jawaban yang sudah tersimpan tetap dinilai.</p>
+      <p className="gr-muted">"Keluar" dicatat kalau siswa meninggalkan layar ujian lebih dari 2 detik (pindah aplikasi/tab/jendela). Ini tanda untuk dicek, bukan bukti curang — siswa TIDAK dikunci otomatis. "Kunci" selalu manual dari tombol ini dan menghentikan pengerjaan siswa itu; jawaban yang sudah tersimpan tetap dinilai. "Buka kunci" / "Izinkan lanjut" muncul untuk siswa yang pengerjaannya sudah tertutup (dikumpulkan, waktu habis, atau dikunci).</p>
     </>
   );
 }
@@ -672,8 +672,16 @@ export function UjianSiswa({ user, store, navigate }) {
   const otoRef = useRef(false);
   useEffect(() => {
     if (!u || !mulai || kumpul || !habis || otoRef.current) return;
-    otoRef.current = true;
-    st.current.kumpulkanUjian("waktu habis").catch(() => {});
+    // Cek ulang 3 dtk kemudian dengan jam server terbaru — jangan sampai jam perangkat yang salah
+    // membuat jawaban terkumpul sebelum waktunya.
+    const t = setTimeout(() => {
+      const uu = st.current.getUjianSaya();
+      const benarHabis = uu && (uu.status === "selesai" || (uu.berakhirAt && st.current.waktuServer() >= uu.berakhirAt));
+      if (!benarHabis || otoRef.current) return;
+      otoRef.current = true;
+      st.current.kumpulkanUjian("waktu habis").catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
   }, [u?.id, mulai, kumpul, habis]);
   useEffect(() => { if (!mengerjakan) keluarFs(); }, [mengerjakan]);
 
