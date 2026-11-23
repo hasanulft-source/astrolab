@@ -27,6 +27,7 @@ import { DashboardGuruV2, AnalisisTugasV2, TugasGuruV2, LaporanGuruV2, Manajemen
 import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButir, sandboxSelesai } from './components/sandbox';
 import { useUjianStore } from './utils/ujian-store';
 import { UjianGuru, UjianSiswa, BannerUjianSiswa } from './pages/ujian';
+import { PersiapanKartu, PersiapanSAS } from './pages/persiapan';
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -1903,7 +1904,7 @@ function useStore() {
   // Set berisi soalId yang SUDAH pernah dikerjakan siswa aktif untuk bab ini
   const getLatihanSeen = (mapel, bab) => {
     const node = latihanProgress[latihanBabKey(mapel, bab)] || {};
-    return new Set(Object.keys(node).filter(k => k !== "_updatedAt" && node[k]));
+    return new Set(Object.keys(node).filter(k => !k.startsWith("_") && node[k]));
   };
   const markLatihanSeen = async (mapel, bab, soalIds = []) => {
     if (!currentUser?.id || !soalIds.length) return;
@@ -1912,6 +1913,15 @@ function useStore() {
     soalIds.forEach(id => { if (id) updates[`latihanProgress/${currentUser.id}/${key}/${id}`] = true; });
     updates[`latihanProgress/${currentUser.id}/${key}/_updatedAt`] = Date.now();
     await update(ref(db), updates);
+  };
+  // Skor ronde latihan (Persiapan SAS): disimpan terpisah dari penanda soal supaya tidak ikut terhapus saat "Ulang dari awal".
+  // Node: /latihanProgress/{siswaId}/{babKey}__skor = { benar, total, terbaik, t }
+  const getSkorLatihan = (mapel, bab) => latihanProgress[`${latihanBabKey(mapel, bab)}__skor`] || null;
+  const simpanSkorLatihan = async (mapel, bab, benar, total) => {
+    if (!currentUser?.id) return;
+    const lama = getSkorLatihan(mapel, bab);
+    const terbaik = Math.max(benar, lama && lama.total === total ? lama.terbaik || 0 : 0);
+    await set(ref(db, `latihanProgress/${currentUser.id}/${latihanBabKey(mapel, bab)}__skor`), { benar, total, terbaik, t: Date.now() });
   };
   const resetLatihanProgress = async (mapel, bab) => {
     if (!currentUser?.id) return;
@@ -2055,7 +2065,7 @@ function useStore() {
   // ─── MODE UJIAN (utils/ujian-store.js) ───
   const ujianStore = useUjianStore({ db, ref, onValue, update, push, serverTimestamp }, currentUser, { callPush, guruId: () => fbGuru?.id || "fata" });
 
-  return { ...ujianStore, getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, getRekapSaya, getRekapSemua, tandaiRekapDilihat, hitungRekap, statusRekap, terbitkanRekap, tarikRekap, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { ...ujianStore, getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, getSkorLatihan, simpanSkorLatihan, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, getRekapSaya, getRekapSemua, tandaiRekapDilihat, hitungRekap, statusRekap, terbitkanRekap, tarikRekap, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───
@@ -6353,7 +6363,8 @@ function AppInner() {
       else if (route === "kerjakan") screen = <KerjakanTugas user={user} store={store} tugasId={params.tugasId} navigate={navigate} />;
       else if (route === "profil") screen = <ProfilSiswaV2 user={user} store={store} navigate={navigate} LaporModal={LaporModal} />;
       else if (route === "rapor") screen = <RaporSiswaV2 user={user} store={store} navigate={navigate} />;
-      else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} />;
+      else if (route === "latihan-mandiri") screen = <LatihanMandiri user={user} store={store} navigate={navigate} PersiapanSlot={PersiapanKartu} />;
+      else if (route === "persiapan") screen = <PersiapanSAS user={user} store={store} navigate={navigate} paketId={params.paketId} />;
       else if (route === "mission") screen = <MisiSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "ujian") screen = <UjianSiswa user={user} store={store} navigate={navigate} />;
       else if (route === "chat") screen = <ChatScreen user={user} store={store} params={params} navigate={navigate} />;

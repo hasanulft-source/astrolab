@@ -505,9 +505,13 @@ function MateriViewer({ materi, store, onBack, user }) {
   </div>;
 }
 
-function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
+// pilihan: daftar soal yang sudah dipilih (dipakai Simulasi SAS) — tidak diacak/dipangkas lagi.
+// judul: teks di topbar (default: nama bab). onHasil(benar, total): dipanggil sekali saat ronde selesai.
+export function LatihanQuiz({ bab, mapel, soalPool, store, onBack, pilihan = null, judul = null, onHasil = null }) {
   const MAX_SOAL = 10;
+  const [zoom, setZoom] = useState(null); // gambar soal yang sedang diperbesar
   const [soalList] = useState(() => {
+    if (pilihan) return pilihan;
     // Deduplicate by pertanyaan text (soal sama dari tugas/upload berbeda)
     const seen = new Set();
     const unique = [];
@@ -534,6 +538,7 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
     if (done && !marked) {
       setMarked(true);
       store.markLatihanSeen(mapel, bab, soalList.map(s => latihanSoalKey(s.pertanyaan)));
+      if (onHasil) onHasil(results.filter(Boolean).length, soalList.length);
     }
   }, [done]);
 
@@ -576,7 +581,7 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
       </div>
       <div className="ui-page">
         <section className="ui-card">
-          <div className="ui-label-row"><span className="ui-label">Hasil latihan</span><span className="ui-aside">{bab}</span></div>
+          <div className="ui-label-row"><span className="ui-label">Hasil latihan</span><span className="ui-aside">{judul || bab}</span></div>
           <div className="lm-score">{pct >= 80 && <ConfettiRain intensity={pct === 100 ? "high" : "medium"} />}<b>{correct}<span>/{total}</span></b><p className="ui-text">jawaban benar ({pct}%). Latihan tidak masuk nilai, jadi coba lagi sampai paham.</p></div>
           <div className="ui-meter"><i style={{ width: `${pct}%` }} /></div>
           <div className="lm-dots">{results.map((ok, i) => <span key={i} className={ok ? "ok" : "no"} aria-label={`Soal ${i + 1} ${ok ? "benar" : "salah"}`}>{i + 1}</span>)}</div>
@@ -597,7 +602,7 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
   return <div>
     <div className="topbar">
       <button className="topbar-back" onClick={onBack}><I n="chevL" s={18} /></button>
-      <div className="topbar-title" style={{ fontSize: 13 }}>{bab}</div>
+      <div className="topbar-title" style={{ fontSize: 13 }}>{judul || bab}</div>
       <div style={{ fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)", width: 50, textAlign: "right" }}>{idx + 1}/{total}</div>
     </div>
     {/* Progress dots */}
@@ -608,7 +613,11 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
     </div>
     <div style={{ padding: "12px 16px 24px" }}>
       {/* Question */}
-      {soal.gambar && <img src={soal.gambar} alt="" style={{ maxWidth: "100%", borderRadius: 8, marginBottom: 12 }} />}
+      {soal.gambar && <button type="button" onClick={() => setZoom(soal.gambar)} style={{ all: "unset", display: "block", cursor: "zoom-in", marginBottom: 12 }} aria-label="Perbesar gambar">
+        <img src={soal.gambar} alt="" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--line)", display: "block" }} />
+        <span style={{ fontSize: 11.5, color: "var(--ink-3)", display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4 }}><I n="maximize" s={12} /> Ketuk gambar untuk memperbesar</span>
+      </button>}
+      {zoom && <div className="ps-zoom" role="dialog" aria-label="Gambar diperbesar"><button type="button" className="ui-btn sm" onClick={() => setZoom(null)}><I n="x" s={14} /> Tutup</button><p>Geser ke kanan/kiri untuk membaca skala</p><img src={zoom} alt="" /></div>}
       <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.55, marginBottom: 16, color: "var(--ink)" }}>{soal.pertanyaan}</div>
       {/* Options */}
       {(soal.opsi || []).map((o, i) => {
@@ -643,7 +652,7 @@ function LatihanQuiz({ bab, mapel, soalPool, store, onBack }) {
   </div>;
 }
 
-export function LatihanMandiri({ user, store, navigate }) {
+export function LatihanMandiri({ user, store, navigate, PersiapanSlot = null }) {
   const [tab, setTab] = useState("materi");
   const [viewMateri, setViewMateri] = useState(null);
   const [quizBab, setQuizBab] = useState(null); // { bab, soal } or null
@@ -677,6 +686,7 @@ export function LatihanMandiri({ user, store, navigate }) {
   return <div className="sw">
     <div className="ui-page mid">
       <header className="ui-head"><span className="ui-head-ey">Kelas {user.jenjang}</span><h1>Mandiri</h1><span className="ui-head-sub">Baca materi dan latih soal kapan saja. Tidak masuk nilai.</span></header>
+      {PersiapanSlot && <PersiapanSlot user={user} store={store} navigate={navigate} />}
       <div className="ui-tabs" role="tablist">
         {tabItems.map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>)}
       </div>
