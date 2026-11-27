@@ -110,7 +110,7 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
         </div>
 
         <RiwayatRekap daftar={rekapList} onBuka={k => setPutarRekap(rekapList.find(r => r.kunci === k) || null)} />
-        {putarRekap && <RekapStory data={putarRekap.data} onTutup={() => { if (!putarRekap.dilihatAt) store.tandaiRekapDilihat?.(putarRekap.kunci).catch(() => {}); setPutarRekap(null); }} />}
+        {putarRekap && <RekapStory data={putarRekap.data} foto={store.getPhoto(user.uid || user.id)} onTutup={() => { if (!putarRekap.dilihatAt) store.tandaiRekapDilihat?.(putarRekap.kunci).catch(() => {}); setPutarRekap(null); }} />}
 
         <button type="button" className="pf-rapor" onClick={() => navigate("rapor")}>
           <span className="pf-rapor-ic"><I n="award" s={20} /></span>

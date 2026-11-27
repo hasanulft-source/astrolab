@@ -2,8 +2,8 @@
 // Data datang dari snapshot rekap/{siswaId}/{kunciPeriode} (dibuat guru saat Terbitkan,
 // lihat utils/rekap-hitung.js). Mesin story ditulis vanilla di dalam useEffect supaya
 // animasi canvas & gestur tahan-untuk-membuka tidak memicu render React tiap frame.
-import { useEffect, useRef, useState } from "react";
-import { julukanJam } from "../utils/rekap-hitung";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { julukanJam, bulat1 } from "../utils/rekap-hitung";
 import "../styles/rekap.css";
 
 const TIER_WARNA = ["#7FB6BD", "#F5B544", "#14A3B8", "#3B82F6", "#FF8A65"]; // Nebula, Bintang, Planet, Astronot, Commander
@@ -13,6 +13,16 @@ const NAMA_API = n => n >= 50 ? "Kosmik" : n >= 40 ? "Magenta" : n >= 30 ? "Ungu
 const pad = n => String(n).padStart(2, "0");
 const rb = n => Number(n || 0).toLocaleString("id-ID");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+// Angka desimal ala Indonesia, maks. 1 angka di belakang koma: 25.799999 → "25,8", 75 → "75"
+const n1 = n => String(bulat1(n)).replace(".", ",");
+const KKTP = 70;
+// Snapshot lama (versi 1) menyimpan selisih mentah → rapikan saat ditampilkan, tanpa perlu hitung ulang
+function rapikan(r) {
+  const d = r.delta ? { ...r.delta, sts: bulat1(r.delta.sts), sas: bulat1(r.delta.sas), naik: bulat1(r.delta.naik ?? (r.delta.sas - r.delta.sts)) } : null;
+  const alasan = String(r.gelar?.alasan || "").replace(/(\d+)\.(\d{2,})/g, m => n1(+m));
+  return { ...r, delta: d, gelar: r.gelar ? { ...r.gelar, alasan } : r.gelar, rapor: Array.isArray(r.rapor) ? r.rapor : [] };
+}
+const avatar = (r, cls = "av") => r._foto ? `<span class="${cls}"><img src="${esc(r._foto)}" alt=""></span>` : `<span class="${cls}">${esc(inisial(r.nama))}</span>`;
 const inisial = n => String(n || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join("").toUpperCase();
 
 // ---------- gambar SVG ----------
@@ -107,11 +117,24 @@ function susunKartu(r) {
     <h2 class="m" style="--d:.2s">${r.badge.length} badge sudah kamu kumpulkan.</h2>
     <div class="rp-badge">${tampil.map((b, i) => `<div class="m z" style="--d:${.4 + i * .15}s">${perisai(WB[i % 5], 62)}<span>${esc(b)}</span></div>`).join("")}</div>
     ${sisa > 0 ? `<span class="rp-chip m" style="--d:1.4s">+${sisa} badge lainnya</span>` : ""}` }); }
-  if (r.tampil?.delta) { const d = r.delta, mx = Math.max(d.sts, d.sas) || 1; K.push({ warna: "#14A3B8", aksen: "#8FD1CF", h: `
+  if (r.delta && r.delta.naik > 0) { const d = r.delta; K.push({ warna: "#14A3B8", aksen: "#8FD1CF", h: `
     <span class="rp-lbl m" style="--d:.1s">${esc(d.mapel)} · dari STS ke SAS</span>
-    <h2 class="m slam" style="--d:.2s;font-size:46px">Naik ${d.sas - d.sts}</h2>
-    <div class="rp-delta m" style="--d:.3s"><div><b>${d.sts}</b><i style="--h:${d.sts / mx * 100}%;--d:.5s"></i><span>STS</span></div><div><b>${d.sas}</b><i style="--h:${d.sas / mx * 100}%;--d:.8s"></i><span>SAS</span></div></div>
+    <div class="rp-naik-besar m slam" style="--d:.2s"><small>naik</small>+${n1(d.naik)}<small>angka</small></div>
+    <div class="rp-delta m" style="--d:.3s">
+      <div class="lama"><span>STS</span><i style="--h:${Math.max(6, d.sts)}%;--d:.5s"><b>${n1(d.sts)}</b></i></div>
+      <svg class="panah" viewBox="0 0 40 24" aria-hidden="true"><path d="M2 12h32M26 4l8 8-8 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="baru"><span>SAS</span><i style="--h:${Math.max(6, d.sas)}%;--d:.8s"><b>${n1(d.sas)}</b></i></div>
+    </div>
     <p class="m" style="--d:1s">Kamu lebih paham sekarang dibanding pertengahan semester.</p>` }); }
+  if (r.rapor?.length) { const semua = r.rapor.every(x => x.nilai >= KKTP), C = 2 * Math.PI * 44; K.push({ warna: "#0B4F6C", aksen: "#8FD1CF", rankup: semua ? "#F5B544" : null, h: `
+    <span class="rp-lbl m" style="--d:.1s">Nilai rapor · ${periode}</span>
+    <h2 class="m" style="--d:.2s">${semua ? "Semua mapel tuntas." : "Ini nilai rapormu semester ini."}</h2>
+    <div class="rp-rapor${r.rapor.length === 1 ? " satu" : ""}">${r.rapor.map((x, i) => { const ok = x.nilai >= KKTP, pj = C * Math.min(100, x.nilai) / 100, a = (KKTP / 100) * 2 * Math.PI - Math.PI / 2; return `
+      <div class="m z" style="--d:${.35 + i * .25}s">
+        <svg viewBox="-55 -55 110 110" aria-hidden="true"><circle r="44" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="9"/><circle class="busur" r="44" fill="none" stroke="${ok ? "#8FD1CF" : "#F5B544"}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${pj} ${C}" style="--pj:${pj}" transform="rotate(-90)"/><line x1="${Math.cos(a) * 36}" y1="${Math.sin(a) * 36}" x2="${Math.cos(a) * 52}" y2="${Math.sin(a) * 52}" stroke="#fff" stroke-width="2" opacity=".7"/><text y="10" text-anchor="middle" fill="#fff" font-size="30" font-weight="800" font-family="Plus Jakarta Sans,sans-serif">${x.nilai}</text></svg>
+        <b>${esc(x.mapel)}</b><span class="${ok ? "ok" : "kejar"}">${ok ? "Tuntas" : `KKTP ${KKTP}`}</span>
+      </div>`; }).join("")}</div>
+    <p class="m" style="--d:1.1s">${semua ? "Kerja kerasmu satu semester kelihatan di sini. Pertahankan!" : "Rapor ini titik awalmu. Semester depan kita kejar bareng."}</p>` }); }
   if (r.atribut) K.push({ warna: "#0B2447", aksen: "#F5B544", h: `
     <span class="rp-lbl m" style="--d:.1s;text-align:center">Atribut pemain</span>
     <div class="m z" style="--d:.15s;align-self:center">${radar(r.atribut, r.kuat, 230)}</div>
@@ -127,51 +150,85 @@ function susunKartu(r) {
       <div class="rp-gelar">${esc(r.gelar?.nama)}</div>
       <p style="text-align:center">${esc(r.gelar?.alasan)}</p>
     </div>` });
-  const statKe5 = r.tampil?.delta ? [`+${r.delta.sas - r.delta.sts}`, "naik STS→SAS"] : [String(r.badge?.length || 0), "badge"];
+  const statKe5 = r.delta?.naik > 0 ? [`+${n1(r.delta.naik)}`, "naik STS→SAS"] : [String(r.badge?.length || 0), "badge"];
   K.push({ warna: "#0d6b7a", aksen: "#8FD1CF", pemain: true, h: `
     <span class="rp-lbl m" style="--d:.05s;text-align:center">Kartu pemain</span>
-    <div class="rp-pemain-wrap m z" style="--d:.15s"><div class="rp-pemain" data-pemain><span class="holo"></span>
-      <div class="atas"><span class="av">${esc(inisial(r.nama))}</span><div><b>${esc(r.nama)}</b><span>${esc(r.kelas || "")} · ${periode}</span></div><span class="emb">${r.lvAkhir ? emblem(r.lvAkhir, 54) : ""}</span></div>
-      <div class="gelar-bar">${esc(r.gelar?.nama)}<small>GELAR</small></div>
+    <div class="rp-pemain-wrap m z" style="--d:.15s"><div class="rp-pemain" data-pemain style="--tier:${TIER_WARNA[r.lvAkhir?.tier || 0]}"><span class="holo"></span>
+      <div class="atas">
+        ${avatar(r)}
+        <div class="id"><span class="kls">${esc(r.kelas || "")} · ${periode}</span><b>${esc(r.nama)}</b>${r.lvAkhir ? `<span class="lv">${esc(r.lvAkhir.nama)} ${esc(r.lvAkhir.sub)}</span>` : ""}</div>
+        <span class="emb">${r.lvAkhir ? emblem(r.lvAkhir, 52) : ""}</span>
+      </div>
+      <div class="gelar-bar"><small>GELAR</small><span>${esc(r.gelar?.nama)}</span></div>
+      ${r.rapor?.length ? `<div class="rapor"><span class="t">Rapor</span>${r.rapor.map(x => `<div><b class="${x.nilai >= KKTP ? "" : "kejar"}">${x.nilai}</b><span>${esc(x.mapel)}</span></div>`).join("")}</div>` : ""}
       <div class="stat">
         <div><b>${r.tugas}</b><span>tugas</span></div>
         <div><b>${r.streak}</b><span>streak terbaik</span></div>
         <div><b>${r.perfect > 0 ? r.perfect + "×" : (r.terbaik?.nilai ?? "–")}</b><span>${r.perfect > 0 ? "nilai 100" : "nilai terbaik"}</span></div>
         <div><b>+${rb(r.poinSemester)}</b><span>poin</span></div>
         <div><b>${statKe5[0]}</b><span>${statKe5[1]}</span></div>
-        <div><b style="font-size:${String(r.kuat || "").length > 7 ? 14 : 19}px">${esc(r.kuat || "")}</b><span>atribut terkuat</span></div>
+        <div><b class="${String(r.kuat || "").length > 7 ? "kecil" : ""}">${esc(r.kuat || "")}</b><span>atribut terkuat</span></div>
       </div>
-      <div class="kaki">${logo(14)}<span>astrolab classroom</span>${r.peringkat ? `<span style="color:#F5B544">#${r.peringkat} kelas</span>` : "<span></span>"}</div>
+      <div class="kaki">${logo(14)}<span>astrolab classroom</span>${r.peringkat ? `<span class="rank">#${r.peringkat} kelas</span>` : "<span></span>"}</div>
     </div></div>
     <div class="rp-aksi-akhir m" style="--d:.5s"><button type="button" class="rp-btn" data-simpan>Simpan kartu</button><button type="button" class="rp-btn utama" data-selesai>Selesai</button></div>` });
   return K;
 }
 
 // ---------- kartu pemain sebagai gambar (canvas 2D, tanpa library) ----------
+function muatGambar(src) {
+  return new Promise(res => { if (!src) return res(null); const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+}
 async function gambarKartu(r) {
   const W = 1080, H = 1350, c = document.createElement("canvas"); c.width = W; c.height = H;
   const g = c.getContext("2d");
   try { await document.fonts?.ready; } catch { /* abaikan */ }
+  const kotak = (x, y, w, h, rad) => { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, rad); else g.rect(x, y, w, h); };
   const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, "#0F4F5A"); bg.addColorStop(.7, "#08272E"); bg.addColorStop(1, "#061F24");
   g.fillStyle = bg; g.fillRect(0, 0, W, H);
   for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .6})`; g.beginPath(); g.arc(Math.random() * W, Math.random() * H, Math.random() * 2.2, 0, 7); g.fill(); }
-  const F = (w, s) => `${w} ${s}px "Plus Jakarta Sans", system-ui, sans-serif`;
-  g.fillStyle = "#8FD1CF"; g.font = `500 30px "DM Mono", monospace`; g.fillText(`REKAP SEMESTER · ${String(r.periode || "").replace(/^Semester\s+/, "").toUpperCase()}`, 80, 120);
-  g.fillStyle = "#fff"; g.font = F(800, 84); g.fillText(String(r.nama || ""), 80, 230, W - 160);
-  g.fillStyle = "rgba(255,255,255,.7)"; g.font = F(600, 36); g.fillText(`${r.kelas || ""}  ·  ${r.lvAkhir ? `${r.lvAkhir.nama} ${r.lvAkhir.sub}` : ""}`, 80, 290);
+  const F = (w, s) => `${w} ${s}px "Plus Jakarta Sans", system-ui, sans-serif`, M = s => `500 ${s}px "DM Mono", monospace`;
+  const periode = String(r.periode || "").replace(/^Semester\s+/, "");
+  g.fillStyle = "#8FD1CF"; g.font = M(28); g.fillText(`REKAP SEMESTER · ${periode.toUpperCase()}`, 80, 110);
+  // foto / inisial
+  const tier = TIER_WARNA[r.lvAkhir?.tier || 0], fx = 80, fy = 150, fs = 190;
+  g.save(); kotak(fx, fy, fs, fs, 40); g.clip();
+  const foto = await muatGambar(r._foto);
+  if (foto) { const k = Math.max(fs / foto.width, fs / foto.height), w = foto.width * k, h = foto.height * k; g.drawImage(foto, fx + (fs - w) / 2, fy + (fs - h) / 2, w, h); }
+  else { const ag = g.createLinearGradient(fx, fy, fx + fs, fy + fs); ag.addColorStop(0, "#8FD1CF"); ag.addColorStop(1, "#14A3B8"); g.fillStyle = ag; g.fillRect(fx, fy, fs, fs); g.fillStyle = "#062a30"; g.font = F(800, 72); g.textAlign = "center"; g.fillText(inisial(r.nama), fx + fs / 2, fy + fs / 2 + 26); g.textAlign = "left"; }
+  g.restore(); g.strokeStyle = tier; g.lineWidth = 6; kotak(fx, fy, fs, fs, 40); g.stroke();
+  const tx = fx + fs + 40, tw = W - tx - 80;
+  g.fillStyle = "rgba(255,255,255,.65)"; g.font = F(600, 32); g.fillText(r.kelas || "", tx, 205, tw);
+  g.fillStyle = "#fff"; g.font = F(800, String(r.nama || "").length > 18 ? 56 : 70); g.fillText(String(r.nama || ""), tx, 280, tw);
+  if (r.lvAkhir) { g.fillStyle = tier; g.font = F(700, 34); g.fillText(`${r.lvAkhir.nama} ${r.lvAkhir.sub}`.toUpperCase(), tx, 330, tw); }
+  // gelar
   const gl = g.createLinearGradient(80, 0, W - 80, 0); gl.addColorStop(0, "#F5B544"); gl.addColorStop(1, "#D9822B");
-  g.fillStyle = gl; g.beginPath(); g.roundRect ? g.roundRect(80, 340, W - 160, 150, 28) : g.rect(80, 340, W - 160, 150); g.fill();
-  g.fillStyle = "#2B1A05"; g.font = F(800, 72); g.fillText(r.gelar?.nama || "", 120, 440, W - 360);
-  g.font = `500 26px "DM Mono", monospace`; g.textAlign = "right"; g.fillText("GELAR", W - 120, 430); g.textAlign = "left";
-  const stat = [[r.tugas, "tugas"], [r.streak, "streak terbaik"], [r.perfect > 0 ? r.perfect + "×" : (r.terbaik?.nilai ?? "–"), r.perfect > 0 ? "nilai 100" : "nilai terbaik"], ["+" + rb(r.poinSemester), "poin"], [r.tampil?.delta ? "+" + (r.delta.sas - r.delta.sts) : (r.badge?.length || 0), r.tampil?.delta ? "naik STS→SAS" : "badge"], [r.kuat, "atribut terkuat"]];
+  g.fillStyle = gl; kotak(80, 385, W - 160, 130, 28); g.fill();
+  g.fillStyle = "#2B1A05"; g.font = M(24); g.fillText("GELAR", 120, 432); g.font = F(800, 60); g.fillText(r.gelar?.nama || "", 120, 490, W - 240);
+  let y = 550;
+  // rapor
+  const rapor = Array.isArray(r.rapor) ? r.rapor : [];
+  if (rapor.length) {
+    g.fillStyle = "rgba(255,255,255,.1)"; kotak(80, y, W - 160, 170, 28); g.fill();
+    g.fillStyle = "#8FD1CF"; g.font = M(24); g.fillText("NILAI RAPOR", 120, y + 48);
+    const lebar = (W - 240) / rapor.length;
+    rapor.forEach((x, i) => {
+      const cx = 120 + i * lebar;
+      g.fillStyle = x.nilai >= KKTP ? "#fff" : "#F5B544"; g.font = F(800, 76); g.fillText(String(x.nilai), cx, y + 135);
+      const nw = g.measureText(String(x.nilai)).width; g.fillStyle = "rgba(255,255,255,.75)"; g.font = F(600, 30); g.fillText(x.mapel, cx + nw + 18, y + 132, lebar - nw - 40);
+    });
+    y += 200;
+  }
+  const stat = [[r.tugas, "tugas"], [r.streak, "streak terbaik"], [r.perfect > 0 ? r.perfect + "×" : (r.terbaik?.nilai ?? "–"), r.perfect > 0 ? "nilai 100" : "nilai terbaik"], ["+" + rb(r.poinSemester), "poin"], [r.delta?.naik > 0 ? "+" + n1(r.delta.naik) : (r.badge?.length || 0), r.delta?.naik > 0 ? "naik STS→SAS" : "badge"], [r.kuat, "atribut terkuat"]];
+  const sh = rapor.length ? 185 : 220, w = (W - 160 - 40) / 3;
   stat.forEach(([v, l], i) => {
-    const x = 80 + (i % 3) * ((W - 160 - 40) / 3 + 20), y = 540 + Math.floor(i / 3) * 250, w = (W - 160 - 40) / 3;
-    g.fillStyle = "rgba(255,255,255,.08)"; g.beginPath(); g.roundRect ? g.roundRect(x, y, w, 220, 24) : g.rect(x, y, w, 220); g.fill();
-    g.fillStyle = "#fff"; g.font = F(800, String(v).length > 6 ? 46 : 72); g.textAlign = "center"; g.fillText(String(v), x + w / 2, y + 125, w - 30);
-    g.fillStyle = "rgba(255,255,255,.7)"; g.font = F(600, 28); g.fillText(l, x + w / 2, y + 180, w - 20); g.textAlign = "left";
+    const x = 80 + (i % 3) * (w + 20), yy = y + Math.floor(i / 3) * (sh + 20);
+    g.fillStyle = "rgba(255,255,255,.08)"; kotak(x, yy, w, sh, 24); g.fill();
+    g.fillStyle = "#fff"; g.font = F(800, String(v).length > 6 ? 44 : 64); g.textAlign = "center"; g.fillText(String(v), x + w / 2, yy + sh / 2 + 12, w - 30);
+    g.fillStyle = "rgba(255,255,255,.7)"; g.font = F(600, 26); g.fillText(l, x + w / 2, yy + sh - 30, w - 20); g.textAlign = "left";
   });
-  g.fillStyle = "rgba(255,255,255,.55)"; g.font = `500 28px "DM Mono", monospace`; g.fillText("ASTROLAB CLASSROOM", 80, H - 80);
-  if (r.peringkat) { g.fillStyle = "#F5B544"; g.textAlign = "right"; g.fillText(`#${r.peringkat} KELAS`, W - 80, H - 80); g.textAlign = "left"; }
+  g.fillStyle = "rgba(255,255,255,.55)"; g.font = M(26); g.fillText("ASTROLAB CLASSROOM", 80, H - 70);
+  if (r.peringkat) { g.fillStyle = "#F5B544"; g.textAlign = "right"; g.fillText(`#${r.peringkat} KELAS`, W - 80, H - 70); g.textAlign = "left"; }
   return new Promise(res => c.toBlob(res, "image/png"));
 }
 async function simpanKartu(r) {
@@ -285,8 +342,9 @@ function pasang(akar, data, cb) {
 }
 
 /** Story layar penuh. `data` = snapshot rekap satu siswa. */
-export function RekapStory({ data, onTutup, onSelesai }) {
+export function RekapStory({ data: mentah, foto = null, onTutup, onSelesai }) {
   const ref = useRef(null);
+  const data = useMemo(() => (mentah ? { ...rapikan(mentah), _foto: foto || null } : null), [mentah, foto]);
   const cbRef = useRef({});
   cbRef.current = { tutup: () => onTutup?.(), selesai: () => (onSelesai || onTutup)?.() };
   useEffect(() => {
@@ -321,7 +379,7 @@ export function RekapOtomatis({ store, tahan }) {
   const baru = daftarRekap(store.getRekapSaya?.()).find(r => !r.dilihatAt && !tutup.has(r.kunci));
   if (!baru || tahan) return null;
   const selesai = () => { setTutup(s => new Set(s).add(baru.kunci)); store.tandaiRekapDilihat?.(baru.kunci).catch(() => {}); };
-  return <RekapStory data={baru.data} onTutup={selesai} onSelesai={selesai} />;
+  return <RekapStory data={baru.data} foto={store.getPhoto?.(baru.data.id)} onTutup={selesai} onSelesai={selesai} />;
 }
 
 /** Daftar rekap per season di Profil siswa. `daftar` = [{kunci, periode, gelar, dilihatAt}] urut terbaru. */

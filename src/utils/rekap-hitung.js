@@ -4,7 +4,9 @@
 // Aturan positif: kartu yang angkanya kurang bagus tidak dibuat (lihat flag `tampil`),
 // atribut dinilai relatif terhadap teman sekelas tapi lantai 20, setiap siswa dapat gelar.
 
-export const REKAP_VERSI = 1;
+export const REKAP_VERSI = 2;
+// Angka nilai bisa desimal (mis. STS 49,2). Selisih desimal di JS bisa jadi 25.799999…, jadi selalu dibulatkan 1 angka.
+export const bulat1 = n => Math.round(Number(n) * 10) / 10;
 const MENIT = 60000;
 
 export const kunciPeriode = p => String(p || "").replace(/[.#$[\]/]/g, "-").replace(/\s+/g, "_");
@@ -31,7 +33,7 @@ const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) =
 export const ATRIBUT = ["Konsisten", "Bertumbuh", "Teliti", "Rajin", "Cepat", "Penjelajah"]; // urutan = pemecah seri
 export const GELAR = {
   Konsisten: ["Si Konsisten", r => `${r.streak} tugas beruntun dikumpulkan tepat waktu.`],
-  Bertumbuh: ["Si Pendaki", r => r.delta ? `Nilai ${r.delta.mapel} naik ${r.delta.sas - r.delta.sts} angka dari STS ke SAS.` : "Nilaimu terus naik sepanjang semester."],
+  Bertumbuh: ["Si Pendaki", r => r.delta ? `Nilai ${r.delta.mapel} naik ${String(bulat1(r.delta.sas - r.delta.sts)).replace(".", ",")} angka dari STS ke SAS.` : "Nilaimu terus naik sepanjang semester."],
   Teliti: ["Si Teliti", r => r.perfect > 0 ? `${r.perfect} kali nilai sempurna semester ini.` : `Rata-rata nilaimu ${r.rata} di semua tugas.`],
   Rajin: ["Si Rajin", r => `${r.tugas} tugas kamu tuntaskan semester ini.`],
   Cepat: ["Si Kilat", r => r.kilat != null ? `Pengumpulan tercepatmu ${r.kilat} menit setelah tugas terbit.` : "Kamu selalu mengerjakan tugas lebih awal."],
@@ -49,6 +51,7 @@ export const GELAR = {
  * @param {(id)=>string} p.namaBadge
  * @param {(sid)=>Array<{mapel,sts,sas}>} p.nilaiAkhir   STS (uts) & SAS (uas) per mapel
  * @param {(sid)=>number} p.materiSelesai
+ * @param {(sid)=>Array<{mapel,nilai}>} [p.rapor]   nilai rapor per mapel (hanya mapel yang nilainya sudah diterbitkan)
  * @param {(poin)=>{nama,sub,tier}} p.level
  * @param {number} [p.sekarang]
  * @returns {{hasil:Object<string,object>, kosong:Array<{id,nama}>}}
@@ -98,7 +101,8 @@ export function hitungRekapKelas(p) {
     // STS → SAS: ambil mapel dengan kenaikan terbesar
     const na = (p.nilaiAkhir?.(s.id) || []).filter(r => typeof r.sts === "number" && typeof r.sas === "number");
     const naik = na.map(r => ({ ...r, d: r.sas - r.sts })).sort((a, b) => b.d - a.d)[0] || null;
-    const delta = naik ? { mapel: naik.mapel, sts: naik.sts, sas: naik.sas } : null;
+    const delta = naik ? { mapel: naik.mapel, sts: bulat1(naik.sts), sas: bulat1(naik.sas), naik: bulat1(naik.d) } : null;
+    const rapor = (p.rapor?.(s.id) || []).filter(r => typeof r.nilai === "number").map(r => ({ mapel: r.mapel, nilai: Math.round(r.nilai) }));
     const materi = p.materiSelesai?.(s.id) || 0;
 
     baris.push({
@@ -108,7 +112,7 @@ export function hitungRekapKelas(p) {
       streak, perfect, rata,
       terbaik: terbaik ? { judul: tugasMap[terbaik.tugasId]?.judul || "tugas", nilai: terbaik.nilai } : null,
       kilat, poin, poinSemester, lvAwal: p.level(poinAwal), lvAkhir: p.level(poin),
-      badge, delta, materi,
+      badge, delta, materi, rapor,
       _raw: {
         Konsisten: streak, Rajin: subs.length, Teliti: rata,
         Cepat: durasi.length ? -median(durasi) : null,
@@ -150,7 +154,8 @@ export function hitungRekapKelas(p) {
         streak: b.streak >= 3,
         kilat: b.kilat != null && b.kilat < 60,
         badge: b.badge.length > 0,
-        delta: !!(b.delta && b.delta.sas > b.delta.sts),
+        delta: !!(b.delta && b.delta.naik > 0),
+        rapor: b.rapor.length > 0,
       },
     };
   }

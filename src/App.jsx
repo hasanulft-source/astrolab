@@ -2001,6 +2001,8 @@ function useStore() {
     namaBadge: id => ALL_BADGES.find(b => b.id === id)?.name || null,
     nilaiAkhir: sid => MAPEL_JENJANG(jenjang).map(m => { const r = getNilaiAkhirRecord(sid, m, jenjang, periode); return { mapel: m, sts: r.uts, sas: r.uas }; }),
     materiSelesai: sid => Object.values(missionMateriDoneAll[sid] || {}).filter(Boolean).length,
+    // Nilai rapor hanya ikut kalau nilai mapel itu sudah diterbitkan ke siswa (tombol Terbitkan di Nilai Akhir)
+    rapor: sid => MAPEL_JENJANG(jenjang).filter(m => isNilaiPublished(m, jenjang, periode)).map(m => ({ mapel: m, nilai: computeNilaiAkhir(sid, m, jenjang, periode).nilaiAkhir })),
     level: levelRekap,
   });
   // Status per kelas untuk panel guru di Nilai Akhir
@@ -5393,7 +5395,7 @@ function NilaiAkhirPage({ store }) {
           </div>
         </div>
       )}
-      {pratinjauRekap?.pilih && <RekapStory data={pratinjauRekap.pilih} onTutup={() => setPratinjauRekap(p => ({ ...p, pilih: null }))} />}
+      {pratinjauRekap?.pilih && <RekapStory data={pratinjauRekap.pilih} foto={store.getPhoto(pratinjauRekap.pilih.id)} onTutup={() => setPratinjauRekap(p => ({ ...p, pilih: null }))} />}
       {tempel && <TempelNilaiModal store={store} mapel={mapel} jenjang={jenjang} periode={periode} siswaList={siswaList} kolomSumatif={babKolom} kolomKuis={kuisKolom} onClose={() => setTempel(false)} onSelesai={m => { setTempel(false); showToast(m); }} />}
       {siswaList.length === 0 ? (
         <Card><div className="empty">Belum ada siswa di kelas {jenjang}.</div></Card>
