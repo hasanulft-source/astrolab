@@ -23,8 +23,15 @@
     "stats": {
       ".read": "auth != null",
       "$siswaId": {
-        ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)"
+        ".write": "auth != null && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || root.child('users').child(auth.uid).child('id').val() === $siswaId)",
+        "xpBawaan": { ".validate": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'" },
+        "badgeBawaan": { ".validate": "auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'" },
+        "poin": { ".validate": "newData.isNumber() && (auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1' || newData.val() <= (data.exists() ? data.val() : 0) + 1000)" }
       }
+    },
+    "seasonArsip": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
     },
     "messages": {
       ".read": "auth != null",
@@ -138,6 +145,9 @@
 },
     "settings": {
       ".read": "auth != null",
+      "season": {
+        ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'"
+      },
       "semester": {
         ".write": "auth != null && auth.uid === 'bSfqRHsI3iadcjX56cShfDiuupq1'",
         "tanggalSAS": {

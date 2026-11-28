@@ -164,6 +164,8 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
   const hour = new Date(now).getHours();
   const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
   const poin = stats.poin || 0;
+  const xp = (stats.xpBawaan || 0) + poin;
+  const season = store.getSeason ? store.getSeason().nomor : 1;
 
   return (
     <div className="sw">
@@ -184,11 +186,11 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
                 {myRank ? <b className="sw-hero-n">#{myRank.rank}</b> : <b className="sw-hero-n sm">Belum masuk</b>}
               </div>
               <div className="r">
-                <span className="sw-hero-k">Total poin</span>
+                <span className="sw-hero-k">{season > 1 ? `Poin Season ${season}` : "Total poin"}</span>
                 <b className="sw-hero-n">{poin.toLocaleString("id-ID")}</b>
               </div>
             </div>
-            <div className="sw-hero-lv"><LevelStrip poin={poin} onDark /></div>
+            <div className="sw-hero-lv"><LevelStrip poin={xp} onDark /></div>
           </section>
             <div className="sw-tiles">
               <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
@@ -239,7 +241,7 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
                     <div key={s.id} className={`sw-top-row${s.id === user.id ? " me" : ""}`}>
                       <Medal rank={s.rank} />
                       <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
-                      <span className="sw-top-name"><b>{s.nama}{s.id === user.id && <em> · kamu</em>}</b><LevelBadge poin={s.poin || 0} size="xs" showName={false} /></span>
+                      <span className="sw-top-name"><b>{s.nama}{s.id === user.id && <em> · kamu</em>}</b><LevelBadge poin={(s.xpBawaan || 0) + (s.poin || 0)} size="xs" showName={false} /></span>
                       <span className="sw-top-pts">{(s.poin || 0).toLocaleString("id-ID")}</span>
                     </div>
                   ))}
@@ -636,7 +638,7 @@ export function ReviewTugasSiswa({ user, store, tugasId, navigate }) {
 // Dipanggil dari KerjakanTugas (App.jsx) setelah submit berhasil. Hanya tampilan; nilai & poin sudah dihitung di sana.
 export function HasilTugas({ t, user, store, navigate, result, total, background }) {
   const now = useNow(30000);
-  const newPoin = store.getStats(user.id).poin || 0;
+  const newPoin = (store.getStats(user.id).xpBawaan || 0) + (store.getStats(user.id).poin || 0); // EXP untuk kartu level
   const sisa = store.getTugas().filter(st => {
     if (st.id === t.id || st.jenjang !== user.jenjang || st.status !== "aktif") return false;
     if (!untukSaya(st, user.id) || store.hasSub(user.id, st.id)) return false;

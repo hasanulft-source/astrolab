@@ -33,6 +33,8 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
   // Fitur Lapor: hanya siswa VII (kelas wali). Asumsi lama: semua siswa jenjang VII adalah VII-3.
   const laporEnabled = user.jenjang === "VII";
   const poin = stats.poin || 0;
+  const xp = (stats.xpBawaan || 0) + poin;
+  const season = store.getSeason ? store.getSeason().nomor : 1;
 
   function handleUpload(e) {
     const file = e.target.files[0];
@@ -94,13 +96,13 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
           <div className="pf-id-main">
             <h1>{user.nama}</h1>
             <span>{user.kelas || `Kelas ${user.jenjang}`}{user.noAbsen ? ` · No. absen ${user.noAbsen}` : ""}</span>
-            <div className="pf-lv"><LevelStrip poin={poin} /></div>
+            <div className="pf-lv"><LevelStrip poin={xp} /></div>
           </div>
         </section>
 
         <div className="sw-tiles four">
           <div><span>Ranking kelas</span><b className={myRank ? "pf-rank" : "none"}>{myRank ? <>{myRank.rank <= 3 && <Medal rank={myRank.rank} size="sm" />}#{myRank.rank}</> : "Belum ada"}</b></div>
-          <div><span>Total poin</span><b>{fmt(poin)}</b></div>
+          <div><span>{season > 1 ? `Poin Season ${season}` : "Total poin"}</span><b>{fmt(poin)}</b></div>
           <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
           <div className="streak"><span>Streak</span><b><StreakValue streak={stats.streak || 0} /></b><small className="pf-api-next">{(() => {
             const a = infoTingkatApi(stats.streak || 0);

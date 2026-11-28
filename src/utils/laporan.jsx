@@ -221,7 +221,7 @@ function lsNilaiMapel(result, jenisLaporan) {
 function generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan = "semester") {
   const tengah = jenisLaporan === "tengahSemester";
   const stats = store.getStats(s.id);
-  const lv = getLevel(stats.poin || 0);
+  const lv = getLevel((stats.xpBawaan || 0) + (stats.poin || 0));
   const now = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
   const mapels = jenjang === "VII" ? ["IPA", "Informatika"] : ["IPA"];
   const namaPanggil = s.namaDisplay || (s.nama || "").split(" ")[0] || "Siswa";
@@ -352,7 +352,7 @@ export function buildLaporanHtml(store, jenjang, mode = "kelas", periode = getPe
     // Per kelas — rekap semua siswa
     const rows = siswa.map((s, i) => {
       const stats = store.getStats(s.id);
-      const lv = getLevel(stats.poin || 0);
+      const lv = getLevel((stats.xpBawaan || 0) + (stats.poin || 0));
       const nilaiRata = stats.nilaiRata || 0;
       const rank = i + 1;
       return `<tr>

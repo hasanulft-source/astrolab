@@ -439,7 +439,9 @@ function useStore() {
       const { nilaiList, nilaiRata } = recomputeNilaiStats(sub.siswaId, { subId, nilai: nilaiBaru });
       const tp = `stats/${sub.siswaId}`;
       Object.assign(patch, { [`${tp}/nilaiList`]: nilaiList, [`${tp}/nilaiRata`]: nilaiRata });
-      if (selisih !== 0) {
+      if (selisih !== 0 && subLama(sub)) {
+        patch[`${tp}/xpBawaan`] = Math.max(0, (st.xpBawaan || 0) + selisih);
+      } else if (selisih !== 0) {
         const poinBaru = Math.max(0, (st.poin || 0) + selisih);
         patch[`${tp}/poin`] = poinBaru;
         patch[`${tp}/poinHistory`] = [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: poinBaru, ts: now, reason: "nilai-esai", tugasId: sub.tugasId, delta: selisih }];
@@ -608,7 +610,8 @@ function useStore() {
     ];
     // Update stats siswa — adjust total poin & recompute nilaiList/nilaiRata
     const st = getStats(sub.siswaId);
-    const newPoin = Math.max(0, (st.poin || 0) + deltaPoin);
+    const lama = subLama(sub);
+    const newPoin = lama ? (st.poin || 0) : Math.max(0, (st.poin || 0) + deltaPoin);
     const { nilaiList: newNilaiList, nilaiRata: newNilaiRata } =
       recomputeNilaiStats(sub.siswaId, { subId, nilai: nilaiBaru });
 
@@ -622,7 +625,8 @@ function useStore() {
       [`${sp}/nilaiList`]: newNilaiList,
       [`${sp}/nilaiRata`]: newNilaiRata,
     };
-    if (deltaPoin !== 0) patch[`${sp}/poinHistory`] = [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "koreksi-nilai", tugasId: sub.tugasId, delta: deltaPoin }];
+    if (lama && deltaPoin !== 0) patch[`${sp}/xpBawaan`] = Math.max(0, (st.xpBawaan || 0) + deltaPoin);
+    if (deltaPoin !== 0 && !lama) patch[`${sp}/poinHistory`] = [...(st.poinHistory || []), { minggu: (st.poinHistory || []).length + 1, poin: newPoin, ts: now, reason: "koreksi-nilai", tugasId: sub.tugasId, delta: deltaPoin }];
     // Kalau nilai baru = 0, reset streak (asumsi kecurangan)
     if (nilaiBaru === 0) patch[`${sp}/streak`] = 0;
     await update(ref(db), patch);
@@ -1000,7 +1004,8 @@ function useStore() {
     // 2. Revert stats
     const poinDapat = Number(sub.poinDapat) || 0;
     const nilaiLama = Number(sub.nilai) || 0;
-    const newPoin = Math.max(0, (s.poin || 0) - poinDapat);
+    const lama = subLama(sub);
+    const newPoin = lama ? (s.poin || 0) : Math.max(0, (s.poin || 0) - poinDapat);
     const now = Date.now();
     const newHistory = [
       ...(s.poinHistory || []),
@@ -1018,6 +1023,7 @@ function useStore() {
     const sp = `stats/${siswaId}`;
     const patch = {
       [`submissions/${subKey}`]: null,
+      ...(lama ? { [`${sp}/xpBawaan`]: Math.max(0, (s.xpBawaan || 0) - poinDapat) } : {}),
       [`${sp}/poin`]: newPoin,
       [`${sp}/poinHistory`]: newHistory,
       [`${sp}/tugasSelesai`]: Math.max(0, (s.tugasSelesai || 0) - 1),
@@ -1431,11 +1437,14 @@ function useStore() {
     const r = (v, rate) => (typeof v === "number" && !isNaN(v) ? Math.round(v * rate) : 0);
     return getAllAccounts().filter(a => a.role !== "guru").map(a => {
       const st = getStats(a.id);
-      const tugasP = subs.filter(x => x.siswaId === a.id).reduce((n, x) => n + (Number(x.poinDapat) || 0), 0);
-      const badgeP = Object.keys(badgesData[a.id] || {}).reduce((n, b) => n + (ALL_BADGES.find(x => x.id === b)?.poin || 0), 0);
+      // Season 2+: hanya hitung yang terjadi di season berjalan (poin season lalu sudah pindah ke xpBawaan)
+      const tugasP = subs.filter(x => x.siswaId === a.id && !subLama(x)).reduce((n, x) => n + (Number(x.poinDapat) || 0), 0);
+      const bawaan = season.nomor > 1 ? (st.badgeBawaan || []) : [];
+      const badgeP = Object.keys(badgesData[a.id] || {}).filter(b => !bawaan.includes(b)).reduce((n, b) => n + (ALL_BADGES.find(x => x.id === b)?.poin || 0), 0);
       let nilaiP = 0;
       Object.values(nilaiAkhirData || {}).forEach(rec => {
         if (!rec || rec.siswaId !== a.id || !periodeCocok(rec.periode || "")) return;
+        if (season.nomor > 1 && season.periodeSebelum && (rec.periode || "").replace("Tengah ", "") === season.periodeSebelum.replace("Tengah ", "")) return;
         Object.values(rec.sumatif || {}).forEach(v => { nilaiP += r(v, NILAI_POIN_RATE.sumatif); });
         Object.values(rec.kuis || {}).forEach(v => { nilaiP += r(v, NILAI_POIN_RATE.kuis); });
         nilaiP += r(rec.uts, NILAI_POIN_RATE.uts) + r(rec.uas, NILAI_POIN_RATE.uas) + r(rec.portofolio, NILAI_POIN_RATE.portofolio);
@@ -1676,6 +1685,31 @@ function useStore() {
   };
 
   // ─── SEMESTER SETTINGS ───
+  // SEASON — poin & ranking direset tiap season, EXP (xpBawaan + poin) & badge tetap. settings/season {nomor, mulaiAt, periodeSebelum}
+  const [season, setSeason] = useState({ nomor: 1, mulaiAt: 0 });
+  useEffect(() => onValue(ref(db, "settings/season"), snap => { const v = snap.val() || {}; setSeason({ nomor: Number(v.nomor) || 1, mulaiAt: Number(v.mulaiAt) || 0, periodeSebelum: v.periodeSebelum || null }); }, () => {}), []);
+  const getSeason = () => season;
+  // Submission dari season sebelumnya: koreksi nilainya masuk ke EXP bawaan, bukan poin season berjalan
+  const subLama = sub => season.nomor > 1 && new Date(sub?.submittedAt || 0).getTime() < season.mulaiAt;
+  const mulaiSeason = async () => {
+    const now = Date.now(), nomorLama = season.nomor || 1, nomorBaru = nomorLama + 1;
+    const siswa = getAllAccounts().filter(a => a.role !== "guru");
+    const rank = {};
+    [...new Set(siswa.map(a => a.jenjang))].forEach(j => getLeaderboard(j).forEach(r => { rank[r.id] = r.rank; }));
+    const arsip = `seasonArsip/S${nomorLama}`;
+    const patch = { [`${arsip}/_meta`]: { nomor: nomorLama, mulaiAt: season.mulaiAt || null, selesaiAt: now, periode: getActivePeriode() } };
+    siswa.forEach(a => {
+      const st = getStats(a.id), poin = Number(st.poin) || 0, xpB = Number(st.xpBawaan) || 0;
+      const badge = Object.keys(badgesData[a.id] || {});
+      patch[`${arsip}/${a.id}`] = { nama: a.nama || a.id, jenjang: a.jenjang || null, poin, rank: rank[a.id] || null, xpAkhir: xpB + poin, streak: st.streak || 0, badge };
+      const sp = `stats/${a.id}`;
+      Object.assign(patch, { [`${sp}/xpBawaan`]: xpB + poin, [`${sp}/poin`]: 0, [`${sp}/poinHistory`]: null, [`${sp}/streak`]: 0, [`${sp}/streakResetFor`]: null, [`${sp}/badgeBawaan`]: badge });
+    });
+    patch["rankSnapshots"] = null;
+    patch["settings/season"] = { nomor: nomorBaru, mulaiAt: now, periodeSebelum: getActivePeriode() };
+    await update(ref(db), patch);
+    return { nomor: nomorBaru, jumlah: siswa.length };
+  };
   const [semesterSettings, setSemesterSettings] = useState({});
   useEffect(() => {
     const ssRef = ref(db, "settings/semester");
@@ -1745,6 +1779,12 @@ function useStore() {
     const patch = { [`badges/${sid}/${badgeId}`]: null };
     if (poinBadge > 0) {
       const s = getStats(sid);
+      if (season.nomor > 1 && (s.badgeBawaan || []).includes(badgeId)) {
+        // badge dari season lalu: poinnya sudah jadi EXP bawaan
+        patch[`stats/${sid}/xpBawaan`] = Math.max(0, (s.xpBawaan || 0) - poinBadge);
+        patch[`stats/${sid}/badgeBawaan`] = (s.badgeBawaan || []).filter(b => b !== badgeId);
+        await update(ref(db), patch); return;
+      }
       const newPoin = Math.max(0, (s.poin || 0) - poinBadge); // gak boleh minus
       patch[`stats/${sid}/poin`] = newPoin;
       patch[`stats/${sid}/poinHistory`] = [...(s.poinHistory || []), { minggu: (s.poinHistory || []).length + 1, poin: newPoin, ts: Date.now(), reason: "badge-dicabut", badgeId, delta: -poinBadge }];
@@ -2067,7 +2107,7 @@ function useStore() {
   // ─── MODE UJIAN (utils/ujian-store.js) ───
   const ujianStore = useUjianStore({ db, ref, onValue, update, push, serverTimestamp }, currentUser, { callPush, guruId: () => fbGuru?.id || "fata" });
 
-  return { ...ujianStore, getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, getSkorLatihan, simpanSkorLatihan, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, getRekapSaya, getRekapSemua, tandaiRekapDilihat, hitungRekap, statusRekap, terbitkanRekap, tarikRekap, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
+  return { ...ujianStore, getTugas, getTugasArsip, getTugasSemua, arsipkanTugas, terbitkanUlang, addTugas, deleteTugas, updateTugas, duplicateTugas, getTindakLanjut, setTindakLanjut, hapusTindakLanjut, getSubs, addSub, kumpulkanTugas, nilaiJawabanManual, auditPoinGanda, perbaikiPoinGanda, hitungUlangPoin, samakanPoin, getSeason, mulaiSeason, hasSub, getSubBy, updateSubmissionNilai, getStats, updateStats, recomputeNilaiStats, resetStreakIfMissed, getLeaderboard, getAllSiswa, addSiswa, deleteSiswa, resetPassword, isFbAccount, importSiswaBulk, genSiswaId: (n) => genSiswaId(n, new Set(fbAccounts.map(a => a.id))), genPassword, getThread, sendMessage, getUnreadCount, markRead, getContacts, getLastMsg, getBroadcasts, getAllBroadcasts, addBroadcast, editBroadcast, deleteBroadcast, addReport, updateReportStatus, deleteReport, getReports, getUnreadReportCount, getNilaiAkhirRecord, computeNilaiAkhir, updateNilaiKolom, updateNilaiManual, updateAsesmenLanjutan, addKolomDinamis, hapusKolomDinamis, getKolomDinamisList, bulkImportNilaiAkhir, getTugasAstrolabAvg, getSusulan, isSusulanAktif, addSusulan, removeSusulan, resetSubmission, getAksesRequest, getAksesPending, requestAkses, approveAkses, rejectAkses, getBoosts, getBoostTotal, addBoost, updateBoost, removeBoost, getPhoto, savePhoto, getBadges, awardBadge, removeBadge, isNilaiPublished, publishNilai, unpublishNilai, isOnline, getLastSeen, getOnlineUsers, fbGuru, setCurrentUser, loading, getMateriList, addMateri, addMateriYoutube, addMateriWeb, deleteMateri, updateMateri, loadMateriPages, archiveOldMateri, getRankSnapshot, saveRankSnapshot, getRankMovement, getActivePeriode, setSemesterOverride, closeSemester, bukaSemester, getTanggalSAS, setTanggalSAS, isSemesterClosed, semesterSettings, getLatihanSoal, addLatihanSoal, addLatihanSoalBulk, deleteLatihanSoal, importLatihanFromExcel, getLatihanSeen, markLatihanSeen, resetLatihanProgress, getSkorLatihan, simpanSkorLatihan, downloadTemplateSoal, exportLatihanSoal, getMission, isMissionActive, saveMissionConfig, isMateriDone, markMateriDone, isMateriDoneFor, getAttendance, getRiwayatMisi, getRekapSaya, getRekapSemua, tandaiRekapDilihat, hitungRekap, statusRekap, terbitkanRekap, tarikRekap, hasAttended, markAttendance, isMisiSelesai, _tugas: tugas, _subs: subs, _messages: messages, _badgesData: badgesData };
 }
 
 // ─── LOGIN ───

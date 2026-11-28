@@ -58,7 +58,7 @@ function Baris({ s, me, move, store }) {
       <span className="rk-rank"><Medal rank={s.rank} size="sm" /></span>
       <UserAvatar userId={s.id} name={s.nama} size="sm" store={store} />
       <span className="rk-name">
-        <span className="rk-name-top"><b>{s.nama}</b>{me && <em>kamu</em>}<LevelBadge poin={s.poin || 0} size="xs" showName={false} /><Gerak move={move} /></span>
+        <span className="rk-name-top"><b>{s.nama}</b>{me && <em>kamu</em>}<LevelBadge poin={(s.xpBawaan || 0) + (s.poin || 0)} size="xs" showName={false} /><Gerak move={move} /></span>
         {(s.streak || 0) >= 3 && <small className="rk-streak"><FlameAnimated size={13} streak={s.streak} /> streak {s.streak} hari</small>}
       </span>
       <span className="rk-pts">{fmt(s.poin)}</span>

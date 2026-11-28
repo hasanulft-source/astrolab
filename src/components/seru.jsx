@@ -18,7 +18,7 @@ export function LevelStrip({ poin = 0, onDark = false }) {
     <div className={`sr-level${onDark ? " dark" : ""}`} style={{ "--tier": lv.color, "--tier-bg": lv.bg, "--tier-accent": lv.accent || lv.color }}>
       <span className="sr-level-ic"><TierIcon tierId={lv.tierId} size={26} color={lv.color} /></span>
       <div className="sr-level-main">
-        <div className="sr-level-row"><b>{lv.name}</b><span>{prog.next ? `${prog.needed.toLocaleString("id-ID")} poin lagi ke ${prog.next.name}` : "Level tertinggi"}</span></div>
+        <div className="sr-level-row"><b>{lv.name}</b><span>{prog.next ? `${prog.needed.toLocaleString("id-ID")} EXP lagi ke ${prog.next.name}` : "Level tertinggi"}</span></div>
         <div className="sr-level-bar"><i style={{ width: `${prog.next ? prog.pct : 100}%` }} /></div>
       </div>
     </div>

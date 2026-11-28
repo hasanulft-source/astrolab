@@ -44,6 +44,8 @@ export const LEVELS = TIERS.flatMap((tier, tIdx) =>
   })
 );
 
+// EXP seumur hidup = EXP bawaan dari season sebelumnya + poin season berjalan. Level SELALU dari EXP, ranking dari poin.
+export const xpDari = st => (Number(st?.xpBawaan) || 0) + (Number(st?.poin) || 0);
 export function getLevel(poin) {
   return LEVELS.find(l => poin >= l.min && poin <= l.max) || LEVELS[0];
 }
@@ -345,7 +347,7 @@ export function checkAutoBadges(stats, submission, isTopClass = false, isTopThre
   const newStreak = submission.ontime ? (stats.streak || 0) + 1 : 0;
   const totalPerfectBefore = stats.perfectCount || 0;
   const totalPerfect = totalPerfectBefore + (nilai === 100 ? 1 : 0);
-  const newPoin = (stats.poin || 0) + (submission.poinDapat || 0);
+  const newPoin = xpDari(stats) + (submission.poinDapat || 0);
   const newLevel = getLevel(newPoin).id;
 
   // First tugas
@@ -419,7 +421,7 @@ export function LevelCard({ poin, compact = false }) {
         <div style={{ height: "100%", width: `${prog.pct}%`, background: lv.color, borderRadius: 99, transition: "width .5s ease" }} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
-        <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{poin} XP</span>
+        <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>{poin.toLocaleString("id-ID")} EXP</span>
         {prog.next ? <span style={{ fontSize: 10, color: "var(--ink-3)", display: "inline-flex", alignItems: "center", gap: 4 }}>{prog.needed} lagi → <TierIcon tierId={prog.next.tierId} size={11} color="var(--ink-3)" /> {prog.next.name}</span>
           : <span style={{ fontSize: 10, color: lv.color, fontWeight: 700 }}>MAX LEVEL</span>}
       </div>

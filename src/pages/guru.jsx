@@ -941,7 +941,7 @@ export function ManajemenSiswaV2({ store, TambahSiswaModal, ImportSiswaModal, Au
         <div className="gr-card list">
           {tampil.map(s => {
             const st = store.getStats(s.id);
-            const lv = getLevel(st.poin || 0);
+            const lv = getLevel(((st.xpBawaan || 0) + (st.poin || 0)));
             return (
               <div key={s.id} className="gr-akun">
                 <Avatar name={s.nama} size="md" photo={store.getPhoto ? store.getPhoto(s.uid || s.id) : null} />
@@ -1509,7 +1509,7 @@ export function hitungKelas(store, jenjang, now = Date.now()) {
     // (tugas berjalan yang belum dikumpulkan tidak dihitung kurang — masih ada waktu)
     const wajib = milik.filter(t => labelTenggat(t, now).lewat || ss.some(x => x.tugasId === t.id)).length;
     const st = store.getStats(s.id);
-    const lv = getLevel(st.poin || 0);
+    const lv = getLevel(((st.xpBawaan || 0) + (st.poin || 0)));
     const online = store.isOnline ? store.isOnline(s.uid || s.id) || store.isOnline(s.id) : false;
     const last = store.getLastSeen ? store.getLastSeen(s.uid || s.id) || store.getLastSeen(s.id) : null;
     return {
@@ -1809,6 +1809,59 @@ function FotoProfilModal({ store, user, nama, adaFoto, onClose }) {
   );
 }
 
+// MULAI SEASON BARU — reset kompetisi (poin, ranking, streak); EXP & badge tetap. Arsip ke seasonArsip/S{n}.
+function MulaiSeasonModal({ store, onClose }) {
+  const nomor = store.getSeason().nomor, baru = nomor + 1;
+  const kode = `SEASON ${baru}`;
+  const [ketik, setKetik] = useState("");
+  const [cadang, setCadang] = useState(false);
+  const [sibuk, setSibuk] = useState(false);
+  const [hasil, setHasil] = useState(null);
+  const [galat, setGalat] = useState("");
+  const periode = store.getActivePeriode();
+  const masihGanjil = /ganjil/i.test(periode);
+  const siswa = store.getAllSiswa ? store.getAllSiswa() : [];
+  function unduhCadangan() {
+    backupFromStore(store);
+    const data = { exported_at: new Date().toISOString(), season: nomor, stats: Object.fromEntries(siswa.map(s => [s.id, store.getStats(s.id)])), badges: store._badgesData || {} };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = `astrolab-stats-season${nomor}-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url);
+    setCadang(true);
+  }
+  async function jalan() {
+    setSibuk(true); setGalat("");
+    try { setHasil(await withTimeout(store.mulaiSeason(), 20000)); }
+    catch (e) { setGalat("Gagal: " + (e?.message || e)); }
+    setSibuk(false);
+  }
+  return (
+    <div className="modal-overlay" onClick={sibuk ? undefined : onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-season-j" style={{ maxWidth: 480 }}>
+        <h2 id="gr-season-j" className="gr-h2">Mulai Season {baru}</h2>
+        {hasil ? (<>
+          <p style={{ margin: "10px 0" }}>Season {hasil.nomor} dimulai untuk {hasil.jumlah} siswa. Hasil Season {nomor} tersimpan di arsip.</p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" className="gr-btn sm" onClick={onClose}>Selesai</button></div>
+        </>) : (<>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, margin: "12px 0", fontSize: 12.5, lineHeight: 1.6 }}>
+            <div><b style={{ color: "var(--bad)" }}>Kembali ke 0</b><br />Poin<br />Ranking &amp; pergerakan<br />Streak</div>
+            <div><b style={{ color: "var(--teal, #0E9F8E)" }}>Tetap</b><br />EXP &amp; level<br />Badge<br />Jawaban, nilai, rapor, rekap, chat</div>
+          </div>
+          {masihGanjil && <p className="gr-warn">Periode aktif masih {periode}. Mulai season setelah nilai akhir, rapor, dan Rekap Ganjil final, lalu ganti periode ke Genap. Poin dari nilai yang diinput setelah ini masuk ke Season {baru}.</p>}
+          <p className="gr-muted" style={{ fontSize: 12 }}>Poin Season {nomor} tiap siswa dipindah ke EXP, jadi level tidak turun. Klasemen akhir Season {nomor} disimpan di arsip.</p>
+          <button type="button" className="gr-btn outline sm" onClick={unduhCadangan} style={{ margin: "8px 0" }}>{cadang ? "Cadangan terunduh ✓" : "1. Unduh cadangan dulu"}</button>
+          <label style={{ display: "block", fontSize: 12.5, margin: "8px 0 4px" }}>2. Ketik <b>{kode}</b> untuk konfirmasi</label>
+          <input className="inp" value={ketik} onChange={e => setKetik(e.target.value)} placeholder={kode} disabled={!cadang || sibuk} style={{ width: "100%" }} />
+          {galat && <p className="gr-warn" role="alert">{galat}</p>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+            <button type="button" className="gr-btn outline sm" onClick={onClose} disabled={sibuk}>Batal</button>
+            <button type="button" className="gr-btn sm gr-pf-merah" disabled={!cadang || ketik.trim().toUpperCase() !== kode || sibuk} onClick={jalan}>{sibuk ? "Memproses…" : `Mulai Season ${baru}`}</button>
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 export function ProfilGuruV2({ user, store, navigate, ResetModal }) {
   const photo = store.getPhoto(user.uid || user.id);
   const kunci = `astrolab.profil.${user.id}`;
@@ -1817,6 +1870,7 @@ export function ProfilGuruV2({ user, store, navigate, ResetModal }) {
   const [form, setForm] = useState(null); // null = tidak sedang mengedit
   const [foto, setFoto] = useState(false);
   const [reset, setReset] = useState(false);
+  const [seasonBaru, setSeasonBaru] = useState(false);
   const [tanya, setTanya] = useState(null); // "tutup" | "buka"
   const [sibuk, setSibuk] = useState("");
   const [galat, setGalat] = useState("");
@@ -1934,16 +1988,23 @@ export function ProfilGuruV2({ user, store, navigate, ResetModal }) {
             {galat && <p className="gr-warn" role="alert">{galat}</p>}
           </section>
 
-          <section className="gr-card gr-pf-bahaya">
-            <h2 className="gr-h2">Reset semester</h2>
-            <p>Menghapus semua jawaban, poin, streak, badge, pengumuman, jatah susulan, dan chat. Akun siswa, tugas, arsip, dan nilai akhir tetap ada. Tidak bisa dibatalkan.</p>
-            <button type="button" className="gr-btn sm gr-pf-merah" onClick={() => setReset(true)}>Reset semester…</button>
+          <section className="gr-card gr-pf-sem">
+            <h2 className="gr-h2">Season {store.getSeason ? store.getSeason().nomor : 1}</h2>
+            <p className="gr-muted" style={{ margin: "8px 0 12px" }}>Season baru mereset poin, ranking, dan streak supaya semua siswa bersaing lagi dari nol. EXP, level, badge, jawaban, dan nilai tetap.</p>
+            <button type="button" className="gr-btn sm" onClick={() => setSeasonBaru(true)}>Mulai Season {(store.getSeason ? store.getSeason().nomor : 1) + 1}…</button>
           </section>
+
+          <details className="gr-card gr-pf-bahaya">
+            <summary className="gr-h2" style={{ cursor: "pointer" }}>Reset total (bahaya)</summary>
+            <p>Menghapus semua jawaban, poin, EXP, streak, badge, pengumuman, jatah susulan, dan chat. Akun siswa, tugas, arsip, dan nilai akhir tetap ada. Tidak bisa dibatalkan. Untuk ganti semester, pakai Season baru di atas.</p>
+            <button type="button" className="gr-btn sm gr-pf-merah" onClick={() => setReset(true)}>Reset total…</button>
+          </details>
         </div>
       </div>
 
       {foto && <FotoProfilModal store={store} user={user} nama={profil.nama} adaFoto={!!photo} onClose={() => setFoto(false)} />}
       {reset && ResetModal && <ResetModal store={store} onClose={() => setReset(false)} />}
+      {seasonBaru && <MulaiSeasonModal store={store} onClose={() => setSeasonBaru(false)} />}
       {tanya && (
         <div className="modal-overlay" onClick={() => setTanya(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="gr-per-j">

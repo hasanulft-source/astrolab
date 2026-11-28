@@ -31,7 +31,7 @@ async function compressImageChat(file, maxWidth = 600, quality = 0.5) {
   });
 }
 import { UserAvatar, OnlineDot, Card } from '../components/visual';
-import { LevelBadge } from '../components/gamification';
+import { LevelBadge, xpDari } from '../components/gamification';
 
 // ─── Read receipt: double checkmark (grey = sent, blue = read) ───
 function ReadCheck({ read }) {
@@ -457,7 +457,7 @@ function ChatThread({ user, contact, store, onBack, navigate }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contact.nama}</span>
-            {contact.role !== "guru" && <LevelBadge poin={(store.getStats(contact.id).poin) || 0} size="xs" />}
+            {contact.role !== "guru" && <LevelBadge poin={xpDari(store.getStats(contact.id))} size="xs" />}
           </div>
           {(() => {
             const online = store.isOnline(contact.id);
@@ -690,7 +690,7 @@ export function ChatScreen({ user, store, params = {}, navigate }) {
             <div style={{ fontSize: 14, fontWeight: unread > 0 ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nama}</span>
               {c.role === "guru" && <span style={{ fontSize: 10, background: "var(--accent-soft)", color: "var(--accent-2)", borderRadius: 99, padding: "1px 6px", fontWeight: 600, flexShrink: 0 }}>Guru</span>}
-              {c.role !== "guru" && <span style={{ flexShrink: 0 }}><LevelBadge poin={(store.getStats(c.id).poin) || 0} size="xs" showName={false} /></span>}
+              {c.role !== "guru" && <span style={{ flexShrink: 0 }}><LevelBadge poin={xpDari(store.getStats(c.id))} size="xs" showName={false} /></span>}
             </div>
             {last && <div style={{ fontSize: 11, color: "var(--ink-4)", flexShrink: 0 }}>{fmtTime(last.ts)}</div>}
           </div>

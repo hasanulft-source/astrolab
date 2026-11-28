@@ -96,6 +96,7 @@ export function hitungRekapKelas(p) {
     const hist = (st.poinHistory || []).filter(h => h && typeof h.poin === "number" && h.ts && h.ts < awal);
     const poinAwal = hist.length ? hist[hist.length - 1].poin : 0;
     const poinSemester = Math.max(0, poin - poinAwal);
+    const xpB = Number(st.xpBawaan) || 0; // EXP dari season sebelumnya (level tidak ikut reset)
     // badge (badge tidak punya tanggal, jadi yang ditampilkan koleksi saat ini)
     const badge = Object.keys(p.badges?.[s.id] || {}).filter(k => p.badges[s.id][k]).map(k => p.namaBadge(k)).filter(Boolean);
     // STS → SAS: ambil mapel dengan kenaikan terbesar
@@ -111,7 +112,7 @@ export function hitungRekapKelas(p) {
       jam: JENDELA[ji], jamN: hit[ji],
       streak, perfect, rata,
       terbaik: terbaik ? { judul: tugasMap[terbaik.tugasId]?.judul || "tugas", nilai: terbaik.nilai } : null,
-      kilat, poin, poinSemester, lvAwal: p.level(poinAwal), lvAkhir: p.level(poin),
+      kilat, poin, poinSemester, lvAwal: p.level(xpB + poinAwal), lvAkhir: p.level(xpB + poin),
       badge, delta, materi, rapor,
       _raw: {
         Konsisten: streak, Rajin: subs.length, Teliti: rata,
