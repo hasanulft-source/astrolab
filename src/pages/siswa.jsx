@@ -292,7 +292,7 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
 }
 
 // Dekor pita: bintang berkedip, planet amber bercincin melayang, satelit mengorbit. Hanya hiasan.
-function Angkasa() {
+export function Angkasa() {
   const bintang = [[78, 10, 3, 2.8, 0], [61, 30, 2, 3.6, .8], [92, 62, 2, 2.2, 1.4], [50, 8, 2, 4, .3], [38, 22, 2, 3.1, 2, 1], [85, 90, 3, 2.6, 1, 1], [69, 70, 2, 3.4, 2.4], [22, 60, 2, 3, 1.7], [8, 18, 2, 3.3, .5, 1]];
   return (
     <div className="sw-angkasa" aria-hidden="true">

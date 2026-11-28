@@ -1,0 +1,187 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Astrolab — lapisan redesign "E · halus" (tahap 4–8, Nov 2026)
+   Dimuat PALING AKHIR (App.jsx). Hanya tampilan: tidak ada aturan yang mengubah tata letak data.
+   Prinsip: kartu putih radius 20+ tanpa garis, judul teks 800, petrol = aksi utama & item aktif,
+   amber = gamifikasi & momen hadiah, status: belum (amber), lewat (rose), dinilai (teal).
+   Prefix `body` supaya menang dari CSS halaman tanpa !important.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Komponen lama main.css (dipakai layar kerjakan, nilai akhir, modal) ── */
+body .card{border:0;border-radius:20px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .btn{border-radius:13px;font-weight:700;padding:10px 16px;min-height:40px;box-sizing:border-box}
+body .btn-sm{padding:6px 12px;min-height:34px;border-radius:10px;font-size:12.5px}
+body .btn-lg{padding:13px 20px;min-height:48px;border-radius:15px}
+body .btn-outline{background:var(--surface);color:var(--accent);border:1px solid var(--line)}
+body .btn-outline:hover{background:var(--accent-tint)}
+body .btn-soft{background:var(--bg);color:var(--ink-2)}
+body .btn-warn{background:var(--st-belum-bg);color:var(--st-belum);border:0}
+body .btn-amber,body .btn.amber{background:var(--amber-btn);color:var(--amber-ink);border:0;border-bottom:4px solid var(--amber-edge);font-weight:800}
+body .inp{border-radius:12px;border:1.5px solid var(--line);background:#f6f9fa;padding:10px 13px}
+body .inp:focus,body .inp:focus-within{border-color:var(--accent-mid);background:var(--surface)}
+body .lbl{font-weight:700;color:var(--ink-2)}
+body .modal-overlay{background:rgba(6,47,54,.55)}
+body .modal{border-radius:24px;padding:24px;box-shadow:0 30px 60px -20px rgba(6,47,54,.5)}
+body .modal h3{font-size:19px;font-weight:800;letter-spacing:-.02em}
+body .topbar{background:var(--surface);border-bottom:1px solid var(--line-soft)}
+body .topbar-back{border-radius:13px;background:var(--bg);width:44px;height:44px}
+body .dt h1{font-size:28px;letter-spacing:-.04em}
+body .empty-box h3{font-weight:800;color:var(--ink)}
+
+/* Kerjakan tugas: opsi jawaban besar, nav bawah putih */
+body .quiz-opt{border-radius:16px;min-height:56px;padding:12px 14px;border:1.5px solid var(--line);font-size:15px}
+body .quiz-opt:hover{border-color:var(--accent-light);background:var(--surface)}
+body .quiz-opt.selected{border:2px solid var(--accent);background:var(--accent-tint);font-weight:700}
+body .quiz-opt.correct{border:2px solid var(--accent-mid);background:var(--st-dinilai-bg)}
+body .quiz-opt.wrong{border:2px solid #fb7185;background:var(--st-lewat-bg)}
+body .quiz-opt.wrong .quiz-letter{background:#e11d48;border-color:#e11d48}
+body .quiz-letter{width:30px;height:30px;border-radius:9px;border:0;background:var(--bg);font-family:var(--mono);font-weight:500;color:var(--ink-2)}
+body .quiz-foot-sticky{border-top:1px solid var(--line-soft);box-shadow:none;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px))}
+body .quiz-foot-sticky .btn{min-height:46px;padding:0 18px;border-radius:14px}
+
+/* ── ui.css (layar siswa) ── */
+body .ui-head h1{font-size:28px;letter-spacing:-.04em;line-height:1.1}
+body .ui-head-sub,body .ui-head-ey{color:var(--ink-2)}
+body .ui-card{border:0;border-radius:20px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .ui-label{font-size:16px;font-weight:800;letter-spacing:-.02em;text-transform:none;color:var(--ink)}
+body .ui-tabs{border:0;border-radius:14px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .ui-tabs button{padding:10px 8px;border-radius:10px;font-weight:600}
+body .ui-tabs button[aria-selected="true"]{background:var(--accent);color:#fff;font-weight:700}
+body .ui-btn{border-radius:13px;padding:12px 18px}
+body .ui-btn.sm{border-radius:10px;padding:7px 12px}
+body .ui-btn.amber{background:var(--st-belum-bg);color:var(--st-belum)}
+body .ui-chip{border-radius:8px;font-weight:700}
+body .ui-chip.amber{background:var(--st-belum-bg);color:var(--st-belum)}
+body .ui-chip.danger{background:var(--st-lewat-bg);color:var(--st-lewat)}
+body .ui-chip.muted{background:var(--line-soft);color:var(--ink-2)}
+body .ui-item-ic{width:42px;height:42px;border-radius:13px}
+body .ui-item-ic.amber{background:var(--st-belum-bg);color:var(--st-belum)}
+body .ui-meter{height:8px}
+body .ui-meter i{background:linear-gradient(90deg,#2bb5c4,var(--accent-mid))}
+body .ui-bar{height:7px}
+body .ui-bar i{background:linear-gradient(90deg,#2bb5c4,var(--accent-mid))}
+body .ui-bar i.below{background:linear-gradient(90deg,var(--xp-a),var(--xp-b))}
+body .ui-facts div{background:var(--bg);border-radius:14px}
+body .ui-callout{border-radius:16px;background:var(--st-belum-bg)}
+body .ui-callout.teal{background:var(--accent-tint)}
+body .ui-callout button{border-radius:11px}
+body .ui-badge{border-radius:9px}
+@media(max-width:480px){body .ui-item-ic{width:36px;height:36px;border-radius:11px}}
+
+/* Popup siswa (hasil, detail) → panel bawah di HP */
+body .sw-pop{border-radius:26px;background:var(--bg);box-shadow:0 30px 60px -20px rgba(6,47,54,.5)}
+body .sw-pop-head{background:var(--surface);border-bottom:0}
+body .sw-pop-head h2{font-size:20px}
+body .sw-poin-chip{background:var(--amber-btn);color:var(--amber-ink);font-weight:800;border-radius:10px}
+@media(max-width:600px){
+  body .modal-overlay:has(> .sw-pop){align-items:flex-end;padding:0}
+  body .sw-pop{border-radius:26px 26px 0 0;max-width:none;max-height:92vh}
+}
+
+/* ── Ranking ── */
+body .rk-me{background:var(--band);border-radius:22px;box-shadow:var(--shadow-lift)}
+body .rk-me div span{color:var(--band-sub)}
+body .rk-row.me{background:var(--accent-tint);border-radius:14px}
+body .rk-pod.p1 .rk-pod-block{background:linear-gradient(180deg,var(--xp-a),var(--xp-b));color:var(--amber-ink)}
+
+/* ── Profil siswa ── */
+body .pf-id{border:0;border-radius:22px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .pf-rapor{background:var(--surface);color:var(--ink);border-radius:20px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .pf-rapor small{color:var(--ink-2)}
+body .pf-rapor:hover{background:var(--accent-tint)}
+body .pf-rapor-ic{background:var(--accent-tint);color:var(--accent);border-radius:13px}
+body .sw-tiles > div{border:0;border-radius:20px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .sw-tiles > div.streak{background:#fff1d6;color:#5a2d00}
+body .sw-tiles > div.streak > span,body .sw-tiles .streak .pf-api-next{color:#7a4a12}
+body .sw-tiles b .sr-streak > span{color:#5a2d00}
+body .rp-riwayat{border-radius:20px;background:var(--band)}
+body .pf-badge.locked{opacity:.45}
+
+/* ── Mandiri & persiapan ── */
+body .ps-kartu{background:#fff1d6;color:#5a2d00;border-radius:20px;padding:16px}
+body .ps-kartu .ps-meter{background:rgba(90,45,0,.12)}
+body .ps-kartu .ps-meter i{background:linear-gradient(90deg,var(--xp-a),var(--xp-b))}
+body .ps-kartu .ps-kartu-ic{background:var(--amber-btn);color:var(--amber-ink)}
+body .ps-kartu-ey{color:#7a4a12}
+body .ps-sim{background:var(--band);color:#fff;border-radius:20px}
+
+/* ── Pesan ── */
+body .chat-thread-hdr{border-bottom:1px solid var(--line-soft)}
+body .chat-input{border-radius:16px;background:#f6f9fa}
+
+/* ── Mode Ujian (siswa) ── */
+body .uj-head{background:var(--band);color:#fff;border-bottom:0;padding:12px 16px}
+body .uj-head .uj-muted,body .uj-head small,body .uj-head span{color:var(--band-sub)}
+body .uj-head b,body .uj-head strong{color:#fff}
+body .uj-timer{background:rgba(255,255,255,.12);color:#fff;border-radius:12px}
+body .uj-timer.amber{background:var(--amber-btn);color:var(--amber-ink)}
+body .uj-head .uj-navbtn{color:#fff;border-color:rgba(255,255,255,.28)}
+body .uj-grid{background:var(--bg);border-bottom:0}
+body .uj-grid button{border-radius:10px;font-weight:500;background:var(--surface);border:1px solid var(--line)}
+body .uj-grid button.isi{background:var(--accent);border-color:var(--accent);color:#fff}
+body .uj-grid button.ragu{background:var(--amber-btn);border-color:var(--amber-btn);color:var(--amber-ink)}
+body .uj-grid button.kini{background:var(--surface);border:2px solid var(--accent);color:var(--accent)}
+body .uj-grid p i.isi{background:var(--accent);border-color:var(--accent)}
+body .uj-grid p i.ragu{background:var(--amber-btn);border-color:var(--amber-btn)}
+body .uj-opsi button{border-radius:16px;min-height:52px}
+body .uj-opsi button.on{border:2px solid var(--accent)}
+body .uj-kartu{border:0;border-radius:24px}
+body .uj-banner{background:var(--st-belum-bg);color:var(--st-belum);border-bottom:0}
+body .uj-banner button{border-radius:11px}
+
+/* ── Layar guru (gr-*) ── */
+body .gr h1{font-size:30px;letter-spacing:-.04em;line-height:1.1}
+body .gr-sh h2,body .gr-h2{font-size:16px;font-weight:800;letter-spacing:-.02em;text-transform:none;color:var(--ink)}
+body .gr-sub.up{text-transform:none;letter-spacing:0;color:var(--ink-2)}
+body .gr-card{border:0;border-radius:20px;box-shadow:0 1px 2px rgba(6,47,54,.05),0 10px 28px rgba(6,47,54,.05)}
+body .gr-btn{height:42px;border-radius:13px}
+body .gr-btn.sm{height:36px;border-radius:11px}
+body .gr-seg{background:var(--surface);border-radius:14px;padding:4px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .gr-seg button{border-radius:10px;padding:8px 14px}
+body .gr-seg button.on{background:var(--accent);color:#fff;box-shadow:none}
+body .gr-links button{border-radius:10px}
+body .gr-tiles>div{border:0;border-radius:20px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+body .gr-chip{border-radius:8px}
+body .gr-chip.amber{background:var(--st-belum-bg);color:var(--st-belum)}
+body .gr-chip.teal{background:var(--st-dinilai-bg);color:var(--st-dinilai)}
+body .gr-chip.merah{background:var(--st-lewat-bg);color:var(--st-lewat)}
+body .gr-ib{border-radius:12px}
+body .gr-toast{border-radius:14px}
+body .gr-sticky{border:0;border-radius:18px;box-shadow:0 10px 30px -12px rgba(6,47,54,.35)}
+body .gr-pf-bahaya{border:1px solid #F2C4C4}
+
+/* ── Tabel nilai akhir & tabel lain ── */
+body table th{font-weight:700;color:var(--ink-2)}
+
+/* ── Tahap 4: pita petrol dashboard guru ── */
+body .gr-band{position:relative;overflow:hidden;background:var(--band);color:#fff;border-radius:28px;padding:26px 28px 24px;display:flex;flex-direction:column;gap:18px;box-shadow:var(--shadow-lift)}
+body .gr-band > *:not(.sw-angkasa){position:relative;z-index:1}
+body .gr-band .sw-planet{right:28px;top:18px}
+body .gr-band .gr-mono{color:var(--band-sub);letter-spacing:.05em;font-size:11.5px}
+body .gr-band h1{color:#fff;font-size:38px;margin-top:4px}
+body .gr-band-sum{margin:6px 0 0;font-size:15.5px;color:var(--band-sub);max-width:640px}
+body .gr-band-sum b{color:#fff}
+body .gr-band .gr-head{padding-right:120px}
+body .gr-band .gr-btn.outline{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.22)}
+body .gr-band .gr-btn.outline:hover{background:rgba(255,255,255,.18)}
+body .gr-band .gr-btn:not(.outline){background:var(--amber-btn);color:var(--amber-ink);border-bottom:4px solid var(--amber-edge);font-weight:800}
+body .gr-band .gr-seg{background:rgba(255,255,255,.1);box-shadow:none}
+body .gr-band .gr-seg button{color:var(--band-sub)}
+body .gr-band .gr-seg button.on{background:#fff;color:var(--accent)}
+body .gr-band .gr-links button{color:#fff}
+body .gr-band .gr-links button:hover{background:rgba(255,255,255,.12)}
+body .gr-band .gr-tiles{gap:0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid rgba(255,255,255,.14);padding-top:14px}
+body .gr-band .gr-tiles>div{background:transparent;box-shadow:none;border-radius:0;padding:4px 20px 4px 0;margin-right:20px;border-right:1px solid rgba(255,255,255,.14)}
+body .gr-band .gr-tiles>div:last-child{border-right:0;margin-right:0}
+body .gr-band .gr-tiles span,body .gr-band .gr-tiles small{color:var(--band-sub)}
+body .gr-band .gr-tiles b{color:#fff;font-size:30px}
+body .gr-band .gr-tiles b.amber,body .gr-band .gr-tiles small.amber{color:var(--xp-a)}
+body .gr-band .gr-bar{background:rgba(255,255,255,.16)}
+@media(max-width:700px){
+  body .gr-band{border-radius:22px;padding:20px 18px}
+  body .gr-band h1{font-size:28px}
+  body .gr-band .gr-head{padding-right:72px}
+  body .gr-band .sw-planet{width:72px;height:72px;right:10px;top:10px}
+  body .gr-band .sw-planet .cincin{top:29px}
+  body .gr-band .gr-tiles{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:12px}
+  body .gr-band .gr-tiles>div:nth-child(2n){border-right:0;margin-right:0}
+}

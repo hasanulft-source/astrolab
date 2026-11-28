@@ -28,6 +28,7 @@ import { SandboxPlayer, SandboxEditor, validasiSandbox, nilaiSandbox, jumlahButi
 import { useUjianStore } from './utils/ujian-store';
 import { UjianGuru, UjianSiswa, BannerUjianSiswa } from './pages/ujian';
 import { PersiapanKartu, PersiapanSAS } from './pages/persiapan';
+import "./styles/redesign.css"; // lapisan redesign "E · halus" — dimuat paling akhir
 
 // ─── FIREBASE CONFIG ───
 const firebaseConfig = {
@@ -2676,7 +2677,7 @@ function KerjakanTugas({ user, store, tugasId, navigate }) {
       <div style={{ flex: 1 }} />
       {idx < total - 1
         ? <button className="btn btn-primary" onClick={() => goTo(idx + 1)} disabled={!curOk}>Selanjutnya →</button>
-        : <button className="btn btn-primary" onClick={() => setShowConfirm(true)}><I n="check" s={14} /> Kumpulkan ({answered}/{total})</button>
+        : <button className="btn btn-amber" onClick={() => setShowConfirm(true)}><I n="check" s={14} /> Kumpulkan ({answered}/{total})</button>
       }
     </div>
   </div>;
@@ -5186,22 +5187,60 @@ function Sidebar({ user, route, navigate, onLogout, store }) {
     </div>
   </aside>;
 }
+// Nav bawah HP. Guru punya 8+ menu, jadi di HP cuma 4 utama + "Lainnya" (panel dari bawah).
+const GNAV_HP = ["home-guru", "tugas-guru", "chat", "kelas"];
+const GNAV_LAIN = [
+  { id: "arsip-tugas", l: "Arsip", ic: "fileText" }, { id: "leaderboard", l: "Ranking", ic: "trophy" },
+  { id: "laporan-guru", l: "Laporan", ic: "flag" }, { id: "nilai-akhir", l: "Nilai Akhir", ic: "award" },
+  { id: "mission-guru", l: "Misi PJJ", ic: "rocket" }, { id: "ujian-guru", l: "Mode Ujian", ic: "clock" },
+  { id: "materi-manager", l: "Materi", ic: "book" }, { id: "badge-manager", l: "Badge", ic: "medal" },
+  { id: "profil-guru", l: "Profil", ic: "user" },
+];
 function BottomNav({ user, route, navigate, store }) {
-  const nav = user.role === "guru" ? GNAV : SNAV;
+  const [lain, setLain] = useState(false);
+  const guru = user.role === "guru";
+  const nav = guru ? GNAV.filter(n => GNAV_HP.includes(n.id)) : SNAV;
   const unread = store.getUnreadCount(user.id);
-  return <nav className="bnav">
-    {nav.map(item => {
-      const active = route === item.id || (route === "tugas-detail" && item.id === "tugas") || (route === "kerjakan" && item.id === "tugas") || (route === "buat-tugas" && item.id === "tugas-guru") || (route === "edit-tugas" && item.id === "tugas-guru");
-      return <button type="button" key={item.id} className={`bn ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => navigate(item.id)}>
-        <div style={{ position: "relative" }}>
-          <I n={item.ic} s={20} />
-          {item.id === "chat" && unread > 0 && <span className="bn-dot" aria-label={`${unread} pesan belum dibaca`}>{unread > 9 ? "9+" : unread}</span>}
-          {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <span className="bn-dot">{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</span>}
+  const nLapor = guru && store.getUnreadReportCount ? store.getUnreadReportCount() : 0;
+  const isActive = id => route === id || (route === "tugas-detail" && id === "tugas") || (route === "kerjakan" && id === "tugas") || (["buat-tugas", "edit-tugas", "analisis-tugas", "nilai-esai"].includes(route) && id === "tugas-guru") || (route === "manajemen-siswa" && id === "kelas");
+  const lainAktif = guru && GNAV_LAIN.some(x => x.id === route);
+  const pergi = id => { setLain(false); navigate(id); };
+  return <>
+    {lain && (
+      <div className="bn-sheet-bg" onClick={() => setLain(false)}>
+        <div className="bn-sheet" role="dialog" aria-modal="true" aria-label="Menu lainnya" onClick={e => e.stopPropagation()}>
+          <span className="bn-sheet-grip" aria-hidden="true" />
+          <h2>Menu lainnya</h2>
+          <div className="bn-sheet-grid">
+            {GNAV_LAIN.map(x => (
+              <button type="button" key={x.id} className={route === x.id ? "on" : ""} onClick={() => pergi(x.id)}>
+                <span className="bn-sheet-ic"><I n={x.ic} s={18} /></span>{x.l}
+                {x.id === "laporan-guru" && nLapor > 0 && <span className="bn-dot">{nLapor > 9 ? "9+" : nLapor}</span>}
+              </button>
+            ))}
+          </div>
         </div>
-        <span>{item.l}</span>
-      </button>;
-    })}
-  </nav>;
+      </div>
+    )}
+    <nav className="bnav" aria-label="Navigasi">
+      {nav.map(item => {
+        const active = isActive(item.id);
+        return <button type="button" key={item.id} className={`bn ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => pergi(item.id)}>
+          <div style={{ position: "relative" }}>
+            <I n={item.ic} s={20} />
+            {item.id === "chat" && unread > 0 && <span className="bn-dot" aria-label={`${unread} pesan belum dibaca`}>{unread > 9 ? "9+" : unread}</span>}
+          </div>
+          <span>{item.l}</span>
+        </button>;
+      })}
+      {guru && (
+        <button type="button" className={`bn ${lainAktif || lain ? "active" : ""}`} aria-expanded={lain} onClick={() => setLain(v => !v)}>
+          <div style={{ position: "relative" }}><I n="list" s={20} />{nLapor > 0 && <span className="bn-dot">{nLapor > 9 ? "9+" : nLapor}</span>}</div>
+          <span>Lainnya</span>
+        </button>
+      )}
+    </nav>
+  </>;
 }
 
 // ─── APP ───

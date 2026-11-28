@@ -27,8 +27,8 @@ export function LevelStrip({ poin = 0, onDark = false }) {
 
 // Angka streak dengan api (api Astrolab: biru-cyan yang makin "panas" seiring streak)
 export function StreakValue({ streak = 0 }) {
-  if (!streak) return <span className="sr-streak off">0 <small>hari</small></span>;
-  return <span className="sr-streak"><FlameAnimated size={20} streak={streak} /><span>{streak} <small>hari</small></span></span>;
+  if (!streak) return <span className="sr-streak off">0 <small>tugas</small></span>;
+  return <span className="sr-streak"><FlameAnimated size={20} streak={streak} /><span>{streak} <small>tugas</small></span></span>;
 }
 
 // Hiasan orbit + bintang untuk kartu teal (dekorasi saja, tidak dibaca pembaca layar)

@@ -320,7 +320,7 @@ function generateLaporanSiswa(s, store, jenjang, periode, jenisLaporan = "semest
       <div class="ls-act">
         <div><span>Tugas selesai</span><b>${selesai} dari ${relevan.length}</b></div>
         <div><span>Tepat waktu</span><b>${tepat} tugas</b></div>
-        <div><span>Streak saat ini</span><b>${stats.streak || 0} hari</b></div>
+        <div><span>Tugas tepat waktu beruntun</span><b>${stats.streak || 0} tugas</b></div>
         <div><span>Level</span><b>${esc(lv.name)}</b></div>
       </div>
     </section>

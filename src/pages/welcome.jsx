@@ -88,7 +88,7 @@ function Panels({ setRef, onLogin }) {
         <h2 className="wl-h">Rajin Mengerjakan,<span>Naik Level.</span></h2>
         <p className="wl-lede">Setiap tugas yang selesai menambah XP. Lima tingkat dari Nebula sampai Commander, masing-masing punya empat sub-level.</p>
         <div className="wl-ui">
-          <div className="wl-ui-head"><div><div className="wl-ui-title">Planet II</div><div className="wl-ui-sub">streak 6 hari</div></div></div>
+          <div className="wl-ui-head"><div><div className="wl-ui-title">Planet II</div><div className="wl-ui-sub">6 tugas tepat waktu beruntun</div></div></div>
           <div className="wl-big"><b>1.520</b><em>XP</em></div>
           <div className="wl-bar" role="img" aria-label="34 persen menuju Planet III"><i style={{ width: "34%" }} /></div>
           <div className="wl-row wl-norule"><span>Menuju Planet III</span><span>230 XP lagi</span></div>

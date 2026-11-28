@@ -77,7 +77,7 @@ button,input,select,textarea{font-family:var(--font);}
 
 /* BOTTOM NAV */
 /* Nav bawah: pill melayang, item aktif petrol (redesign Nov 2026) */
-.bnav{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--surface);border-radius:22px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding:6px;box-shadow:0 10px 30px -12px rgba(6,47,54,.35),0 0 0 1px rgba(6,47,54,.04);}
+.bnav{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:96;background:var(--surface);border-radius:22px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding:6px;box-shadow:0 10px 30px -12px rgba(6,47,54,.35),0 0 0 1px rgba(6,47,54,.04);}
 @media(min-width:768px){.bnav{display:none;}}
 .bn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--ink-2);background:none;border:none;border-radius:16px;cursor:pointer;transition:background .15s,color .15s;padding:8px 0;min-width:0;min-height:48px;}
 .bn span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -373,3 +373,18 @@ to { transform: translateX(0); opacity: 1; }
 
 /* PHOTO */
 .av-photo{border-radius:50%;object-fit:cover;display:block;}
+/* Panel "Lainnya" (nav guru di HP) */
+.bn-sheet-bg{position:fixed;inset:0;z-index:95;background:rgba(6,47,54,.45);display:flex;align-items:flex-end}
+@media(min-width:768px){.bn-sheet-bg{display:none}}
+.bn-sheet{width:100%;background:var(--surface);border-radius:26px 26px 0 0;padding:12px 16px calc(96px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;animation:bn-naik .25s ease}
+.bn-sheet-grip{width:40px;height:5px;border-radius:99px;background:var(--line);align-self:center}
+.bn-sheet h2{margin:0 4px;font-size:16px;font-weight:800;letter-spacing:-.02em}
+.bn-sheet-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.bn-sheet-grid button{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border-radius:16px;background:var(--bg);font-size:12px;font-weight:700;color:var(--ink);text-align:center}
+.bn-sheet-grid button.on{background:var(--accent);color:#fff}
+.bn-sheet-grid button:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px}
+.bn-sheet-grid .bn-dot{top:6px;right:14px}
+.bn-sheet-ic{width:40px;height:40px;border-radius:13px;background:var(--surface);color:var(--accent);display:grid;place-items:center}
+.bn-sheet-grid button.on .bn-sheet-ic{background:rgba(255,255,255,.14);color:#fff}
+@keyframes bn-naik{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.bn-sheet{animation:none}}

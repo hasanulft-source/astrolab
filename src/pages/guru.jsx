@@ -7,7 +7,7 @@ import { useState } from "react";
 import { verifikasiSandbox, normal } from "../utils/rumus";
 import { exportNilai, backupFromStore } from "../utils/excel";
 import { LaporanModal } from "../utils/laporan";
-import { deadlineEnd } from "./siswa";
+import { deadlineEnd, Angkasa } from "./siswa";
 import { uid, fmtLastSeen, withTimeout, getPeriodeAktif, getPeriodeOptions } from "../utils/helpers";
 import { Confirm, Avatar } from "../components/visual";
 import { getLevel, TierIcon, BadgeIcon, AUTO_BADGES, MANUAL_BADGES } from "../components/gamification";
@@ -310,11 +310,14 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
   };
 
   return (
-    <div className="page gr">
+    <div className="page gr gr-dash">
+      <section className="gr-band" aria-label="Ringkasan kelas">
+      <Angkasa />
       <div className="gr-head">
         <div>
-          <span className="gr-mono">{now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })} · {store.getActivePeriode()}</span>
-          <h1>{sapa}, Pak Fatta</h1>
+          <span className="gr-mono">{now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · KELAS {jenjang} · {store.getActivePeriode().toUpperCase()}</span>
+          <h1>{sapa}, Pak Fatta.</h1>
+          <p className="gr-band-sum"><b>{d.todo.length ? `${d.todo.length} hal perlu ditindaklanjuti.` : "Tidak ada yang mendesak."}</b> {d.aktif} tugas berjalan, {perhatian.length} siswa perlu perhatian.</p>
         </div>
         <div className="gr-actions">
           <button type="button" className="gr-btn outline" onClick={() => setLaporan(true)}>Laporan</button>
@@ -341,8 +344,9 @@ export function DashboardGuruV2({ store, navigate, hitungPerhatian, NilaiEssayMo
         <div><span>Tugas aktif</span><b>{d.aktif}</b><small className={d.segera ? "amber" : ""}>{d.segera ? `${d.segera} berakhir hari ini/besok` : d.aktif ? "Tidak ada yang mendesak" : "Belum ada tugas berjalan"}</small></div>
         <div><span>Pengumpulan</span><b>{d.pctKumpul == null ? "Belum ada" : `${d.pctKumpul}%`}</b><small>{d.kesempatan ? `${d.terkumpul} dari ${d.kesempatan} kesempatan` : "Belum ada tugas"}</small></div>
         <div><span>Rata-rata nilai tugas</span><b>{d.rataKelas ?? "Belum ada"}</b>{d.rataKelas != null && <Bar v={d.rataKelas} kktp tone={d.rataKelas < KKTP ? "amber" : "teal"} />}<small>garis tipis = KKTP {KKTP}</small></div>
-        <div><span>Di bawah KKTP</span><b>{d.bawahKKTP} siswa</b><small>rata-rata tugas &lt; {KKTP}</small></div>
+        <div><span>Di bawah KKTP</span><b className={d.bawahKKTP ? "amber" : ""}>{d.bawahKKTP} siswa</b><small>rata-rata tugas &lt; {KKTP}</small></div>
       </div>
+      </section>
 
       <div className="gr-cols">
         <div className="gr-main">

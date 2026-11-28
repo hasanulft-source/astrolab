@@ -104,7 +104,7 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
           <div><span>Ranking kelas</span><b className={myRank ? "pf-rank" : "none"}>{myRank ? <>{myRank.rank <= 3 && <Medal rank={myRank.rank} size="sm" />}#{myRank.rank}</> : "Belum ada"}</b></div>
           <div><span>{season > 1 ? `Poin Season ${season}` : "Total poin"}</span><b>{fmt(poin)}</b></div>
           <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
-          <div className="streak"><span>Streak</span><b><StreakValue streak={stats.streak || 0} /></b><small className="pf-api-next">{(() => {
+          <div className="streak"><span>Api Kristal</span><b><StreakValue streak={stats.streak || 0} /></b><small className="pf-api-next">{(() => {
             const a = infoTingkatApi(stats.streak || 0);
             if (!stats.streak) return "Kumpulkan tugas tepat waktu untuk menyalakan api";
             return a.berikut ? `${a.sisa} tugas tepat waktu lagi ke api ${a.berikut.nama}` : `Api ${a.kini.nama}, tingkat tertinggi`;
