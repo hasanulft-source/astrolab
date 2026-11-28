@@ -128,3 +128,6 @@
 @media (prefers-reduced-motion: reduce){
   .wl-login, .wl.is-narrow .wl-login, .wl-copy, .wl-veil, .wl-top, .wl-steps{transition:none}
 }
+/* Login redesign di bottom sheet HP: pita lebih pendek supaya form langsung kelihatan */
+.wl.is-narrow .login-hero{padding:22px 20px 74px}
+.wl.is-narrow .login-mark{scale:.8;margin:-8px 0 -14px}

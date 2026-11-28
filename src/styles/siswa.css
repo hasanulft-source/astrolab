@@ -299,3 +299,79 @@
 .rk-me div b .sr-medal{display:inline-grid;font-family:var(--font);letter-spacing:0;text-transform:none;color:#fff}
 .sw-sbx-pg{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px dashed var(--line)}
 .sw-tiles .streak .pf-api-next{display:block;margin-top:4px;font-size:11.5px;line-height:1.35;color:var(--ink-3)}
+
+/* ══ Redesign "E · halus" — Beranda siswa (tahap 2, Nov 2026) ══
+   Pita petrol + angkasa halus; kartu konten menumpuk ke atas pita; amber = gamifikasi. */
+.sw-band{position:relative;overflow:hidden;background:var(--band);color:#fff;padding:20px 20px 86px}
+.sw-band-in{position:relative;z-index:1;max-width:960px;margin:0 auto}
+@media(min-width:900px){.sw-band-in{padding:0 16px}}
+@media(max-width:599px){.sw-band h1,.sw-band-sum{padding-right:84px}}
+.sw-band-date{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--band-sub)}
+.sw-band h1{margin:6px 0 0;font-size:32px;font-weight:800;letter-spacing:-.04em;line-height:1.1;color:#fff;overflow-wrap:anywhere}
+.sw-band-sum{margin:6px 0 0;font-size:14.5px;line-height:1.45;color:var(--band-sub)}
+.sw-band-sum b{color:#fff;font-weight:700}
+.sw-lv{margin-top:16px;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.10);max-width:460px}
+.sw-lv-top{display:flex;align-items:center;gap:10px}
+.sw-lv-ic{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.92)}
+.sw-lv-main{flex:1;min-width:0}
+.sw-lv-row{display:flex;align-items:baseline;gap:6px}
+.sw-lv-row b{font-size:15px;font-weight:800}
+.sw-lv-row span{font-family:var(--mono);font-size:11px;color:var(--band-sub)}
+.sw-xp{height:9px;border-radius:99px;background:rgba(255,255,255,.16);margin-top:6px;overflow:hidden}
+.sw-xp i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--xp-a),var(--xp-b));transition:width .6s ease}
+.sw-lv-foot{display:flex;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px;color:var(--band-sub)}
+
+/* Angkasa */
+.sw-angkasa{position:absolute;inset:0;pointer-events:none}
+.sw-bintang{position:absolute;border-radius:50%;background:#fff;opacity:.2;animation:sw-kedip 3s ease-in-out infinite}
+.sw-bintang.amber{background:#fde68a}
+.sw-planet{position:absolute;right:18px;top:14px;width:96px;height:96px;animation:sw-melayang 6s ease-in-out infinite}
+.sw-planet .bola{position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle at 35% 32%,#fef3c7 0%,#fbbf24 38%,#d97706 72%,#92400e 100%);box-shadow:0 0 30px rgba(251,191,36,.45)}
+.sw-planet .cincin{position:absolute;left:-6px;right:-6px;top:41px;height:14px;border-radius:50%;border:2px solid rgba(253,230,138,.75);transform:rotate(-18deg)}
+.sw-orbit{position:absolute;inset:-10px;animation:sw-orbit 9s linear infinite}
+.sw-orbit span{position:absolute;left:50%;top:0;width:7px;height:7px;margin-left:-3px;border-radius:50%;background:#e0fbff;box-shadow:0 0 8px #e0fbff}
+@keyframes sw-kedip{0%,100%{opacity:.2}50%{opacity:1}}
+@keyframes sw-melayang{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes sw-orbit{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.sw-bintang,.sw-planet,.sw-orbit{animation:none}.sw-bintang{opacity:.6}}
+@media(min-width:900px){.sw-planet{right:6%}}
+@media(max-width:380px){.sw-planet{width:72px;height:72px;right:8px}.sw-planet .cincin{top:29px}.sw-band h1{font-size:28px}}
+
+/* Kartu menumpuk ke atas pita */
+.sw-beranda .ui-page{position:relative;margin-top:-64px;padding-top:0}
+.sw-kartu{background:var(--surface);border-radius:var(--r-card);padding:14px 16px;box-shadow:0 1px 2px rgba(6,47,54,.05);min-width:0;box-sizing:border-box}
+.sw-tugas{box-shadow:var(--shadow-lift);padding:6px 16px 10px;display:flex;flex-direction:column;gap:6px}
+.sw-kartu-head{display:flex;align-items:center;padding:10px 0 2px}
+.sw-kartu-head h2{margin:0;flex:1;font-size:16px;font-weight:800;letter-spacing:-.02em}
+.sw-beranda .ui-card{border:0;border-radius:var(--r-card);box-shadow:0 1px 2px rgba(6,47,54,.05)}
+.sw-beranda .sw-a{order:0}
+
+/* Ubin streak + ranking */
+.sw-duo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.sw-tile{all:unset;box-sizing:border-box;cursor:pointer;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:6px;min-height:132px;min-width:0}
+.sw-tile b{font-size:28px;font-weight:800;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+.sw-tile b small{font-size:15px;opacity:.7;letter-spacing:-.02em}
+.sw-tile > span{font-size:12.5px;font-weight:600;opacity:.85;line-height:1.35}
+.sw-tile.api{background:#fff1d6;color:#5a2d00}
+.sw-tile.rank{background:var(--accent);color:#fff}
+.sw-tile:focus-visible,.sw-btn-amber:focus-visible,.sw-badge:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px}
+
+/* Latihan mandiri + tombol amber 3D */
+.sw-mandiri{display:flex;align-items:center;gap:14px}
+.sw-mandiri > div{flex:1;min-width:0;display:flex;flex-direction:column}
+.sw-mandiri strong{font-size:15px;margin-top:3px}
+.sw-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--accent-mid)}
+.sw-muted{font-size:12.5px;color:var(--ink-2)}
+.sw-btn-amber{all:unset;box-sizing:border-box;cursor:pointer;padding:11px 18px;border-radius:14px;background:var(--amber-btn);color:var(--amber-ink);font-weight:800;border-bottom:4px solid var(--amber-edge);white-space:nowrap;transition:transform .08s}
+.sw-btn-amber:active{transform:translateY(2px);border-bottom-width:2px}
+
+/* Badge */
+.sw-badge{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:20px;padding:14px 16px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+.sw-badge-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.sw-badge-t strong{font-size:14px}
+.sw-badge-n{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+
+@media(min-width:900px){
+  .sw-band{padding:28px 24px 96px}
+  .sw-band h1{font-size:36px}
+}

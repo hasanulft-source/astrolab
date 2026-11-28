@@ -2134,53 +2134,43 @@ function LoginScreen({ onLogin }) {
     }
     setLoading(false);
   }
+  const bintang = [[10, 14, 3, 2.8, 0], [82, 21, 2, 3.4, .8, 1], [23, 62, 2, 2.2, 1.5], [77, 57, 3, 3.8, .4], [51, 9, 2, 3, 2, 1], [8, 43, 2, 2.6, 1.1], [90, 40, 2, 3.2, 2.4]];
   return (
     <div className="login-wrap">
       <div className="login-shell">
-        {/* ── HERO SECTION ── */}
+        {/* Pita petrol: bintang berkedip + orbit dengan satelit amber mengelilingi logo */}
         <div className="login-hero">
-          {/* Deco circles */}
-          <div className="login-hero-deco1" />
-          <div className="login-hero-deco2" />
-          {/* Stars */}
-          <svg className="login-hero-stars" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice">
-            {[[40,28],[310,18],[180,42],[90,90],[340,70],[260,30],[60,160],[370,140],[140,110]].map(([x,y],i)=>
-              <circle key={i} cx={x} cy={y} r={i%3===0?1.4:0.9} fill="white" opacity={.25+i*.03}/>
-            )}
-          </svg>
-          {/* Logo + Brand */}
-          <div className="login-logo-box"><LogoBold size={36} onDark /></div>
-          <div className="login-brand">Astrolab</div>
-          <div className="login-tagline">Our Classroom</div>
-          {/* Wave divider */}
-          <div className="login-wave">
-            <svg viewBox="0 0 400 48" preserveAspectRatio="none" style={{ width: "100%", height: 48, display: "block" }}>
-              <path d="M0,28 C60,6 110,48 180,24 C240,4 300,44 360,22 C380,14 392,20 400,24 L400,48 L0,48 Z" fill="white"/>
-            </svg>
+          <div className="login-stars" aria-hidden="true">
+            {bintang.map(([x, y, r, d, dl, amber], k) => <span key={k} className={amber ? "amber" : ""} style={{ left: `${x}%`, top: `${y}%`, width: r, height: r, animationDuration: `${d}s`, animationDelay: `${dl}s` }} />)}
           </div>
+          <div className="login-mark">
+            <span className="login-ring" aria-hidden="true" />
+            <div className="login-ring-orbit" aria-hidden="true"><div><span /></div></div>
+            <LogoBold size={84} onDark />
+          </div>
+          <h1 className="login-brand">Astrolab</h1>
+          <p className="login-tagline">CLASSROOM · IPA &amp; INFORMATIKA SMP</p>
         </div>
 
-        {/* ── FORM SECTION ── */}
-        <div className="login-form">
-          <div className="login-form-title">Selamat datang</div>
-          <div className="login-form-sub">Masuk untuk melanjutkan belajar</div>
-
-          <div className="login-field">
-            <label className="login-lbl">ID Siswa / Guru</label>
+        <form className="login-form" onSubmit={e => { e.preventDefault(); submit(); }} noValidate>
+          <h2 className="login-form-title">Masuk ke kelas</h2>
+          <label className="login-field">
+            <span className="login-lbl">ID siswa / guru</span>
             <input className="login-inp" value={id} onChange={e => { setId(e.target.value); setErr(""); }}
-              placeholder="Contoh: fata" onKeyDown={e => e.key === "Enter" && submit()} autoCapitalize="none" />
-          </div>
-          <div className="login-field">
-            <label className="login-lbl">Password</label>
+              placeholder="Contoh: fata" autoCapitalize="none" autoCorrect="off" autoComplete="username" />
+          </label>
+          <label className="login-field">
+            <span className="login-lbl">Kata sandi</span>
             <input className="login-inp" type="password" value={pw} onChange={e => { setPw(e.target.value); setErr(""); }}
-              placeholder="••••••••" onKeyDown={e => e.key === "Enter" && submit()} />
-          </div>
+              placeholder="••••••••" autoComplete="current-password" />
+          </label>
 
-          {err && <div className="login-err"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>{err}</div>}
+          {err && <div className="login-err" role="alert"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>{err}</div>}
 
-          <button className="login-btn" onClick={submit} disabled={loading}>{loading ? "Memeriksa..." : "Masuk →"}</button>
-          <div className="login-foot">Our Classroom · <b>© 2026 M. Hasanul Fatta</b></div>
-        </div>
+          <button type="submit" className="login-btn" disabled={loading}>{loading ? "Memeriksa..." : "Masuk"}</button>
+          <p className="login-help">Lupa kata sandi? Minta reset ke guru kamu.</p>
+        </form>
+        <p className="login-foot">SMP Negeri 15 Banda Aceh · © 2026 M. Hasanul Fatta</p>
       </div>
     </div>
   );
@@ -5202,11 +5192,11 @@ function BottomNav({ user, route, navigate, store }) {
   return <nav className="bnav">
     {nav.map(item => {
       const active = route === item.id || (route === "tugas-detail" && item.id === "tugas") || (route === "kerjakan" && item.id === "tugas") || (route === "buat-tugas" && item.id === "tugas-guru") || (route === "edit-tugas" && item.id === "tugas-guru");
-      return <button key={item.id} className={`bn ${active ? "active" : ""}`} onClick={() => navigate(item.id)}>
+      return <button type="button" key={item.id} className={`bn ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => navigate(item.id)}>
         <div style={{ position: "relative" }}>
           <I n={item.ic} s={20} />
-          {item.id === "chat" && unread > 0 && <div style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{unread > 9 ? "9+" : unread}</div>}
-          {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 99, background: "var(--accent)", color: "#fff", fontSize: 8, fontWeight: 700, display: "grid", placeItems: "center" }}>{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</div>}
+          {item.id === "chat" && unread > 0 && <span className="bn-dot" aria-label={`${unread} pesan belum dibaca`}>{unread > 9 ? "9+" : unread}</span>}
+          {item.id === "laporan-guru" && user.role === "guru" && store.getUnreadReportCount() > 0 && <span className="bn-dot">{store.getUnreadReportCount() > 9 ? "9+" : store.getUnreadReportCount()}</span>}
         </div>
         <span>{item.l}</span>
       </button>;

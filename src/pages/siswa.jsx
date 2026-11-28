@@ -4,10 +4,10 @@
 // yang berubah hanya tampilan. Data dibaca lewat `store` yang sama, tidak ada perubahan Firebase atau Rules.
 // Komponen App.jsx yang belum dipindah (MissionSiswaModal, LeaderboardScreen) dikirim lewat props.
 import { useEffect, useRef, useState } from "react";
-import { fmtDl } from "../utils/helpers";
+import { fmtDl, getFirstName } from "../utils/helpers";
 import { I } from "../components/icons";
 import { MapelIcon, UserAvatar, ConfettiRain } from "../components/visual";
-import { LevelBadge, LevelCard, BadgeChip } from "../components/gamification";
+import { LevelBadge, LevelCard, BadgeChip, TierIcon, getLevel, getLevelProgress, LEVELS, ALL_BADGES } from "../components/gamification";
 import { KKTP, Page, TopBar, PageHeader, Card, Tabs, StatusChip, ActionCallout, ScoreBar, Button, Items, Item, Facts, Meter } from "../components/ui";
 import { Medal, LevelStrip, StreakValue, Orbit } from "../components/seru";
 import { SandboxReview } from "../components/sandbox";
@@ -162,44 +162,58 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
   const LIMIT = 4;
 
   const hour = new Date(now).getHours();
-  const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
+  const greeting = hour < 11 ? "Pagi" : hour < 15 ? "Siang" : hour < 18 ? "Sore" : "Malam";
   const poin = stats.poin || 0;
   const xp = (stats.xpBawaan || 0) + poin;
   const season = store.getSeason ? store.getSeason().nomor : 1;
+  const lv = getLevel(xp), prog = getLevelProgress(xp);
+  const nama = getFirstName(user.namaDisplay || user.nama);
+  const tanggal = new Date(now).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" }).replace(",", " ·").toUpperCase();
+  const terdekat = perlu[0];
+  const nBadge = (store.getBadges ? store.getBadges(user.id) : []).length;
 
   return (
-    <div className="sw">
-      <Page size="wide">
-        <div className="sw-greet">
-          <div><span>{greeting}</span><h1>Halo, {user.namaDisplay || user.nama}</h1></div>
-          <StatusChip>{store.getActivePeriode()}</StatusChip>
-        </div>
-
-        <div className="sw-home">
-          {/* Status: ranking, poin, level, streak */}
-          <div className="sw-a">
-          <section className="sw-hero" aria-label="Status kamu">
-            <Orbit />
-            <div className="sw-hero-top">
-              <div>
-                <span className="sw-hero-k">Ranking kelas {user.jenjang}</span>
-                {myRank ? <b className="sw-hero-n">#{myRank.rank}</b> : <b className="sw-hero-n sm">Belum masuk</b>}
-              </div>
-              <div className="r">
-                <span className="sw-hero-k">{season > 1 ? `Poin Season ${season}` : "Total poin"}</span>
-                <b className="sw-hero-n">{poin.toLocaleString("id-ID")}</b>
+    <div className="sw sw-beranda">
+      {/* Pita petrol + angkasa (animasi mati dengan prefers-reduced-motion) */}
+      <section className="sw-band" aria-label="Status kamu">
+        <Angkasa />
+        <div className="sw-band-in">
+          <span className="sw-band-date">{tanggal}</span>
+          <h1>{greeting}, {nama}!</h1>
+          <p className="sw-band-sum">
+            {perlu.length > 0
+              ? <><b>{perlu.length} tugas menunggu.</b> {terdekat && terdekat.deadline ? <>Tenggat terdekat {tenggat(store.getSusulan(terdekat.id, user.id)?.deadlineBaru || terdekat.deadline, now).label}.</> : null}</>
+              : <b>Tidak ada tugas yang menunggu.</b>}
+          </p>
+          <div className="sw-lv">
+            <div className="sw-lv-top">
+              <span className="sw-lv-ic"><TierIcon tierId={lv.tierId} size={34} color={lv.color} /></span>
+              <div className="sw-lv-main">
+                <div className="sw-lv-row"><b>{lv.name}</b><span>LV {lv.id} / {LEVELS.length}</span></div>
+                <div className="sw-xp" role="progressbar" aria-label="Progres EXP" aria-valuenow={prog.next ? prog.pct : 100} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${prog.next ? prog.pct : 100}%` }} /></div>
               </div>
             </div>
-            <div className="sw-hero-lv"><LevelStrip poin={xp} onDark /></div>
-          </section>
-            <div className="sw-tiles">
-              <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
-              <div><span>Tugas selesai</span><b>{stats.tugasSelesai || 0}</b></div>
-              <div className="streak"><span>Streak</span><b><StreakValue streak={stats.streak || 0} /></b></div>
+            <div className="sw-lv-foot">
+              <span>{xp.toLocaleString("id-ID")}{prog.next ? ` / ${prog.next.min.toLocaleString("id-ID")}` : ""} EXP</span>
+              <span>{prog.next ? `${prog.needed.toLocaleString("id-ID")} lagi ke ${prog.next.name}` : "Level tertinggi"}</span>
             </div>
           </div>
+        </div>
+      </section>
 
+      <Page size="wide">
+        <div className="sw-home">
           <div className="sw-b">
+            <section className="sw-kartu sw-tugas" aria-labelledby="sw-tugas-j">
+              <div className="sw-kartu-head"><h2 id="sw-tugas-j">Tugas</h2><button type="button" className="ui-link" onClick={() => navigate("tugas")}>Semua <I n="chevR" s={12} /></button></div>
+              {perlu.length > 0 ? (
+                <Items>{perlu.slice(0, LIMIT).map(t => <TugasItem key={t.id} t={t} user={user} store={store} now={now} navigate={navigate} showMapel />)}</Items>
+              ) : (
+                <p className="ui-text">{allTugas.length === 0 ? "Belum ada tugas aktif dari guru." : tugasLewat.length ? "Tidak ada tugas yang masih terbuka." : "Semua tugas sudah kamu kerjakan. Cek posisimu di ranking kelas."}</p>
+              )}
+              {perlu.length > LIMIT && <button type="button" className="ui-link" onClick={() => navigate("tugas")}>{perlu.length - LIMIT} tugas lainnya <I n="chevR" s={12} /></button>}
+            </section>
+
             {store.isMissionActive(user.jenjang) && (
               <button type="button" className="sw-mission" onClick={() => setShowMission(true)}>
                 <span className="sw-mission-ic"><I n="rocket" s={20} /></span>
@@ -207,15 +221,6 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
                 <I n="chevR" s={16} />
               </button>
             )}
-
-            <Card label="Perlu dikerjakan" aside={<button type="button" className="ui-link" onClick={() => navigate("tugas")}>Semua tugas <I n="chevR" s={12} /></button>}>
-              {perlu.length > 0 ? (
-                <Items>{perlu.slice(0, LIMIT).map(t => <TugasItem key={t.id} t={t} user={user} store={store} now={now} navigate={navigate} showMapel />)}</Items>
-              ) : (
-                <p className="ui-text">{allTugas.length === 0 ? "Belum ada tugas aktif dari guru." : tugasLewat.length ? "Tidak ada tugas yang masih terbuka." : "Semua tugas sudah kamu kerjakan. Cek posisimu di ranking kelas."}</p>
-              )}
-              {perlu.length > LIMIT && <button type="button" className="ui-link" onClick={() => navigate("tugas")}>{perlu.length - LIMIT} tugas lainnya <I n="chevR" s={12} /></button>}
-            </Card>
 
             {tugasLewat.length > 0 && (
               <button type="button" className="sw-overdue" onClick={() => { _bukaArsip = tugasLewat.some(t => t.mapel === "IPA") ? "IPA" : tugasLewat[0].mapel; navigate("tugas"); }}>
@@ -232,8 +237,37 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
             )}
           </div>
 
-          <div className="sw-c">
+          <div className="sw-a">
+            <div className="sw-duo">
+              <button type="button" className="sw-tile api" onClick={() => navigate("profil")}>
+                <ApiKristal />
+                <b>{stats.streak || 0}</b>
+                <span>tugas tepat waktu beruntun</span>
+              </button>
+              <button type="button" className="sw-tile rank" onClick={() => navigate("leaderboard")}>
+                <I n="trophy" s={30} />
+                <b>{myRank ? <>#{myRank.rank}<small> / {lb.length}</small></> : "–"}</b>
+                <span>ranking kelas · {poin.toLocaleString("id-ID")} poin{season > 1 ? ` · S${season}` : ""}</span>
+              </button>
+            </div>
 
+            <section className="sw-kartu sw-mandiri">
+              <div>
+                <span className="sw-eyebrow">LATIHAN MANDIRI</span>
+                <strong>Latih soal per bab</strong>
+                <span className="sw-muted">Termasuk persiapan ujian + pembahasan</span>
+              </div>
+              <button type="button" className="sw-btn-amber" onClick={() => navigate("latihan-mandiri")}>Mulai</button>
+            </section>
+
+            <button type="button" className="sw-kartu sw-badge" onClick={() => navigate("profil")}>
+              <svg aria-hidden="true" width="40" height="44" viewBox="0 0 40 44"><path d="M20 2 37 8v14c0 10-7 17-17 20C10 39 3 32 3 22V8z" fill="var(--xp-a)" /><path d="M20 9 31 13v9c0 6-4 11-11 13-7-2-11-7-11-13v-9z" fill="#fff" opacity="0.35" /><path d="m14 22 4 4 8-9" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <span className="sw-badge-t"><span className="sw-muted">Koleksi badge</span><strong>{nBadge > 0 ? `${nBadge} badge terkumpul` : "Belum ada badge"}</strong></span>
+              <span className="sw-badge-n">{nBadge}/{ALL_BADGES.length}</span>
+            </button>
+          </div>
+
+          <div className="sw-c">
             <Card label={`Top 3 kelas ${user.jenjang}`} aside={<button type="button" className="ui-link" onClick={() => navigate("leaderboard")}>Ranking <I n="chevR" s={12} /></button>}>
               {lb.length === 0 ? <p className="ui-text">Belum ada ranking. Kerjakan tugas untuk mulai mengumpulkan poin.</p> : (
                 <div className="sw-top">
@@ -254,6 +288,30 @@ export function BerandaSiswa({ user, store, navigate, MissionModal }) {
 
       {showMission && MissionModal && <MissionModal user={user} store={store} navigate={navigate} onClose={() => setShowMission(false)} />}
     </div>
+  );
+}
+
+// Dekor pita: bintang berkedip, planet amber bercincin melayang, satelit mengorbit. Hanya hiasan.
+function Angkasa() {
+  const bintang = [[78, 10, 3, 2.8, 0], [61, 30, 2, 3.6, .8], [92, 62, 2, 2.2, 1.4], [50, 8, 2, 4, .3], [38, 22, 2, 3.1, 2, 1], [85, 90, 3, 2.6, 1, 1], [69, 70, 2, 3.4, 2.4], [22, 60, 2, 3, 1.7], [8, 18, 2, 3.3, .5, 1]];
+  return (
+    <div className="sw-angkasa" aria-hidden="true">
+      {bintang.map(([x, y, r, d, dl, amber], k) => <span key={k} className={`sw-bintang${amber ? " amber" : ""}`} style={{ left: `${x}%`, top: `${y}%`, width: r, height: r, animationDuration: `${d}s`, animationDelay: `${dl}s` }} />)}
+      <div className="sw-planet">
+        <span className="bola" /><span className="cincin" />
+        <div className="sw-orbit"><span /></div>
+      </div>
+    </div>
+  );
+}
+
+// Api Kristal — ikon streak (amber)
+function ApiKristal({ s = 30 }) {
+  return (
+    <svg aria-hidden="true" width={s} height={Math.round(s * 34 / 30)} viewBox="0 0 30 34">
+      <defs><linearGradient id="sw-api" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#f97316" /><stop offset="1" stopColor="#fde047" /></linearGradient></defs>
+      <path d="M15 1 24 12l4 10-6 10H8L2 22l5-10 3 5z" fill="url(#sw-api)" /><path d="M15 12l4 8-4 9-4-9z" fill="#fff" opacity="0.55" />
+    </svg>
   );
 }
 

@@ -43,7 +43,7 @@
   --st-dinilai-bg:#e3f1f3;--st-dinilai:#0a525c;
   --font:'Plus Jakarta Sans',system-ui,sans-serif;
   --mono:'DM Mono',monospace;
-  --nav-h:60px;--hdr-h:62px;
+  --nav-h:72px;--hdr-h:62px;
 }
 body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
 button,input,select,textarea{font-family:var(--font);}
@@ -66,20 +66,23 @@ button,input,select,textarea{font-family:var(--font);}
 @media(min-width:768px){.sidebar{display:flex;}}
 .side-link{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-sm);font-size:13px;font-weight:500;color:var(--ink-2);cursor:pointer;transition:all .15s;border:none;background:none;width:100%;text-align:left;}
 .side-link:hover{background:var(--surface-alt);}
-.side-link.active{background:var(--accent-soft);color:var(--accent-2);font-weight:600;}
+.side-link.active{background:var(--accent);color:#fff;font-weight:700;}
 .side-foot{margin-top:auto;padding-top:16px;border-top:1px solid var(--line-soft);}
 .side-user-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .side-user-meta{font-size:10px;color:var(--ink-3);}
 
 /* MAIN */
-.main{flex:1;min-width:0;padding-bottom:80px;}
+.main{flex:1;min-width:0;padding-bottom:calc(96px + env(safe-area-inset-bottom,0px));}
 @media(min-width:768px){.main{padding-bottom:24px;}}
 
 /* BOTTOM NAV */
-.bnav{position:fixed;bottom:0;left:0;right:0;z-index:90;background:var(--surface);border-top:1px solid var(--line);display:flex;height:var(--nav-h);padding:0 4px;}
+/* Nav bawah: pill melayang, item aktif petrol (redesign Nov 2026) */
+.bnav{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--surface);border-radius:22px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding:6px;box-shadow:0 10px 30px -12px rgba(6,47,54,.35),0 0 0 1px rgba(6,47,54,.04);}
 @media(min-width:768px){.bnav{display:none;}}
-.bn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;font-weight:500;color:var(--ink-3);background:none;border:none;cursor:pointer;transition:color .15s;padding:8px 4px;}
-.bn.active{color:var(--accent);}
+.bn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--ink-2);background:none;border:none;border-radius:16px;cursor:pointer;transition:background .15s,color .15s;padding:8px 0;min-width:0;min-height:48px;}
+.bn span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bn.active{background:var(--accent);color:#fff;font-weight:700;}
+.bn-dot{position:absolute;top:-5px;right:-7px;min-width:15px;height:15px;padding:0 3px;box-sizing:border-box;border-radius:99px;background:var(--xp-a);color:var(--amber-ink);font-size:9px;font-weight:800;display:grid;place-items:center;}
 
 /* TOPBAR (mobile) */
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;gap:12px;position:sticky;top:var(--hdr-h);z-index:50;background:var(--surface);border-bottom:1px solid var(--line-soft);}
@@ -158,29 +161,37 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .empty-box p{font-size:13px;max-width:280px;line-height:1.6;}
 
 /* LOGIN — Design A: Mobile Split Hero + Wave */
-.login-wrap{min-height:100vh;display:flex;flex-direction:column;background:#fff;overflow:hidden;}
-@media(min-width:500px){.login-wrap{align-items:center;justify-content:center;background:linear-gradient(160deg,var(--accent-2) 0%,#062a35 100%);padding:24px;}}
-.login-shell{display:flex;flex-direction:column;width:100%;min-height:100vh;background:#fff;overflow:hidden;}
-@media(min-width:500px){.login-shell{min-height:unset;max-width:400px;border-radius:28px;box-shadow:0 40px 80px rgba(0,0,0,.45);overflow:hidden;}}
-.login-hero{position:relative;background:linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:44px 28px 52px;gap:8px;overflow:hidden;min-height:220px;}
-.login-hero-deco1{position:absolute;width:220px;height:220px;border-radius:50%;border:1.5px solid rgba(255,255,255,.08);top:-80px;right:-70px;pointer-events:none;}
-.login-hero-deco2{position:absolute;width:140px;height:140px;border-radius:50%;border:1px solid rgba(255,255,255,.06);bottom:40px;left:-50px;pointer-events:none;}
-.login-hero-stars{position:absolute;inset:0;pointer-events:none;}
-.login-wave{position:absolute;bottom:-1px;left:0;right:0;line-height:0;}
-.login-logo-box{width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,.14);border:1.5px solid rgba(255,255,255,.22);display:grid;place-items:center;backdrop-filter:blur(8px);box-shadow:0 8px 24px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.2);margin-bottom:4px;}
-.login-brand{font-size:22px;font-weight:900;color:#fff;letter-spacing:-.03em;}
-.login-tagline{font-size:11px;color:rgba(255,255,255,.55);letter-spacing:.04em;}
-.login-form{flex:1;padding:24px 24px 28px;display:flex;flex-direction:column;gap:0;background:#fff;}
-.login-form-title{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:4px;letter-spacing:-.01em;}
-.login-form-sub{font-size:12px;color:var(--ink-3);margin-bottom:20px;}
-.login-field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
-.login-lbl{font-size:10px;font-weight:700;color:var(--ink-2);letter-spacing:.06em;text-transform:uppercase;}
-.login-inp{padding:10px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;font-family:var(--font);color:var(--ink);background:var(--surface);outline:none;transition:border-color .15s;}
-.login-inp:focus{border-color:var(--accent);}
-.login-btn{width:100%;background:linear-gradient(135deg,#1a8a9b,var(--accent),var(--accent-2));color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:800;font-family:var(--font);cursor:pointer;margin-top:8px;box-shadow:0 6px 20px rgba(13,107,122,.38);letter-spacing:.01em;transition:opacity .15s;}
-.login-btn:hover{opacity:.9;}
-.login-foot{text-align:center;font-size:10px;color:var(--ink-4);margin-top:16px;line-height:1.6;}
-.login-err{font-size:12px;color:var(--bad);margin-top:6px;padding:8px 12px;background:var(--bad-bg);border-radius:8px;border:1px solid #fca5a5;display:flex;align-items:center;gap:6px;}
+/* LOGIN — redesign "E · halus" (Nov 2026): pita petrol + orbit amber, kartu form menumpuk, tombol amber 3D */
+.login-wrap{min-height:100vh;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;}
+@media(min-width:500px){.login-wrap{align-items:center;justify-content:center;background:var(--band);padding:24px;}}
+.login-shell{display:flex;flex-direction:column;width:100%;min-height:100vh;background:var(--bg);overflow:hidden;}
+@media(min-width:500px){.login-shell{min-height:unset;max-width:400px;border-radius:28px;box-shadow:0 40px 80px rgba(0,0,0,.45);}}
+.login-hero{position:relative;overflow:hidden;background:linear-gradient(165deg,#062f36 0%,#0a525c 55%,#0d6b7a 100%);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 20px 84px;text-align:center;}
+.login-stars{position:absolute;inset:0;pointer-events:none;}
+.login-stars span{position:absolute;border-radius:50%;background:#fff;opacity:.2;animation:sw-kedip 3s ease-in-out infinite;}
+.login-stars span.amber{background:#fde68a;}
+.login-mark{position:relative;width:150px;height:130px;display:grid;place-items:center;animation:sw-melayang 6s ease-in-out infinite;}
+.login-ring{position:absolute;left:-6px;right:-6px;top:42px;height:46px;border-radius:50%;border:1.5px solid rgba(165,236,240,.45);transform:rotate(-20deg);}
+.login-ring-orbit{position:absolute;left:-6px;right:-6px;top:42px;height:46px;transform:rotate(-20deg);}
+.login-ring-orbit > div{position:absolute;inset:0;animation:sw-orbit 7s linear infinite;}
+.login-ring-orbit span{position:absolute;left:50%;top:-4px;width:9px;height:9px;margin-left:-4px;border-radius:50%;background:#fbbf24;box-shadow:0 0 10px #fbbf24;}
+.login-mark svg{position:relative;}
+.login-brand{margin:8px 0 0;font-size:32px;font-weight:800;letter-spacing:-.04em;color:#fff;position:relative;}
+.login-tagline{margin:4px 0 0;font-family:var(--mono);font-size:12px;letter-spacing:.05em;color:var(--band-sub);position:relative;}
+.login-form{position:relative;margin:-60px 16px 0;background:var(--surface);border-radius:24px;padding:24px 20px 20px;box-shadow:0 18px 40px -20px rgba(6,47,54,.4);display:flex;flex-direction:column;gap:14px;}
+.login-form-title{margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--ink);}
+.login-field{display:flex;flex-direction:column;gap:6px;}
+.login-lbl{font-size:13px;font-weight:700;color:var(--ink-2);}
+.login-inp{height:50px;box-sizing:border-box;border-radius:14px;border:1.5px solid var(--line);background:#f6f9fa;padding:0 14px;font-family:var(--font);font-size:16px;font-weight:500;color:var(--ink);outline:none;transition:border-color .15s,background .15s;}
+.login-inp:focus{border-color:var(--accent-mid);background:#fff;}
+.login-btn{height:54px;margin-top:4px;border-radius:16px;border:0;border-bottom:5px solid var(--amber-edge);background:var(--amber-btn);color:var(--amber-ink);font-family:var(--font);font-size:16px;font-weight:800;cursor:pointer;transition:transform .08s;}
+.login-btn:active:not(:disabled){transform:translateY(2px);border-bottom-width:3px;}
+.login-btn:disabled{opacity:.7;cursor:wait;}
+.login-btn:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px;}
+.login-help{margin:0;text-align:center;font-size:13px;color:var(--ink-2);}
+.login-foot{margin:20px 16px 22px;text-align:center;font-size:12px;color:var(--ink-2);}
+@media(prefers-reduced-motion:reduce){.login-stars span,.login-mark,.login-ring-orbit > div{animation:none;}.login-stars span{opacity:.6;}}
+.login-err{margin:0;font-size:13px;color:var(--bad);padding:10px 12px;background:var(--bad-bg);border-radius:12px;border:1px solid #fca5a5;display:flex;align-items:center;gap:8px;}
 /* legacy — keep for any leftover refs */
 
 /* ROW */
