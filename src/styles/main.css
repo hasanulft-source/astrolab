@@ -5,20 +5,21 @@
      merah (--bad) hanya untuk error & hapus. Abu teks dijaga kontras >= 4.5:1 di atas putih.
      Ralat 30 Okt: --accent & --accent-2 kembali ke teal lama (lebih nyaman di mata untuk bidang besar:
      header, hero, tombol, kartu login). Detail kecil (tint, bar, titik, chip) tetap palet baru. */
-  --accent:#0d6b7a;
-  --accent-2:#0a525c;
+  /* Redesign "E · halus" (28 Nov 2026): petrol untuk tombol/nav aktif, amber = gamifikasi. */
+  --accent:#0a525c;
+  --accent-2:#083f47;
   --accent-soft:#D3E8EA;
-  --accent-tint:#EBF4F6;
+  --accent-tint:#e3f1f3;
   --accent-mid:#088395;
   --accent-light:#7AB2B2;
   --warn-bar:#D9A26B;
   --surface:#ffffff;
   --surface-alt:#F5F8F9;
-  --bg:#F2F4F6;
-  --line:#DCE6E9;
-  --line-soft:#EEF3F5;
-  --ink:#0E2A33;
-  --ink-2:#43606A;
+  --bg:#f3f7f8;
+  --line:#e1ebed;
+  --line-soft:#edf2f3;
+  --ink:#0f2a2e;
+  --ink-2:#4f6668;
   --ink-3:#58707A;
   --ink-4:#8EA3AA;
   --good:#088395;--good-bg:#DDEFF2;
@@ -27,6 +28,19 @@
   --shadow-sm:0 1px 2px rgba(14,42,51,.06);
   --shadow:0 1px 2px rgba(14,42,51,.05),0 6px 16px rgba(14,42,51,.06);
   --r:12px;--r-sm:8px;--r-xs:5px;
+  --r-card:22px;
+  /* Pita petrol (Beranda siswa, dashboard guru, login) + kartu yang menumpuk ke atasnya */
+  --band:linear-gradient(155deg,#062f36 0%,#0a525c 55%,#0d6b7a 100%);
+  --band-sub:#a8c9cb;
+  --shadow-lift:0 18px 40px -24px rgba(6,47,54,.35);
+  /* Gamifikasi (amber) */
+  --xp-a:#fbbf24;--xp-b:#f59e0b;
+  --flame-a:#fde047;--flame-b:#f97316;
+  --amber-btn:#fbbf24;--amber-edge:#d99a06;--amber-ink:#3b2300;
+  /* Status tugas */
+  --st-belum-bg:#fef3c7;--st-belum:#92400e;
+  --st-lewat-bg:#ffe4e6;--st-lewat:#9f1239;
+  --st-dinilai-bg:#e3f1f3;--st-dinilai:#0a525c;
   --font:'Plus Jakarta Sans',system-ui,sans-serif;
   --mono:'DM Mono',monospace;
   --nav-h:60px;--hdr-h:62px;
@@ -36,11 +50,14 @@ button,input,select,textarea{font-family:var(--font);}
 
 /* SHELL */
 .shell{min-height:100vh;display:flex;flex-direction:column;}
-.hdr{position:sticky;top:0;z-index:100;background:var(--accent);color:#fff;padding:0 24px;height:var(--hdr-h);display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(13,107,122,.3);}
+.hdr{position:sticky;top:0;z-index:100;background:var(--surface);color:var(--ink);padding:0 24px;height:var(--hdr-h);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line-soft);}
 .hdr-brand{display:flex;align-items:center;gap:10px;}
-.hdr-mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.2);display:grid;place-items:center;backdrop-filter:blur(4px);}
-.hdr-name b{font-size:13px;font-weight:700;display:block;line-height:1.2;}
-.hdr-name small{font-size:10px;opacity:.7;}
+.hdr-mark{display:grid;place-items:center;}
+.hdr-name b{font-size:18px;font-weight:800;letter-spacing:-.03em;display:block;line-height:1.1;}
+.hdr-name small{font-size:10px;color:var(--ink-3);font-family:var(--mono);letter-spacing:.04em;}
+.hdr-role{font-size:12px;color:var(--ink-3);}
+.hdr-out{all:unset;cursor:pointer;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:700;color:var(--ink-2);background:var(--bg);}
+.hdr-out:hover{background:var(--line-soft);}
 @media(max-width:767px){.hdr{padding:0 12px;}.hdr-name small{display:none;}.hdr-role{display:none;}}
 .body{flex:1;display:flex;}
 

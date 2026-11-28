@@ -5,6 +5,7 @@
 // Desktop devices that logged in before open with the login card already showing.
 import { useEffect, useRef, useState } from "react";
 import "../styles/welcome.css";
+import { LogoBold } from "../components/visual";
 
 const SEEN_KEY = "astrolab-intro-seen";
 const NARROW_MQ = "(max-width: 899px), (max-aspect-ratio: 1/1)";
@@ -19,17 +20,7 @@ function canUse3D() {
 }
 
 function Mark({ size = 24 }) {
-  // Same shapes as LogoBold (components/visual.jsx)
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <g transform="translate(16, 17)">
-        <polygon points="0,-11 5.5,-3.5 0,1 -5.5,-3.5" fill="#09637E" />
-        <polygon points="-5.5,-3.5 -2,3.5 -8,9 -11.5,2" fill="#088395" />
-        <polygon points="5.5,-3.5 11.5,2 8,9 2,3.5" fill="#088395" />
-        <rect x="-3.5" y="1" width="7" height="2.2" rx="0.5" fill="#7AB2B2" />
-      </g>
-    </svg>
-  );
+  return <LogoBold size={size} />; // logo R2, sama dengan header
 }
 const Arrow = () => <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 const Play = () => <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" /></svg>;

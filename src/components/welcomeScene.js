@@ -7,7 +7,7 @@ export async function createWelcomeScene({ canvas, pane, ui, lowPower = false })
   const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const COL = {
     bg: 0xEAF3F5, ground: 0xE2EDF0, plaza: 0xF1F6F7, floor: 0xF7FBFB, wall: 0xFBFDFD,
-    cap: 0x088395, deep: 0x09637E, soft: 0x7AB2B2, ink: 0x0E2A33,
+    cap: 0x088395, deep: 0x0a525c, soft: 0x7AB2B2, ink: 0x0E2A33,
     wood: 0xE8DAC4, woodDark: 0xC9B59A, navy: 0x26364F, white: 0xF5F7F8,
     glass: 0x3E6E7B, metal: 0xB8C6CA, dark: 0x1C2A30, road: 0x55666C,
     skin: [0xC99A76, 0xB4825D, 0xDDB08B], hair: 0x2A2420,
@@ -78,7 +78,7 @@ export async function createWelcomeScene({ canvas, pane, ui, lowPower = false })
     (o.parent || scene).add(m); return m;
   }
   const FD = '"Plus Jakarta Sans", system-ui, sans-serif', FM = '"DM Mono", ui-monospace, monospace';
-  const HEX = { ink: '#0E2A33', ink2: '#43606A', ink3: '#7D959D', teal9: '#09637E', teal7: '#088395', teal3: '#7AB2B2', teal0: '#EBF4F6', line: '#D3E3E7', warn: '#B45309' };
+  const HEX = { ink: '#0E2A33', ink2: '#43606A', ink3: '#7D959D', teal9: '#0a525c', teal7: '#088395', teal3: '#7AB2B2', teal0: '#EBF4F6', line: '#D3E3E7', warn: '#B45309' };
   function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
   function diamond(g, cx, cy, r, fill) { g.beginPath(); g.moveTo(cx, cy - r); g.lineTo(cx + r, cy); g.lineTo(cx, cy + r); g.lineTo(cx - r, cy); g.closePath(); g.fillStyle = fill; g.fill(); }
   // Same geometry as LogoBold in components/visual.jsx (viewBox 32, origin at 16,17).

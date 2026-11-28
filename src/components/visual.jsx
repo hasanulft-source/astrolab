@@ -260,35 +260,22 @@ export function Confirm({ title, desc, onOk, onCancel }) {
   return <div className="modal-overlay" onClick={onCancel}><div className="modal" onClick={e => e.stopPropagation()}><h3>{title}</h3><p>{desc}</p><div className="modal-actions"><button className="btn btn-outline btn-sm" onClick={onCancel}>Batal</button><button className="btn btn-danger btn-sm" onClick={onOk}>Hapus</button></div></div></div>;
 }
 
-// 4 elemen geometric tersusun membentuk huruf "A":
-// - Apex rhombus (Astro) — visi, anchor sistem
-// - Left + Right pillars (Lab) — eksekusi, daily work
-// - Cross bar (Bridge) — pendidikan: penghubung visi & eksekusi
-// Prop `onDark`: kalau true, render versi putih (untuk dark background).
-export function LogoBold({ size = 32, onDark = false }) {
-  const apex = "0,-11 5.5,-3.5 0,1 -5.5,-3.5";
-  const left = "-5.5,-3.5 -2,3.5 -8,9 -11.5,2";
-  const right = "5.5,-3.5 11.5,2 8,9 2,3.5";
-  if (onDark) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 32 32">
-        <g transform="translate(16, 17)">
-          <polygon points={apex} fill="#ffffff"/>
-          <polygon points={left} fill="#ffffff" opacity="0.82"/>
-          <polygon points={right} fill="#ffffff" opacity="0.82"/>
-          <rect x="-3.5" y="1" width="7" height="2.2" rx="0.5" fill="#ffffff" opacity="0.55"/>
-        </g>
-      </svg>
-    );
-  }
+// Logo A-Cluster R2 "Jembatan amber" (redesign Nov 2026):
+// Apex (Astro) = visi · pilar kiri & kanan (Lab) = kerja harian · palang amber (Jembatan) = pendidikan.
+// Sudut membulat lewat stroke senada. Prop `onDark`: versi untuk latar gelap.
+export const LOGO_GEO = {
+  apex: "0.00,-9.92 4.62,-3.62 0.00,0.16 -4.62,-3.62",
+  kiri: "-5.70,-2.50 -2.76,3.38 -7.80,8.00 -10.74,2.12",
+  kanan: "5.70,-2.50 10.74,2.12 7.80,8.00 2.76,3.38",
+};
+export function LogoBold({ size = 32, onDark = false, className }) {
+  const a = onDark ? "#ffffff" : "#0a525c", l = onDark ? "#ffffff" : "#088395", b = onDark ? "#fbbf24" : "#f59e0b";
+  // opacity di elemen (bukan rgba di fill) supaya stroke tidak menumpuk jadi garis tepi
+  const P = (pts, c, op) => <polygon points={pts} fill={c} stroke={c} strokeWidth="1.6" strokeLinejoin="round" opacity={op} />;
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32">
-      <g transform="translate(16, 17)">
-        <polygon points={apex} fill="#09637E"/>
-        <polygon points={left} fill="#088395"/>
-        <polygon points={right} fill="#088395"/>
-        <rect x="-3.5" y="1" width="7" height="2.2" rx="0.5" fill="#7AB2B2"/>
-      </g>
+    <svg className={className} width={size} height={Math.round(size * 22 / 26)} viewBox="-13 -12 26 22" aria-hidden="true">
+      {P(LOGO_GEO.apex, a)}{P(LOGO_GEO.kiri, l, onDark ? 0.82 : undefined)}{P(LOGO_GEO.kanan, l, onDark ? 0.82 : undefined)}
+      <rect x="-3" y="2.2" width="6" height="2.4" rx="1.2" fill={b} />
     </svg>
   );
 }

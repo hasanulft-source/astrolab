@@ -117,7 +117,7 @@ const fmt1 = (v) => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
 // Maks. 2 angka di belakang koma, tanpa nol berlebih (49,2 · 19,6 · 86). Juga menghapus sisa floating point (19,599999…).
 const bul2 = (v) => Math.round(v * 100) / 100;
 const fmt2 = (v) => String(bul2(v)).replace(".", ",");
-const LOGO_SVG = `<svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true"><g transform="translate(16 17)"><polygon points="0,-11 5.5,-3.5 0,1 -5.5,-3.5" fill="#09637E"/><polygon points="-5.5,-3.5 -2,3.5 -8,9 -11.5,2" fill="#088395"/><polygon points="5.5,-3.5 11.5,2 8,9 2,3.5" fill="#088395"/><rect x="-3.5" y="1" width="7" height="2.2" rx=".5" fill="#7AB2B2"/></g></svg>`;
+const LOGO_SVG = `<svg width="40" height="34" viewBox="-13 -12 26 22" aria-hidden="true"><polygon points="0.00,-9.92 4.62,-3.62 0.00,0.16 -4.62,-3.62" fill="#0a525c" stroke="#0a525c" stroke-width="1.6" stroke-linejoin="round"/><polygon points="-5.70,-2.50 -2.76,3.38 -7.80,8.00 -10.74,2.12" fill="#088395" stroke="#088395" stroke-width="1.6" stroke-linejoin="round"/><polygon points="5.70,-2.50 10.74,2.12 7.80,8.00 2.76,3.38" fill="#088395" stroke="#088395" stroke-width="1.6" stroke-linejoin="round"/><rect x="-3" y="2.2" width="6" height="2.4" rx="1.2" fill="#f59e0b"/></svg>`;
 
 // CSS khusus laporan per siswa — satu lembar A4 per siswa. Prefix ls- supaya tidak bentrok dengan LAPORAN_CSS.
 const LAPORAN_SISWA_CSS = `

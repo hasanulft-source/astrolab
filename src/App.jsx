@@ -6371,7 +6371,7 @@ function AppInner() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [user]);
-  if (store.loading || authLoading) return <><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg,#1a8a9b 0%,var(--accent) 40%,var(--accent-2) 70%,#062a35 100%)", gap: 14 }}><LogoBold size={72} onDark /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
+  if (store.loading || authLoading) return <><div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--band)", gap: 14 }}><LogoBold size={72} onDark /><div style={{ color: "#fff", fontSize: 20, fontWeight: 900, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: "-.02em" }}>Astrolab</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 12, fontFamily: "Plus Jakarta Sans, sans-serif", letterSpacing: ".04em" }}>Our Classroom</div></div></>;
   const hideNav = route === "kerjakan" || route === "ujian";
   let screen = null;
   if (user) {
@@ -6418,15 +6418,15 @@ function AppInner() {
       <div className="shell">
         <header className="hdr">
           <div className="hdr-brand">
-            <div className="hdr-mark"><LogoBold size={24} onDark /></div>
-            <div className="hdr-name"><b>Astrolab</b><small style={{ fontSize: 10, opacity: .65 }}>Our Classroom</small></div>
+            <div className="hdr-mark"><LogoBold size={30} /></div>
+            <div className="hdr-name"><b>Astrolab</b><small>OUR CLASSROOM</small></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="hdr-role" style={{ fontSize: 12, opacity: .85 }}>{user.role === "guru" ? "Guru" : `Kelas ${user.jenjang}`}</span>
+            <span className="hdr-role">{user.role === "guru" ? "Guru" : `Kelas ${user.jenjang}`}</span>
             <button onClick={() => navigate(user.role === "guru" ? "profil-guru" : "profil")} style={{ background: "none", border: "none", cursor: "pointer", borderRadius: "50%", padding: 0, display: "flex" }}>
               <Avatar name={user.nama} size="sm" photo={store.getPhoto(user.uid || user.id)} />
             </button>
-            <button onClick={handleLogout} style={{ background: "rgba(255,255,255,.15)", color: "#fff", padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "1px solid rgba(255,255,255,.2)", cursor: "pointer" }}>Keluar</button>
+            <button type="button" className="hdr-out" onClick={handleLogout}>Keluar</button>
           </div>
         </header>
         <div className="body">
