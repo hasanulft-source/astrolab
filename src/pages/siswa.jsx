@@ -306,7 +306,7 @@ export function Angkasa() {
 }
 
 // Api Kristal — ikon streak (amber)
-function ApiKristal({ s = 30 }) {
+export function ApiKristal({ s = 30 }) {
   return (
     <svg aria-hidden="true" width={s} height={Math.round(s * 34 / 30)} viewBox="0 0 30 34">
       <defs><linearGradient id="sw-api" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#f97316" /><stop offset="1" stopColor="#fde047" /></linearGradient></defs>

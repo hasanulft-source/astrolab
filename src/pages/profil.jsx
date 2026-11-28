@@ -3,8 +3,9 @@
 // dan dikirim lewat props supaya tidak ada perubahan pada alur laporan.
 import { useState } from "react";
 import { I } from "../components/icons";
-import { Avatar, infoTingkatApi } from "../components/visual";
-import { BadgeIcon, ALL_BADGES, PoinChart } from "../components/gamification";
+import { Avatar, infoTingkatApi, MapelIcon } from "../components/visual";
+import { BadgeIcon, ALL_BADGES, PoinChart, TierIcon, getLevel, getLevelProgress, LEVELS } from "../components/gamification";
+import { ApiKristal } from "./siswa";
 import { withTimeout } from "../utils/helpers";
 import { KKTP, Page, Card, Items, Item, Button, StatusChip } from "../components/ui";
 import { Medal, LevelStrip, StreakValue } from "../components/seru";
@@ -35,6 +36,7 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
   const poin = stats.poin || 0;
   const xp = (stats.xpBawaan || 0) + poin;
   const season = store.getSeason ? store.getSeason().nomor : 1;
+  const lv = getLevel(xp), prog = getLevelProgress(xp);
 
   function handleUpload(e) {
     const file = e.target.files[0];
@@ -87,24 +89,35 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
       )}
 
       <Page size="mid">
-        {/* Identitas + level */}
-        <section className="pf-id">
-          <div className="pf-av">
-            <Avatar name={user.nama} size="xl" photo={photo} />
-            <button type="button" onClick={() => setShowPhotoPicker(true)} aria-label="Ganti foto profil"><I n="edit" s={12} /></button>
+        {/* Identitas + level — redesign "E · halus" (mockup SiswaProfil) */}
+        <section className="pf2-id">
+          <div className="pf2-id-top">
+            <div className="pf2-av">
+              <Avatar name={user.nama} size="xl" photo={photo} />
+              <button type="button" onClick={() => setShowPhotoPicker(true)} aria-label="Ganti foto profil"><I n="edit" s={14} /></button>
+            </div>
+            <div className="pf2-id-main">
+              <h1>{user.namaDisplay || user.nama}</h1>
+              <span>{user.kelas || `Kelas ${user.jenjang}`}{user.noAbsen ? ` · No. absen ${user.noAbsen}` : ""}</span>
+            </div>
           </div>
-          <div className="pf-id-main">
-            <h1>{user.nama}</h1>
-            <span>{user.kelas || `Kelas ${user.jenjang}`}{user.noAbsen ? ` · No. absen ${user.noAbsen}` : ""}</span>
-            <div className="pf-lv"><LevelStrip poin={xp} /></div>
+          <div className="pf2-lv">
+            <div className="pf2-lv-top">
+              <span className="pf2-lv-ic"><TierIcon tierId={lv.tierId} size={30} color={lv.color} /></span>
+              <div className="pf2-lv-main">
+                <div className="pf2-lv-row"><b>{lv.name}</b><span>LV {lv.id} / {LEVELS.length}</span></div>
+                <div className="sw-xp pf2-xp"><i style={{ width: `${prog.next ? prog.pct : 100}%` }} /></div>
+              </div>
+            </div>
+            <div className="pf2-lv-foot"><span>{fmt(xp)}{prog.next ? ` / ${fmt(prog.next.min)}` : ""} EXP</span><span>{prog.next ? `${fmt(prog.needed)} lagi ke ${prog.next.name}` : "Level tertinggi"}</span></div>
           </div>
         </section>
 
-        <div className="sw-tiles four">
-          <div><span>Ranking kelas</span><b className={myRank ? "pf-rank" : "none"}>{myRank ? <>{myRank.rank <= 3 && <Medal rank={myRank.rank} size="sm" />}#{myRank.rank}</> : "Belum ada"}</b></div>
-          <div><span>{season > 1 ? `Poin Season ${season}` : "Total poin"}</span><b>{fmt(poin)}</b></div>
-          <div><span>Rata-rata nilai</span><b className={!stats.nilaiRata ? "none" : stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "Belum ada"}</b></div>
-          <div className="streak"><span>Api Kristal</span><b><StreakValue streak={stats.streak || 0} /></b><small className="pf-api-next">{(() => {
+        <div className="pf2-tiles">
+          <div><span>Ranking kelas</span><b>{myRank ? <>#{myRank.rank}<small> / {lb.length}</small></> : "–"}</b></div>
+          <div><span>{season > 1 ? `Poin Season ${season}` : "Poin season ini"}</span><b>{fmt(poin)}</b></div>
+          <div><span>Rata-rata nilai</span><b className={stats.nilaiRata && stats.nilaiRata < KKTP ? "below" : ""}>{stats.nilaiRata || "–"}</b></div>
+          <div className="api"><span>Api Kristal</span><b><ApiKristal s={20} />{stats.streak || 0}</b><small>{(() => {
             const a = infoTingkatApi(stats.streak || 0);
             if (!stats.streak) return "Kumpulkan tugas tepat waktu untuk menyalakan api";
             return a.berikut ? `${a.sisa} tugas tepat waktu lagi ke api ${a.berikut.nama}` : `Api ${a.kini.nama}, tingkat tertinggi`;
@@ -114,68 +127,62 @@ export function ProfilSiswaV2({ user, store, navigate, LaporModal }) {
         <RiwayatRekap daftar={rekapList} onBuka={k => setPutarRekap(rekapList.find(r => r.kunci === k) || null)} />
         {putarRekap && <RekapStory data={putarRekap.data} foto={store.getPhoto(user.uid || user.id)} onTutup={() => { if (!putarRekap.dilihatAt) store.tandaiRekapDilihat?.(putarRekap.kunci).catch(() => {}); setPutarRekap(null); }} />}
 
-        <button type="button" className="pf-rapor" onClick={() => navigate("rapor")}>
-          <span className="pf-rapor-ic"><I n="award" s={20} /></span>
-          <span><b>Rapor Perkembangan</b><small>Nilai semester dan perkembanganmu sejak STS</small></span>
+        <button type="button" className="pf2-link" onClick={() => navigate("rapor")}>
+          <span className="pf2-ib"><I n="award" s={20} /></span>
+          <span className="pf2-link-t"><b>Rapor Perkembangan</b><small>Nilai semester dan perkembanganmu sejak STS</small></span>
           <I n="chevR" s={16} />
         </button>
 
-        <Card label="Badge" aside={`${myBadges.length} dari ${ALL_BADGES.length}`}>
+        <section className="pf2-kartu">
+          <div className="pf2-head"><h2>Badge</h2><span>{myBadges.length} / {ALL_BADGES.length}</span></div>
           {myBadges.length === 0 && <p className="ui-text">Belum ada badge. Badge terbuka dari tugas yang kamu kerjakan.</p>}
-          <div className="pf-badges">
+          <div className="pf2-badges">
             {badgeShow.map(b => {
               const punya = myBadges.includes(b.id);
               return (
-                <div key={b.id} className={`pf-badge${punya ? "" : " locked"}`} title={b.desc}>
-                  <BadgeIcon type={b.icon} rim={b.rim} size={40} />
+                <div key={b.id} className={`pf2-badge${punya ? "" : " locked"}`} title={b.desc}>
+                  <BadgeIcon type={b.icon} rim={b.rim} size={38} locked={!punya} />
                   <span style={punya ? { color: b.color } : undefined}>{b.name}</span>
                 </div>
               );
             })}
           </div>
           {ALL_BADGES.length > BADGE_LIMIT && (
-            <button type="button" className="ui-link" onClick={() => setAllBadge(v => !v)}>
-              <I n={allBadge ? "chevU" : "chevD"} s={12} /> {allBadge ? "Tampilkan lebih sedikit" : "Lihat semua badge"}
-            </button>
+            <button type="button" className="pf2-more" onClick={() => setAllBadge(v => !v)}>{allBadge ? "Tampilkan lebih sedikit" : "Lihat semua badge"}</button>
           )}
-        </Card>
+        </section>
 
-        {stats.poinHistory?.length > 0 && (
-          <Card label="Perjalanan poin"><PoinChart data={stats.poinHistory} /></Card>
+        {stats.poinHistory?.length > 1 && (
+          <section className="pf2-kartu"><div className="pf2-head"><h2>Perjalanan poin</h2></div><PoinChart data={stats.poinHistory} /></section>
         )}
 
-        <Card label="Riwayat pengerjaan" aside={`${subs.length} tugas`}>
+        <section className="pf2-kartu list">
+          <div className="pf2-head"><h2>Riwayat pengerjaan</h2><span>{subs.length} tugas</span></div>
           {riwayat.length === 0 ? <p className="ui-text">Belum ada tugas yang dikerjakan.</p> : (
-            <Items>
-              {(allRiwayat ? riwayat : riwayat.slice(0, RIWAYAT_LIMIT)).map(s => {
-                const t = store.getTugas().find(x => x.id === s.tugasId);
-                const iv = s.riwayatIntervensi || [];
-                const last = iv.length ? iv[iv.length - 1] : null;
-                return (
-                  <div key={s.id || s.tugasId} className="pf-riw">
-                    <Item icon={<I n="check" s={16} />} tone="muted" title={t?.judul || "Tugas dihapus"}
-                      badge={last ? <StatusChip>Diperbarui guru</StatusChip> : null}
-                      meta={`${new Date(s.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })} · +${s.poinDapat || 0} poin`}
-                      end={<span className={`ui-num${s.nilai < KKTP ? " below" : ""}`}>{s.nilai}</span>}
-                      onClick={t ? () => navigate("tugas-detail", { tugasId: t.id }) : undefined} />
-                    {last && <div className="pf-iv">Nilai diubah {last.nilaiSebelum} → {last.nilaiSetelah}. Alasan: {last.alasan}</div>}
-                  </div>
-                );
-              })}
-            </Items>
+            (allRiwayat ? riwayat : riwayat.slice(0, RIWAYAT_LIMIT)).map(s => {
+              const t = store.getTugas().find(x => x.id === s.tugasId);
+              const iv = s.riwayatIntervensi || [];
+              const last = iv.length ? iv[iv.length - 1] : null;
+              const tgl = new Date(s.submittedAt).toLocaleDateString("id-ID", { weekday: "long" });
+              return (
+                <div key={s.id || s.tugasId} className="pf2-riw">
+                  <button type="button" className="pf2-row" disabled={!t} onClick={t ? () => navigate("tugas-detail", { tugasId: t.id }) : undefined}>
+                    <span className="pf2-ib sm">{t ? <MapelIcon mapel={t.mapel} size={17} /> : <I n="check" s={16} />}</span>
+                    <span className="pf2-row-t"><b>{t?.judul || "Tugas dihapus"}</b><small>{tgl} · {s.ontime === false ? "lewat tenggat" : "tepat waktu"} · +{s.poinDapat || 0} poin{last ? " · diperbarui guru" : ""}</small></span>
+                    <span className={`pf2-nilai${s.nilai < KKTP ? " below" : ""}`}>{s.nilai}</span>
+                  </button>
+                  {last && <div className="pf-iv">Nilai diubah {last.nilaiSebelum} → {last.nilaiSetelah}. Alasan: {last.alasan}</div>}
+                </div>
+              );
+            })
           )}
           {riwayat.length > RIWAYAT_LIMIT && (
-            <button type="button" className="ui-link" onClick={() => setAllRiwayat(v => !v)}>
-              <I n={allRiwayat ? "chevU" : "chevD"} s={12} /> {allRiwayat ? "Tampilkan lebih sedikit" : `Lihat semua (${riwayat.length})`}
-            </button>
+            <button type="button" className="pf2-more" onClick={() => setAllRiwayat(v => !v)}>{allRiwayat ? "Tampilkan lebih sedikit" : `Lihat semua (${riwayat.length})`}</button>
           )}
-        </Card>
+        </section>
 
         {laporEnabled && (
-          <Card>
-            <Item icon={<I n="flag" s={16} />} tone="muted" title="Lapor kejadian" meta="Hanya wali kelas yang bisa membaca laporanmu."
-              action={<Button variant="outline" size="sm" onClick={() => setShowLapor(true)}>Lapor</Button>} />
-          </Card>
+          <button type="button" className="pf2-lapor" onClick={() => setShowLapor(true)}><I n="flag" s={16} /> Lapor kejadian ke wali kelas</button>
         )}
       </Page>
 

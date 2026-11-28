@@ -185,3 +185,109 @@ body .gr-band .gr-bar{background:rgba(255,255,255,.16)}
   body .gr-band .gr-tiles{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:12px}
   body .gr-band .gr-tiles>div:nth-child(2n){border-right:0;margin-right:0}
 }
+
+/* ══ Profil siswa — persis mockup SiswaProfil ══ */
+.pf2-id{background:var(--surface);border-radius:22px;padding:18px 16px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(6,47,54,.05)}
+.pf2-id-top{display:flex;align-items:center;gap:14px}
+.pf2-av{position:relative;flex:none}
+.pf2-av .av,.pf2-av > div:first-child{border-radius:22px!important}
+.pf2-av button{all:unset;cursor:pointer;position:absolute;right:-6px;bottom:-6px;width:30px;height:30px;border-radius:10px;border:2px solid #fff;background:var(--accent);color:#fff;display:grid;place-items:center;box-sizing:border-box}
+.pf2-av button:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px}
+.pf2-id-main{flex:1;min-width:0}
+.pf2-id-main h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.03em;line-height:1.15;overflow-wrap:anywhere}
+.pf2-id-main span{font-size:13px;color:var(--ink-2)}
+.pf2-lv{padding:12px 14px;border-radius:16px;background:#f6f9fa}
+.pf2-lv-top{display:flex;align-items:center;gap:10px}
+.pf2-lv-ic{flex:none;width:36px;height:36px;border-radius:11px;background:#fff;display:grid;place-items:center}
+.pf2-lv-main{flex:1;min-width:0}
+.pf2-lv-row{display:flex;align-items:baseline;gap:6px}
+.pf2-lv-row b{font-size:15px;font-weight:800}
+.pf2-lv-row span{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.pf2-xp{background:var(--line-soft)}
+.pf2-lv-foot{display:flex;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px;color:var(--ink-2)}
+.pf2-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media(min-width:700px){.pf2-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.pf2-tiles > div{background:var(--surface);border-radius:20px;padding:14px;box-shadow:0 1px 2px rgba(6,47,54,.05);min-width:0;display:flex;flex-direction:column}
+.pf2-tiles span{font-size:12px;font-weight:600;color:var(--ink-2)}
+.pf2-tiles b{display:flex;align-items:center;gap:6px;font-size:26px;font-weight:800;letter-spacing:-.04em;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.1}
+.pf2-tiles b small{font-size:14px;color:var(--ink-2);letter-spacing:0;font-weight:700}
+.pf2-tiles b.below{color:var(--warn)}
+.pf2-tiles > div.api{background:#fff1d6;color:#5a2d00;box-shadow:none}
+.pf2-tiles > div.api span{color:#7a4a12}
+.pf2-tiles > div.api small{font-size:11.5px;line-height:1.35;margin-top:2px;opacity:.9}
+.pf2-ib{flex:none;width:44px;height:44px;border-radius:13px;background:var(--accent-tint);color:var(--accent);display:grid;place-items:center}
+.pf2-ib.sm{width:38px;height:38px;border-radius:12px}
+.pf2-link{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:20px;padding:14px 16px;box-shadow:0 1px 2px rgba(6,47,54,.05);color:var(--ink)}
+.pf2-link:hover{background:var(--accent-tint)}
+.pf2-link-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.pf2-link-t b{font-size:14.5px}
+.pf2-link-t small{font-size:12.5px;color:var(--ink-2)}
+.pf2-kartu{background:var(--surface);border-radius:20px;padding:14px 16px;box-shadow:0 1px 2px rgba(6,47,54,.05);display:flex;flex-direction:column}
+.pf2-kartu.list{padding:6px 16px 8px}
+.pf2-head{display:flex;align-items:center;margin-bottom:12px}
+.pf2-kartu.list .pf2-head{padding:10px 0 0;margin-bottom:6px}
+.pf2-head h2{margin:0;flex:1;font-size:16px;font-weight:800;letter-spacing:-.02em}
+.pf2-head span{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.pf2-badges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 6px}
+.pf2-badge{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;min-width:0}
+.pf2-badge span{font-size:11px;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.pf2-badge.locked span{color:var(--ink-4)}
+.pf2-badge.locked svg{opacity:.55}
+.pf2-more{all:unset;cursor:pointer;align-self:flex-start;margin-top:12px;font-size:13px;font-weight:700;color:var(--accent-mid)}
+.pf2-kartu.list .pf2-more{margin:8px 0 6px}
+.pf2-riw + .pf2-riw .pf2-row{border-top:1px solid var(--line-soft)}
+.pf2-row{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:12px;padding:12px 0;color:var(--ink)}
+.pf2-row:disabled{cursor:default}
+.pf2-row-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.pf2-row-t b{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf2-row-t small{font-size:12px;color:var(--ink-2)}
+.pf2-nilai{flex:none;font-family:var(--mono);font-size:13px;font-weight:500;padding:4px 9px;border-radius:8px;background:var(--st-dinilai-bg);color:var(--st-dinilai)}
+.pf2-nilai.below{background:var(--st-belum-bg);color:var(--st-belum)}
+.pf2-lapor{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:46px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--accent);font-weight:700}
+.pf2-lapor:focus-visible,.pf2-link:focus-visible,.pf2-row:focus-visible,.pf2-more:focus-visible{outline:2px solid var(--accent-mid);outline-offset:2px}
+
+/* ══ Tugas guru — tabel seperti mockup GuruTugas ══ */
+body .gr-bar{height:9px;overflow:hidden}
+body .gr-bar i{background:linear-gradient(90deg,#2bb5c4,var(--accent-mid))}
+body .gr-bar i.solid{background:linear-gradient(90deg,#0d6b7a,var(--accent))}
+body .gr-bar i.amber{background:linear-gradient(90deg,var(--xp-a),var(--xp-b))}
+.gr-head-sub{font-size:14px;color:var(--ink-2)}
+.gr-bar-kiri{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+body .gr-cari input{height:42px;border-radius:12px;background:var(--surface);border:1px solid var(--line);padding:0 14px;font-size:13.5px}
+.gr-tabel{padding:4px 24px 8px}
+.gr-tabel-kepala,.gr-tabel-baris{display:grid;grid-template-columns:minmax(0,2.3fr) 150px minmax(0,1.4fr) 76px minmax(200px,auto);gap:18px;align-items:center}
+.gr-tabel-kepala{padding:14px 0 10px}
+.gr-tabel-kepala span{font-size:11.5px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.04em}
+.gr-tabel-baris{padding:14px 0;border-top:1px solid var(--line-soft)}
+.gr-tabel-baris.done{opacity:.85}
+.gr-tabel-baris > .gr-chip{justify-self:start}
+.gr-tb-tugas{display:flex;align-items:center;gap:12px;min-width:0}
+.gr-tb-tugas > div{min-width:0;display:flex;flex-direction:column;gap:1px}
+.gr-tb-tugas b{font-size:14.5px;font-weight:700;overflow-wrap:anywhere}
+.gr-tb-tugas small{font-size:12px;color:var(--ink-2)}
+.gr-tb-tugas small.gr-tb-cat{color:var(--st-belum);font-weight:600}
+.gr-tb-ic{flex:none;width:40px;height:40px;border-radius:13px;background:var(--accent-tint);color:var(--accent);display:grid;place-items:center}
+.gr-tb-kumpul{display:flex;align-items:center;gap:10px;min-width:0}
+.gr-tb-kumpul .gr-bar{flex:1}
+.gr-tb-kumpul span{font-family:var(--mono);font-size:12px;color:var(--ink-2);white-space:nowrap}
+.gr-tb-rata{font-family:var(--mono);font-weight:500;font-size:15px}
+.gr-tb-rata.amber{color:var(--st-belum)}
+.gr-tb-aksi{display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.gr-nb{font-size:11px;font-weight:800;padding:1px 6px;border-radius:99px;background:var(--xp-b);color:var(--amber-ink)}
+.gr-btn-ikon{width:36px;padding:0!important;font-size:18px;line-height:1}
+.gr-menu-wrap{position:relative}
+.gr-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:190px;background:var(--surface);border-radius:16px;padding:6px;box-shadow:0 18px 40px -12px rgba(6,47,54,.35),0 0 0 1px rgba(6,47,54,.05);display:flex;flex-direction:column}
+.gr-menu button{all:unset;cursor:pointer;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:600;color:var(--ink)}
+.gr-menu button:hover,.gr-menu button:focus-visible{background:var(--bg)}
+.gr-menu button.danger{color:var(--bad)}
+.gr-jadwal{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:14px;padding:16px 24px;background:var(--surface);border-radius:20px;box-shadow:0 1px 2px rgba(6,47,54,.05),0 10px 28px rgba(6,47,54,.05)}
+.gr-jadwal > span:nth-child(2){flex:1;display:flex;flex-direction:column}
+.gr-jadwal small{font-size:13px;color:var(--ink-2)}
+@media(max-width:900px){
+  .gr-tabel{padding:4px 16px 8px}
+  .gr-tabel-kepala{display:none}
+  .gr-tabel-baris{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"t c" "k r" "a a";gap:10px 12px}
+  .gr-tb-tugas{grid-area:t}.gr-tabel-baris > .gr-chip{grid-area:c;justify-self:end;align-self:start}
+  .gr-tb-kumpul{grid-area:k}.gr-tb-rata{grid-area:r;justify-self:end}
+  .gr-tb-aksi{grid-area:a;justify-content:flex-start}
+}

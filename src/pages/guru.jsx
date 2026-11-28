@@ -9,7 +9,7 @@ import { exportNilai, backupFromStore } from "../utils/excel";
 import { LaporanModal } from "../utils/laporan";
 import { deadlineEnd, Angkasa } from "./siswa";
 import { uid, fmtLastSeen, withTimeout, getPeriodeAktif, getPeriodeOptions } from "../utils/helpers";
-import { Confirm, Avatar } from "../components/visual";
+import { Confirm, Avatar, MapelIcon } from "../components/visual";
 import { getLevel, TierIcon, BadgeIcon, AUTO_BADGES, MANUAL_BADGES } from "../components/gamification";
 import "../styles/guru.css";
 
@@ -258,6 +258,9 @@ const IKON = {
   balik: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
   kanan: "M9 6l6 6-6 6",
   kiri: "M15 6l-6 6 6 6",
+  arsip: "M3 5h18v4H3zM5 9v11h14V9M10 13h4",
+  grafik: "M5 20V10M12 20V4M19 20v-7",
+  kalender: "M4 6h16v15H4zM4 10h16M8 3v4M16 3v4",
 };
 const Bar = ({ v, tone = "teal", kktp = false, tebal }) => (
   <div className={`gr-bar${tebal ? " lg" : ""}`}>
@@ -708,6 +711,7 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
   const [materi, setMateri] = useState(false);
   const [arsipT, setArsipT] = useState(null);
   const [toast, setToast] = useState("");
+  const [menu, setMenu] = useState(null); // id tugas yang menu ⋯-nya terbuka
   const kabar = m => { setToast(m); setTimeout(() => setToast(""), 3500); };
   const d = hitungDaftarTugas(store, jenjang, { tab, personalSaja, cari });
   // Draf hasil duplikat: terbitkan langsung kalau tenggatnya masih berlaku, kalau tidak buka editor dulu
@@ -725,73 +729,83 @@ export function TugasGuruV2({ store, navigate, IntervensiNilaiModal, MateriManag
     <div className="page gr">
       <div className="gr-head">
         <div>
-          <span className="gr-mono">{d.hitung.semua} tugas · Kelas {jenjang}</span>
           <h1>Tugas</h1>
+          <span className="gr-head-sub">Kelas {jenjang} · {d.hitung.berjalan} berjalan · {d.hitung.terjadwal} terjadwal · {d.hitung.selesai} selesai</span>
         </div>
         <div className="gr-actions">
+          <button type="button" className="gr-btn outline" onClick={() => navigate("arsip-tugas")}><Ikon d={IKON.arsip} s={15} /> Ambil dari arsip</button>
           {MateriManagerModal && <button type="button" className="gr-btn outline" onClick={() => setMateri(true)}>Atur materi</button>}
-          <button type="button" className="gr-btn" onClick={() => navigate("buat-tugas")}><Ikon d={IKON.plus} s={15} w={2.4} /> Tugas baru</button>
+          <button type="button" className="gr-btn" onClick={() => navigate("buat-tugas")}><Ikon d={IKON.plus} s={15} w={2.4} /> Buat tugas</button>
         </div>
       </div>
 
       <div className="gr-bar-row">
-        <div className="gr-seg" role="tablist" aria-label="Pilih kelas">
-          {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => setJenjang(j)}>Kelas {j}</button>)}
+        <div className="gr-bar-kiri">
+          <div className="gr-seg" role="tablist" aria-label="Pilih kelas">
+            {["VII", "VIII"].map(j => <button key={j} type="button" role="tab" aria-selected={jenjang === j} className={jenjang === j ? "on" : ""} onClick={() => setJenjang(j)}>Kelas {j}</button>)}
+          </div>
+          <div className="gr-seg scroll" role="tablist" aria-label="Kelompok tugas">
+            {TAB.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l} · {d.hitung[k]}</button>)}
+          </div>
         </div>
         <label className="gr-cari">
           <span className="sr">Cari tugas</span>
-          <input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari judul atau materi" />
+          <input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari judul tugas" />
         </label>
       </div>
-
-      <div className="gr-bar-row">
-        <div className="gr-seg scroll" role="tablist" aria-label="Kelompok tugas">
-          {TAB.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l} · {d.hitung[k]}</button>)}
-        </div>
-        {d.personal > 0 && (
-          <label className="gr-check"><input type="checkbox" checked={personalSaja} onChange={e => setPersonalSaja(e.target.checked)} /> Tugas personal saja · {d.personal}</label>
-        )}
-      </div>
+      {d.personal > 0 && (
+        <label className="gr-check"><input type="checkbox" checked={personalSaja} onChange={e => setPersonalSaja(e.target.checked)} /> Tugas personal saja · {d.personal}</label>
+      )}
 
       {d.tampil.length === 0 ? <div className="gr-card"><p className="gr-empty">{kosong}</p></div> : (
-        <div className="gr-stack">
+        <section className="gr-card gr-tabel" aria-label="Daftar tugas">
+          <div className="gr-tabel-kepala" aria-hidden="true"><span>Tugas</span><span>Tenggat</span><span>Terkumpul</span><span>Rata-rata</span><span /></div>
           {d.tampil.map(x => {
             const t = x.t;
+            const catatan = x.draf ? "Draf, belum terlihat siswa" : x.grup === "terjadwal" ? "Belum terlihat oleh siswa" : x.untuk ? `Personal: ${x.untuk.slice(0, 3).join(", ")}${x.untuk.length > 3 ? ` +${x.untuk.length - 3}` : ""}` : null;
             return (
-              <div key={t.id} className={`gr-card gr-tugas${x.grup === "selesai" ? " done" : ""}`}>
-                <div className="gr-tugas-top">
-                  <b>{t.judul}</b>
-                  <span className={`gr-chip ${x.tenggatTone}`}>{x.tenggat}</span>
-                </div>
-                <span className="gr-mono">
-                  {[t.mapel, t.materi || null, `${(t.soal || []).length} soal`, x.sandbox ? `${x.sandbox} sandbox` : null,
-                    t.graded === false ? `latihan khusus · poin 20%` : `maks ${t.poinMax || 0} poin`].filter(Boolean).join(" · ")}
-                </span>
-                {x.untuk && <span className="gr-untuk">Tugas personal untuk {x.untuk.length <= 4 ? x.untuk.join(", ") : `${x.untuk.slice(0, 4).join(", ")} dan ${x.untuk.length - 4} lainnya`}</span>}
-                {x.grup !== "terjadwal" && (
-                  <div className="gr-meters">
-                    <div><div className="gr-meter-lbl"><span>Mengumpulkan</span><b>{x.kumpul}/{x.penerima}</b></div><Bar v={x.kumpulPct} tone="solid" /></div>
-                    <div><div className="gr-meter-lbl"><span>Rata-rata</span><b className={x.rata != null && x.rata < KKTP ? "amber" : ""}>{x.rata ?? "Belum ada"}</b></div><Bar v={x.rata || 0} kktp tone={x.rata != null && x.rata < KKTP ? "amber" : "teal"} /></div>
+              <div key={t.id} className={`gr-tabel-baris${x.grup === "selesai" ? " done" : ""}`}>
+                <div className="gr-tb-tugas">
+                  <span className="gr-tb-ic"><MapelIcon mapel={t.mapel} size={18} /></span>
+                  <div>
+                    <b>{t.judul}</b>
+                    <small>{[t.mapel, `Kelas ${jenjang}`, `${(t.soal || []).length} soal`, x.sandbox ? `${x.sandbox} sandbox` : null, t.graded === false ? "latihan khusus" : null].filter(Boolean).join(" · ")}</small>
+                    {catatan && <small className="gr-tb-cat">{catatan}</small>}
                   </div>
-                )}
-                <div className="gr-tugas-foot">
-                  <span className={x.esai || (x.grup === "selesai" && x.belum) ? "amber" : "muted"}>
-                    {x.draf ? "Draf, belum terlihat siswa" : x.grup === "terjadwal" ? "Belum terlihat oleh siswa" : x.esai ? `${x.esai} esai belum dinilai` : x.belum === 0 ? "Semua penerima sudah mengumpulkan" : x.grup === "selesai" ? `${x.belum} siswa tidak mengumpulkan` : `${x.belum} siswa belum mengumpulkan`}
-                  </span>
-                  <div className="gr-tugas-act">
-                    {x.draf && <button type="button" className="gr-link" onClick={() => terbitkanDraf(t)}>Terbitkan</button>}
-                    {x.kumpul > 0 && <button type="button" className="gr-link" onClick={() => navigate("analisis-tugas", { tugasId: t.id })}>Analisis</button>}
-                    {x.kumpul > 0 && IntervensiNilaiModal && <button type="button" className="gr-link" onClick={() => setNilaiT(t)}>Nilai</button>}
-                    <button type="button" className="gr-link" onClick={() => navigate("edit-tugas", { tugasId: t.id })}>{x.grup === "selesai" ? "Perpanjang" : "Edit"}</button>
-                    <button type="button" className="gr-link" onClick={async () => { try { await store.duplicateTugas(t); { kabar("Salinan dibuat sebagai draf di tab Terjadwal. Siswa belum melihatnya."); setTab("terjadwal"); } } catch (e) { kabar("Gagal menduplikat: " + (e?.message || "coba lagi")); } }}>Duplikat</button>
-                    {x.grup === "selesai" && store.arsipkanTugas && <button type="button" className="gr-link" onClick={() => setArsipT(t)}>Arsipkan</button>}
-                    <button type="button" className="gr-link danger" onClick={() => setHapus(t)}>Hapus</button>
+                </div>
+                <span className={`gr-chip ${x.tenggatTone}`}>{x.tenggat}</span>
+                {x.grup !== "terjadwal" ? (
+                  <div className="gr-tb-kumpul"><Bar v={x.kumpulPct} tone={x.kumpulPct < 60 && x.grup === "berjalan" ? "amber" : "teal"} /><span>{x.kumpul}/{x.penerima}</span></div>
+                ) : <span className="gr-muted">–</span>}
+                <b className={`gr-tb-rata${x.rata != null && x.rata < KKTP ? " amber" : ""}`}>{x.rata ?? "–"}</b>
+                <div className="gr-tb-aksi">
+                  {x.draf && <button type="button" className="gr-btn sm" onClick={() => terbitkanDraf(t)}>Terbitkan</button>}
+                  {x.esai > 0 && <button type="button" className="gr-btn outline sm" onClick={() => navigate("nilai-esai", { tugasId: t.id })}>Nilai esai <span className="gr-nb">{x.esai}</span></button>}
+                  {x.kumpul > 0 && <button type="button" className="gr-btn outline sm" onClick={() => navigate("analisis-tugas", { tugasId: t.id })}><Ikon d={IKON.grafik} s={14} /> Analisis</button>}
+                  <div className="gr-menu-wrap">
+                    <button type="button" className="gr-btn outline sm gr-btn-ikon" aria-label={`Menu lain untuk ${t.judul}`} aria-expanded={menu === t.id} onClick={() => setMenu(menu === t.id ? null : t.id)}>⋯</button>
+                    {menu === t.id && (
+                      <div className="gr-menu" role="menu" onMouseLeave={() => setMenu(null)}>
+                        <button type="button" role="menuitem" onClick={() => { setMenu(null); navigate("edit-tugas", { tugasId: t.id }); }}>{x.grup === "selesai" ? "Perpanjang tenggat" : "Edit"}</button>
+                        {x.kumpul > 0 && IntervensiNilaiModal && <button type="button" role="menuitem" onClick={() => { setMenu(null); setNilaiT(t); }}>Ubah nilai</button>}
+                        <button type="button" role="menuitem" onClick={async () => { setMenu(null); try { await store.duplicateTugas(t); kabar("Salinan dibuat sebagai draf di tab Terjadwal. Siswa belum melihatnya."); setTab("terjadwal"); } catch (e) { kabar("Gagal menduplikat: " + (e?.message || "coba lagi")); } }}>Duplikat</button>
+                        {x.grup === "selesai" && store.arsipkanTugas && <button type="button" role="menuitem" onClick={() => { setMenu(null); setArsipT(t); }}>Arsipkan</button>}
+                        <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(null); setHapus(t); }}>Hapus</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             );
           })}
-        </div>
+        </section>
+      )}
+      {d.hitung.terjadwal > 0 && tab === "berjalan" && (
+        <button type="button" className="gr-card gr-jadwal" onClick={() => setTab("terjadwal")}>
+          <span className="gr-tb-ic"><Ikon d={IKON.kalender} s={18} /></span>
+          <span><b>{d.hitung.terjadwal} tugas terjadwal</b><small>Terbit otomatis sesuai jadwal. Ketuk untuk melihat.</small></span>
+          <Ikon d={IKON.kanan} s={16} />
+        </button>
       )}
 
       {toast && <div className="gr-toast" role="status">{toast}</div>}
